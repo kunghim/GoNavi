@@ -1,6 +1,6 @@
 ---
 name: gonavi-scan
-description: Use when a user asks to scan, review, audit, rescan, or incrementally inspect GoNavi from product-manager and database-engineer perspectives, update its detailed feature map, or produce a report with reproducible or explicitly pending validation paths.
+description: 当用户要求从产品经理和数据库工程师视角扫描、审查、复查或增量检查 GoNavi，更新详细功能地图，或生成带有可复现路径及明确待验证状态的报告时使用。
 ---
 
 # GoNavi 持续扫描
@@ -19,9 +19,15 @@ description: Use when a user asks to scan, review, audit, rescan, or incremental
 
 从产品入口向实现纵向取证：页面/操作、前端组件、Wails 绑定、Go 服务、数据对象、驱动、测试和文档。按“产品领域 -> 功能模块 -> 具体能力 -> 用户操作”组织。
 
+首次全量扫描必须先建立入口清单，至少枚举：工作台/标签类型、菜单与右键动作、设置页、Wails 对外方法族、Web/MCP/CLI 入口、内置与可选数据源、专用工作台、桌面与发布能力。报告记录“已枚举、已映射、未展开”的数量；任何已知入口都必须映射为能力，或连同原因和下一步验证方式进入未覆盖范围。
+
+一个能力节点只描述一个用户可验证目标。若节点用并列清单混合多个可独立比较的操作，应拆分为多个稳定 ID；高层模块名不能代替具体能力。每个数据源至少独立记录接入模式、典型任务和已知边界，不能只用“多数据源支持”概括。
+
 每项能力保存稳定 ID、目标用户、使用场景、用户目标、功能入口、主流程、子功能、当前状态和实现证据；前置条件、支持范围、关联数据对象、依赖能力、异常流程和已知限制按实际功能补充。地图顶部的基线提交适用于本轮全部节点。
 
 状态只使用 `已实现`、`部分实现`、`本次范围内未找到实现证据`。增量扫描只更新受影响能力，不删除未受影响能力。
+
+全量扫描完成门槛：入口清单中的工作台、数据源和平台页不存在无说明遗漏；地图能够回答“用户从哪里进入、能完成什么操作、实现证据在哪里、有哪些边界”。发现数量没有最低要求，但不得以抽样少数模块代替全量覆盖。
 
 ## 双视角审查
 
