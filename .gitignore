@@ -32,7 +32,6 @@ optional-driver-agent.exe
 docs/superpowers/
 docs/需求追踪/
 
-**/CLAUDE.md
 .worktrees
 docs
 .tmp_superpowers_edit
