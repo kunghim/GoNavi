@@ -36,3 +36,6 @@ docs/需求追踪/
 .worktrees
 docs
 .tmp_superpowers_edit
+
+# gonavi-scan 本机测试连接（含密码/API Token，不提交）
+.agents/skills/gonavi-scan/connections.local.yaml
