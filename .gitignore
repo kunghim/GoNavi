@@ -25,7 +25,6 @@ optional-driver-agent
 optional-driver-agent.exe
 .ace-tool/
 .superpowers/
-.claude/
 .gemini/
 .playwright-mcp/
 .zcode/
@@ -33,7 +32,6 @@ optional-driver-agent.exe
 docs/superpowers/
 docs/需求追踪/
 
-CLAUDE.md
 **/CLAUDE.md
 .worktrees
 docs
