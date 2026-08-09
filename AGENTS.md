@@ -27,6 +27,13 @@
 - 当前仓库是 GoNavi-Wails，桌面端使用 Wails，前端使用 React/Vite。
 - 当前本机环境和已验证工具见 `.claude/LOCAL_ENVIRONMENT.md`，不要把其中路径复制进项目代码。
 
+## 本地 dev 与功能分支
+
+- 本地 `dev` 可用于在个人设备之间同步本机开发辅助工具（例如 `.agents/` 下的 skill）；因此它可以包含不属于上游产品的个人提交，并可能落后或分叉于 `upstream/dev`。
+- `upstream/dev` 始终是产品代码的真实集成基线。开始新的产品任务时，先 `git fetch upstream --prune`，再直接从最新 `upstream/dev` 创建 `fix/*` 或 `feature/*` 分支，不从含本地工具提交的 `dev` 派生。
+- 将 `upstream/dev` 合并进本地 `dev` 会保留本地提交，并带来全部上游更新；仅在确认冲突和差异后进行。同步后推送到 `origin/dev` 仅更新个人 Fork，不会自动影响已存在或后续 PR。
+- 不得把本地工具、`AGENTS.md`、`.claude/` 或其他个人辅助提交带入产品功能分支和上游 PR。
+
 ## 常用命令
 
 ```powershell

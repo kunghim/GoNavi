@@ -43,24 +43,17 @@ Bug 任务必须先在最新 `dev` 上复现。无法复现时记录环境、步
 git fetch upstream --prune
 git fetch origin --prune
 
-# 以官方 dev 为真实集成基线
-git switch dev
-git merge --ff-only upstream/dev
-
-# 需要同步 Fork 时执行；这是远程写操作
-git push origin dev
-
-# 从最新 dev 创建独立任务分支
-git switch -c fix/<issue-or-topic>
+# 直接以官方 dev 创建独立任务分支
+git switch -c fix/<issue-or-topic> upstream/dev
 # 或
-git switch -c feature/<issue-or-topic>
+git switch -c feature/<issue-or-topic> upstream/dev
 ```
 
 约束：
 
 - `upstream` 指向 `Syngnat/GoNavi`，`origin` 指向个人 Fork。
-- 必须从最新 `upstream/dev` 创建分支，不能直接从 `main` 或旧功能分支派生。
-- `git merge --ff-only upstream/dev` 失败说明本地 `dev` 已分叉。此时先检查 `git log --left-right dev...upstream/dev`，禁止自动 reset、强制覆盖或 rebase。
+- 本地 `dev` 可包含用于跨设备同步的个人开发工具提交，不是产品任务的派生基线。必须从最新 `upstream/dev` 创建分支，不能直接从本地 `dev`、`main` 或旧功能分支派生。
+- 如需将上游更新同步到本地 `dev`，先检查 `git log --left-right dev...upstream/dev` 和冲突范围，再由用户确认执行 merge；禁止自动 reset、强制覆盖或 rebase。同步后的 `git push origin dev` 只更新个人 Fork。
 - `git push origin dev` 和创建远程分支需要用户明确授权；只做本地开发时可以暂不推送。
 - 分支名使用 `fix/*` 或 `feature/*`，建议包含 Issue 编号和简短主题。
 
