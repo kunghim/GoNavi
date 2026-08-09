@@ -5,12 +5,16 @@ import {
     buildQueryEditorAliasMap,
     buildQueryEditorResultSetMergeKey,
     collectQueryEditorReferencedDatabaseNames,
+    collectQueryEditorTableReferences,
     createBoundedQueryEditorCompletionCandidateBatch,
     findCompletionTablesByDatabase,
     getCompletionTableSchemaCounts,
     isOracleBaseTableReference,
+    isQueryEditorTableSourceCompletionContext,
     materializeBoundedQueryEditorCompletionBatches,
     rankQueryEditorCompletionCandidate,
+    resolveQueryEditorCompletionFilterText,
+    resolveQueryEditorConnectionTimeout,
     resolveOracleLikeDefaultSchemaName,
     resolveOracleLikeExecutionSchemaName,
     resolveOracleLikeLookupSchemaCandidates,
@@ -18,7 +22,31 @@ import {
     resolveQueryEditorNavigationTarget,
     selectUnqualifiedCompletionSynonyms,
     shouldHandleQueryEditorRunShortcutFallback,
+    splitCompletionSchemaAndTable,
 } from './QueryEditorHelpers';
+
+describe('QueryEditor connection timeout', () => {
+    it('keeps the configured MySQL timeout instead of forcing a 120 second minimum', () => {
+        expect(resolveQueryEditorConnectionTimeout({ type: 'mysql' })).toBe(30);
+        expect(resolveQueryEditorConnectionTimeout({ type: 'mysql', timeout: 45 })).toBe(45);
+        expect(resolveQueryEditorConnectionTimeout({ type: 'mysql', timeout: 300 })).toBe(300);
+    });
+
+    it.each([
+        [{ type: 'goldendb', timeout: 45 }, 45],
+        [{ type: 'custom', driver: 'gdb', timeout: 60 }, 60],
+    ])('keeps the configured connection timeout for compatible config %#', (config, expected) => {
+        expect(resolveQueryEditorConnectionTimeout(config)).toBe(expected);
+    });
+
+    it.each([
+        [{ type: 'postgres', timeout: 30 }, 30],
+        [{ type: 'oracle', timeout: 45 }, 45],
+        [{ type: 'elasticsearch', timeout: 60 }, 60],
+    ])('keeps the configured connection timeout for every data source %#', (config, expected) => {
+        expect(resolveQueryEditorConnectionTimeout(config)).toBe(expected);
+    });
+});
 
 describe('QueryEditor result merge identity', () => {
     it('keeps zero-based Elasticsearch request indexes distinct', () => {
@@ -194,6 +222,18 @@ describe('QueryEditor completion candidate budget', () => {
     });
 });
 
+describe('QueryEditor completion filter text', () => {
+    it('returns the matching suffix for Monaco substring filtering', () => {
+        expect(resolveQueryEditorCompletionFilterText('title', ['short_title'])).toBe('title');
+        expect(resolveQueryEditorCompletionFilterText('title', ['subtitle'])).toBe('title');
+    });
+
+    it('does not override the filter text for an empty prefix or a non-match', () => {
+        expect(resolveQueryEditorCompletionFilterText('', ['short_title'])).toBeUndefined();
+        expect(resolveQueryEditorCompletionFilterText('name', ['short_title'])).toBeUndefined();
+    });
+});
+
 describe('QueryEditor Monaco SQL grammar', () => {
     it.each([
         [{ config: { type: 'mysql' } }, 'mysql'],
@@ -284,6 +324,36 @@ describe('QueryEditorHelpers Oracle-like execution schema', () => {
 });
 
 describe('QueryEditorHelpers qualified navigation (MySQL db.table + PG schema.table)', () => {
+    it('keeps a dotted Dameng owner intact when metadata already identifies it', () => {
+        expect(splitCompletionSchemaAndTable(
+            'PEM2.4_V1_1.COM_APPROVE_INFO',
+            'PEM2.4_V1_1',
+        )).toEqual({
+            schema: 'PEM2.4_V1_1',
+            table: 'COM_APPROVE_INFO',
+        });
+        expect(splitCompletionSchemaAndTable(
+            '"PEM2.4_V1_1"."COM_APPROVE_INFO"',
+        )).toEqual({
+            schema: 'PEM2.4_V1_1',
+            table: 'COM_APPROVE_INFO',
+        });
+
+        const sql = 'select * from PEM2.4_V1_1.COM_APPROVE_INFO';
+        expect(resolveQueryEditorNavigationTarget(
+            sql,
+            sql.length,
+            'PEM2.4_V1_1',
+            ['PEM2.4_V1_1'],
+            [{ dbName: 'PEM2.4_V1_1', tableName: 'COM_APPROVE_INFO' }],
+        )).toEqual({
+            type: 'table',
+            dbName: 'PEM2.4_V1_1',
+            tableName: 'COM_APPROVE_INFO',
+            schemaName: undefined,
+        });
+    });
+
     it('tracks an explicit two-part owner separately from the current database', () => {
         const qualified = buildQueryEditorAliasMap('SELECT p.* FROM IMP_BASICINFO.PERSON p', 'A');
         expect(qualified.p).toEqual({
@@ -296,9 +366,102 @@ describe('QueryEditorHelpers qualified navigation (MySQL db.table + PG schema.ta
         expect(unqualified.p).toEqual({ dbName: 'A', tableName: 'PERSON' });
     });
 
+    it('collects table names and aliases from comma-separated FROM sources', () => {
+        const aliases = buildQueryEditorAliasMap(
+            'SELECT * FROM VULNERABILITY_INFO_T a, VULNERABILITY_DETAIL_T b '
+            + 'WHERE VULNERABILITY_INFO_T.CODE = VULNERABILITY_DETAIL_T.',
+            'DEV',
+        );
+
+        expect(aliases.vulnerability_info_t).toEqual({ dbName: 'DEV', tableName: 'VULNERABILITY_INFO_T' });
+        expect(aliases.a).toEqual({ dbName: 'DEV', tableName: 'VULNERABILITY_INFO_T' });
+        expect(aliases.vulnerability_detail_t).toEqual({ dbName: 'DEV', tableName: 'VULNERABILITY_DETAIL_T' });
+        expect(aliases.b).toEqual({ dbName: 'DEV', tableName: 'VULNERABILITY_DETAIL_T' });
+    });
+
+    it('ignores expression commas, literals, comments, and table-valued functions', () => {
+        const references = collectQueryEditorTableReferences(`
+SELECT concat(a.code, 'FROM fake_one f, fake_two g'), a.name
+FROM (
+    SELECT * FROM inner_a ia, inner_b ib
+) nested
+JOIN generate_series(1, 2) series ON true
+JOIN outer_table ot ON ot.id = nested.id
+WHERE fn(ot.code, ot.name) = '-- JOIN fake_three z'
+/* FROM fake_four q, fake_five w */
+ORDER BY ot.code, ot.name
+        `);
+
+        expect(references.map((reference) => reference.tableIdent)).toEqual([
+            'inner_a',
+            'inner_b',
+            'outer_table',
+        ]);
+        expect(references.map((reference) => reference.alias)).toEqual(['ia', 'ib', 'ot']);
+    });
+
+    it('preserves quoted identifier parts and allows quoted reserved aliases', () => {
+        const references = collectQueryEditorTableReferences(
+            'SELECT * FROM "Odd.Schema"."Table.Name" AS "where", [dbo].[Other Table] b',
+        );
+
+        expect(references).toEqual([
+            {
+                tableIdent: 'Odd.Schema.Table.Name',
+                parts: ['Odd.Schema', 'Table.Name'],
+                alias: 'where',
+            },
+            {
+                tableIdent: 'dbo.Other Table',
+                parts: ['dbo', 'Other Table'],
+                alias: 'b',
+            },
+        ]);
+    });
+
+    it('keeps INSERT, UPDATE, and DELETE targets while skipping FROM table-valued functions', () => {
+        const references = collectQueryEditorTableReferences(`
+INSERT INTO audit_log (id, name) VALUES (1, 'created');
+UPDATE users SET name = 'updated' WHERE id = 1;
+DELETE FROM expired_sessions WHERE expires_at < CURRENT_TIMESTAMP;
+SELECT * FROM generate_series(1, 2) series JOIN active_users au ON true;
+        `);
+
+        expect(references.map((reference) => reference.tableIdent)).toEqual([
+            'audit_log',
+            'users',
+            'expired_sessions',
+            'active_users',
+        ]);
+    });
+
+    it('keeps PostgreSQL JSONB operators and ignores FROM inside SQL expressions', () => {
+        const references = collectQueryEditorTableReferences(`
+SELECT payload #>> '{id}',
+       EXTRACT(YEAR FROM created_at),
+       TRIM(BOTH ' ' FROM display_name)
+FROM events e
+WHERE e.id > 0
+        `);
+
+        expect(references).toEqual([{
+            tableIdent: 'events',
+            parts: ['events'],
+            alias: 'e',
+        }]);
+    });
+
+    it('recognizes table completion after a comma but not after an alias or WHERE clause', () => {
+        expect(isQueryEditorTableSourceCompletionContext('SELECT * FROM users u, hrmres')).toBe(true);
+        expect(isQueryEditorTableSourceCompletionContext('SELECT * FROM users u,')).toBe(true);
+        expect(isQueryEditorTableSourceCompletionContext('SELECT * FROM users u')).toBe(false);
+        expect(isQueryEditorTableSourceCompletionContext('SELECT * FROM users WHERE id = 1')).toBe(false);
+        expect(isQueryEditorTableSourceCompletionContext('SELECT EXTRACT(YEAR FROM created_at)')).toBe(false);
+    });
+
     it('collects cross-db names from SQL without requiring an empty visible list', () => {
         const sql = `
-SELECT * FROM uk_back_corp;
+SELECT * FROM uk_back_corp u, reporting.audit_log a;
 SELECT * FROM front_end_sys_new.fs_mkefu_regist_record WHERE mobile = '1';
 DELETE FROM front_end_sys_new.fs_mkefu_regist_record WHERE mobile = '1';
 SELECT * FROM public.users;
@@ -307,12 +470,13 @@ SELECT * FROM analytics.public.events;
         const names = collectQueryEditorReferencedDatabaseNames(
             sql,
             'mkefu_test_new',
-            ['mkefu_test_new', 'front_end_sys_new', 'analytics'],
+            ['mkefu_test_new', 'front_end_sys_new', 'analytics', 'reporting'],
         );
         expect(names).toEqual(expect.arrayContaining([
             'mkefu_test_new',
             'front_end_sys_new',
             'analytics',
+            'reporting',
         ]));
         // public 是常见 schema，两段时不应当成库去拉取
         expect(names.map((name) => name.toLowerCase())).not.toContain('public');

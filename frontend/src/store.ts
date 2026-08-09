@@ -30,7 +30,10 @@ import {
   type ShortcutPlatformBinding,
   type ShortcutPlatform,
 } from "./utils/shortcuts";
-import { buildExternalSQLDirectoryId } from "./utils/externalSqlTree";
+import {
+  buildExternalSQLDirectoryId,
+  normalizeExternalSQLPath,
+} from "./utils/externalSqlTree";
 import {
   DEFAULT_SQL_SNIPPETS,
   BUILTIN_SNIPPET_MAP,
@@ -1103,7 +1106,6 @@ const normalizeConnectionTagTree = (
     tags.push({
       id,
       name,
-      environmentType: normalizeConnectionEnvironmentType(entry.environmentType),
       parentTagId,
       connectionIds: sanitizeStringArray(entry.connectionIds, 256),
       childOrder: sanitizeSidebarItemOrder(entry.childOrder),
@@ -1189,7 +1191,6 @@ const sanitizeConnectionTags = (value: unknown): ConnectionTag[] => {
     result.push({
       id,
       name,
-      environmentType: normalizeConnectionEnvironmentType(raw.environmentType),
       parentTagId: toTrimmedString(raw.parentTagId) || undefined,
       connectionIds: sanitizeStringArray(raw.connectionIds, 256),
       childOrder: sanitizeSidebarItemOrder(raw.childOrder),
@@ -1823,6 +1824,7 @@ interface AppState {
   tableExportHistories: Record<string, TableExportHistoryEntry[]>;
   tableAccessCount: Record<string, number>;
   tableSortPreference: Record<string, "name" | "frequency">;
+  tableDesignerSchemaByConnection: Record<string, string>;
   tableColumnOrders: Record<string, string[]>;
   enableColumnOrderMemory: boolean;
   /** 数据表横向滚动时左侧固定的数据列（按表维度记忆；勾选列/行号列始终固定） */
@@ -1908,6 +1910,7 @@ interface AppState {
         | "query"
         | "connectionId"
         | "dbName"
+        | "schemaName"
         | "title"
         | "resultPanelVisible"
         | "formatRestoreSnapshot"
@@ -2024,6 +2027,7 @@ interface AppState {
     dbName: string,
     sortBy: "name" | "frequency",
   ) => void;
+  setTableDesignerSchema: (connectionId: string, schemaName: string) => void;
   setSidebarTablePinned: (
     connectionId: string,
     dbName: string,
@@ -2171,6 +2175,23 @@ const resolveExternalSQLDirectoryName = (name: unknown, path: string): string =>
   return pathSegment || translate("sidebar.sql_directory.default_name");
 };
 
+const sanitizeExternalSQLFileBindings = (
+  value: unknown,
+): NonNullable<ExternalSQLDirectory["fileBindings"]> => {
+  if (!Array.isArray(value)) return [];
+  const bindings = new Map<string, NonNullable<ExternalSQLDirectory["fileBindings"]>[number]>();
+  value.forEach((entry) => {
+    if (!entry || typeof entry !== "object") return;
+    const raw = entry as Record<string, unknown>;
+    const filePath = normalizeExternalSQLPath(toTrimmedString(raw.filePath));
+    const connectionId = toTrimmedString(raw.connectionId);
+    const dbName = toTrimmedString(raw.dbName);
+    if (!filePath || !connectionId || !dbName) return;
+    bindings.set(filePath, { filePath, connectionId, dbName });
+  });
+  return [...bindings.values()];
+};
+
 const sanitizeExternalSQLDirectories = (
   value: unknown,
 ): ExternalSQLDirectory[] => {
@@ -2184,6 +2205,7 @@ const sanitizeExternalSQLDirectories = (
     if (!path) return;
     const connectionId = toTrimmedString(raw.connectionId);
     const dbName = toTrimmedString(raw.dbName);
+    const fileBindings = sanitizeExternalSQLFileBindings(raw.fileBindings);
     const id =
       toTrimmedString(
         raw.id,
@@ -2197,6 +2219,7 @@ const sanitizeExternalSQLDirectories = (
       path,
       ...(connectionId ? { connectionId } : {}),
       ...(dbName ? { dbName } : {}),
+      ...(fileBindings.length > 0 ? { fileBindings } : {}),
       createdAt: Number.isFinite(Number(raw.createdAt))
         ? Number(raw.createdAt)
         : Date.now(),
@@ -2519,6 +2542,7 @@ const sanitizeQueryTabs = (value: unknown): TabData[] => {
         persistedDraft?.connectionId,
       ),
       dbName: toTrimmedString(raw.dbName, persistedDraft?.dbName),
+      schemaName: toTrimmedString(raw.schemaName).slice(0, 256) || undefined,
       query,
       resultPanelVisible:
         typeof raw.resultPanelVisible === "boolean"
@@ -2907,6 +2931,24 @@ const sanitizeTableSortPreference = (
   const result: Record<string, "name" | "frequency"> = {};
   Object.entries(raw).forEach(([key, preference]) => {
     result[key] = preference === "frequency" ? "frequency" : "name";
+  });
+  return result;
+};
+
+const sanitizeTableDesignerSchemaByConnection = (
+  value: unknown,
+): Record<string, string> => {
+  const raw =
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
+  const result: Record<string, string> = {};
+  Object.entries(raw).forEach(([connectionId, schemaName]) => {
+    const safeConnectionId = toTrimmedString(connectionId);
+    const safeSchemaName = toTrimmedString(schemaName).slice(0, 256);
+    if (safeConnectionId && safeSchemaName) {
+      result[safeConnectionId] = safeSchemaName;
+    }
   });
   return result;
 };
@@ -3456,6 +3498,7 @@ const PERSISTED_STATE_DEPENDENCY_KEYS = [
   "sqlSnippets",
   "tableAccessCount",
   "tableSortPreference",
+  "tableDesignerSchemaByConnection",
   "tableColumnOrders",
   "enableColumnOrderMemory",
   "tablePinnedLeftColumns",
@@ -3519,6 +3562,9 @@ const buildPersistedStateProjection = (
     sqlSnippets: state.sqlSnippets,
     tableAccessCount: sanitizeTableAccessCount(state.tableAccessCount),
     tableSortPreference: state.tableSortPreference,
+    tableDesignerSchemaByConnection: sanitizeTableDesignerSchemaByConnection(
+      state.tableDesignerSchemaByConnection,
+    ),
     tableColumnOrders: state.tableColumnOrders,
     enableColumnOrderMemory: state.enableColumnOrderMemory,
     tablePinnedLeftColumns: state.tablePinnedLeftColumns,
@@ -3644,6 +3690,7 @@ export const useStore = create<AppState>()(
       tableExportHistories: {},
       tableAccessCount: {},
       tableSortPreference: {},
+      tableDesignerSchemaByConnection: {},
       tableColumnOrders: {},
       enableColumnOrderMemory: true,
       tablePinnedLeftColumns: {},
@@ -3709,6 +3756,8 @@ export const useStore = create<AppState>()(
             ),
             nextConnections,
           );
+          const nextDesignerSchemas = { ...state.tableDesignerSchemaByConnection };
+          delete nextDesignerSchemas[id];
           return {
             connections: nextConnections,
             connectionTags: normalized.connectionTags,
@@ -3723,6 +3772,7 @@ export const useStore = create<AppState>()(
               id,
               nextConnections.map((connection) => connection.id),
             ),
+            tableDesignerSchemaByConnection: nextDesignerSchemas,
             sidebarRootOrder: normalized.sidebarRootOrder,
           };
         }),
@@ -3734,10 +3784,16 @@ export const useStore = create<AppState>()(
             state.sidebarRootOrder,
             nextConnections,
           );
+          const validConnectionIds = new Set(nextConnections.map((connection) => connection.id));
+          const nextDesignerSchemas = Object.fromEntries(
+            Object.entries(state.tableDesignerSchemaByConnection)
+              .filter(([connectionId]) => validConnectionIds.has(connectionId)),
+          );
           return {
             connections: nextConnections,
             connectionTags: normalized.connectionTags,
             sidebarRootOrder: normalized.sidebarRootOrder,
+            tableDesignerSchemaByConnection: nextDesignerSchemas,
             shortcutOptions:
               readPersistedShortcutOptions() ?? state.shortcutOptions,
           };
@@ -3786,9 +3842,6 @@ export const useStore = create<AppState>()(
                   "store.fallback.connection_tag_name",
                   normalized.connectionTags.length,
                 ),
-              environmentType: normalizeConnectionEnvironmentType(
-                tag.environmentType,
-              ),
               parentTagId: toTrimmedString(tag.parentTagId) || undefined,
               connectionIds: directConnectionIds,
               childOrder: sanitizeSidebarItemOrder(tag.childOrder),
@@ -3848,9 +3901,6 @@ export const useStore = create<AppState>()(
               return {
                 ...candidate,
                 name: toTrimmedString(tag.name, candidate.name) || candidate.name,
-                environmentType: normalizeConnectionEnvironmentType(
-                  tag.environmentType ?? candidate.environmentType,
-                ),
                 connectionIds: requestedConnectionIds,
                 childOrder: hasRequestedChildOrder
                   ? sanitizeSidebarItemOrder(tag.childOrder)
@@ -4238,6 +4288,13 @@ export const useStore = create<AppState>()(
                 nextTab.dbName = nextDbName;
                 changed = true;
                 connectionContextChanged = true;
+              }
+            }
+            if (draft.schemaName !== undefined) {
+              const nextSchemaName = toTrimmedString(draft.schemaName).slice(0, 256);
+              if ((nextTab.schemaName || "") !== nextSchemaName) {
+                nextTab.schemaName = nextSchemaName || undefined;
+                changed = true;
               }
             }
             if (draft.title !== undefined) {
@@ -4979,6 +5036,7 @@ export const useStore = create<AppState>()(
           }
           const connectionId = toTrimmedString(directory.connectionId);
           const dbName = toTrimmedString(directory.dbName);
+          const fileBindings = sanitizeExternalSQLFileBindings(directory.fileBindings);
           const nextDirectory: ExternalSQLDirectory = {
             id:
               toTrimmedString(
@@ -4989,6 +5047,7 @@ export const useStore = create<AppState>()(
             path,
             ...(connectionId ? { connectionId } : {}),
             ...(dbName ? { dbName } : {}),
+            ...(fileBindings.length > 0 ? { fileBindings } : {}),
             createdAt: Number.isFinite(Number(directory.createdAt))
               ? Number(directory.createdAt)
               : Date.now(),
@@ -5302,6 +5361,19 @@ export const useStore = create<AppState>()(
             tableSortPreference: {
               ...state.tableSortPreference,
               [key]: sortBy,
+            },
+          };
+        }),
+
+      setTableDesignerSchema: (connectionId, schemaName) =>
+        set((state) => {
+          const safeConnectionId = toTrimmedString(connectionId);
+          const safeSchemaName = toTrimmedString(schemaName).slice(0, 256);
+          if (!safeConnectionId || !safeSchemaName) return state;
+          return {
+            tableDesignerSchemaByConnection: {
+              ...state.tableDesignerSchemaByConnection,
+              [safeConnectionId]: safeSchemaName,
             },
           };
         }),
@@ -5925,6 +5997,9 @@ export const useStore = create<AppState>()(
         nextState.tableSortPreference = sanitizeTableSortPreference(
           state.tableSortPreference,
         );
+        nextState.tableDesignerSchemaByConnection = sanitizeTableDesignerSchemaByConnection(
+          state.tableDesignerSchemaByConnection,
+        );
         // 新增的列排序记忆状态不需要做版本特殊兼容，直接做基本的类型保护
         const safeOrders = sanitizeTableColumnOrders(state.tableColumnOrders);
         nextState.tableColumnOrders = safeOrders;
@@ -6029,6 +6104,9 @@ export const useStore = create<AppState>()(
           globalProxy: sanitizeGlobalProxy(state.globalProxy),
           tableSortPreference: sanitizeTableSortPreference(
             state.tableSortPreference,
+          ),
+          tableDesignerSchemaByConnection: sanitizeTableDesignerSchemaByConnection(
+            state.tableDesignerSchemaByConnection,
           ),
           tableColumnOrders: sanitizeTableColumnOrders(state.tableColumnOrders),
           enableColumnOrderMemory: state.enableColumnOrderMemory !== false,

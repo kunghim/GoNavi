@@ -134,6 +134,7 @@ const backendApp = vi.hoisted(() => ({
   DBRollbackTransaction: vi.fn(),
   DBRollbackTransactionWithTrigger: vi.fn(),
   DBGetTables: vi.fn(),
+  DBTableExists: vi.fn(),
   DBGetAllColumns: vi.fn(),
   DBGetDatabases: vi.fn(),
   DBGetColumns: vi.fn(),
@@ -826,6 +827,7 @@ describe('QueryEditor external SQL save', () => {
     backendApp.DBGetAllColumns.mockResolvedValue({ success: true, data: [] });
     backendApp.DBGetDatabases.mockResolvedValue({ success: true, data: [] });
     backendApp.DBGetTables.mockResolvedValue({ success: true, data: [] });
+    backendApp.DBTableExists.mockResolvedValue({ success: true, data: { exists: true } });
     backendApp.GenerateQueryID.mockResolvedValue('query-1');
     storeState.connections = createDefaultConnections();
     storeState.sqlLogs = [];
@@ -2738,11 +2740,14 @@ describe('QueryEditor external SQL save', () => {
     });
   });
 
-  it('shows "No running query to cancel." in English when stop is clicked before a query id exists', async () => {
+  it('cancels the pending run before a query id exists', async () => {
     storeState.languagePreference = 'en-US';
     setCurrentLanguage('en-US');
 
-    backendApp.GenerateQueryID.mockReturnValueOnce(new Promise(() => {}));
+    let resolveQueryId!: (queryId: string) => void;
+    backendApp.GenerateQueryID.mockReturnValueOnce(new Promise((resolve) => {
+      resolveQueryId = resolve;
+    }));
 
     let renderer!: ReactTestRenderer;
     await act(async () => {
@@ -2758,8 +2763,16 @@ describe('QueryEditor external SQL save', () => {
       await findButton(renderer, 'Stop').props.onClick();
     });
 
-    expect(messageApi.warning).toHaveBeenCalledWith('No running query to cancel.');
-    expect(messageApi.warning).not.toHaveBeenCalledWith('没有正在运行的查询可取消');
+    expect(messageApi.success).toHaveBeenCalledWith('Query canceled.');
+    expect(messageApi.warning).not.toHaveBeenCalledWith('No running query to cancel.');
+    expect(findButtons(renderer, 'Stop')).toHaveLength(0);
+
+    await act(async () => {
+      resolveQueryId('query-too-late');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(backendApp.DBQueryMulti).not.toHaveBeenCalled();
   });
 
   it('shows "Query canceled." in English when stop cancels a running query', async () => {
@@ -2787,6 +2800,255 @@ describe('QueryEditor external SQL save', () => {
 
     expect(messageApi.success).toHaveBeenCalledWith('Query canceled.');
     expect(messageApi.success).not.toHaveBeenCalledWith('查询已取消');
+    expect(findButtons(renderer, 'Stop')).toHaveLength(0);
+  });
+
+  it('keeps the newer query cancellable when the previous run finishes late', async () => {
+    let resolvePreviousQuery!: (value: unknown) => void;
+    const previousQuery = new Promise((resolve) => {
+      resolvePreviousQuery = resolve;
+    });
+    const currentQuery = new Promise(() => {});
+
+    backendApp.GenerateQueryID
+      .mockResolvedValueOnce('query-previous')
+      .mockResolvedValueOnce('query-current');
+    backendApp.DBQueryMulti
+      .mockReturnValueOnce(previousQuery)
+      .mockReturnValueOnce(currentQuery);
+    backendApp.CancelQuery.mockResolvedValue({ success: true });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ dbName: 'main', query: 'select 1;' })} />);
+    });
+
+    await act(async () => {
+      void findButton(renderer, '运行').props.onClick();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(backendApp.DBQueryMulti).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      void findButton(renderer, '运行').props.onClick();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(backendApp.DBQueryMulti).toHaveBeenCalledTimes(2);
+    expect(backendApp.CancelQuery).toHaveBeenCalledWith('query-previous');
+
+    await act(async () => {
+      resolvePreviousQuery({ success: false, message: 'context canceled' });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    backendApp.CancelQuery.mockClear();
+    messageApi.warning.mockClear();
+    await act(async () => {
+      await findButton(renderer, '停止').props.onClick();
+    });
+
+    expect(backendApp.CancelQuery).toHaveBeenCalledWith('query-current');
+    expect(messageApi.warning).not.toHaveBeenCalledWith('没有正在运行的查询可取消。');
+  });
+
+  it('does not start a replacement run after stop cancels it while the previous query cancellation is pending', async () => {
+    let resolveReplacementCancel!: (value: { success: boolean }) => void;
+    backendApp.GenerateQueryID
+      .mockResolvedValueOnce('query-previous')
+      .mockResolvedValueOnce('query-replacement');
+    backendApp.DBQueryMulti
+      .mockReturnValueOnce(new Promise(() => {}))
+      .mockResolvedValueOnce({ success: true, data: [] });
+    backendApp.CancelQuery
+      .mockReturnValueOnce(new Promise((resolve) => {
+        resolveReplacementCancel = resolve;
+      }))
+      .mockResolvedValueOnce({ success: true });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ dbName: 'main', query: 'select 1;' })} />);
+    });
+
+    await act(async () => {
+      void findButton(renderer, '运行').props.onClick();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(backendApp.DBQueryMulti).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      void findButton(renderer, '运行').props.onClick();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(backendApp.CancelQuery).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await findButton(renderer, '停止').props.onClick();
+    });
+    expect(findButtons(renderer, '停止')).toHaveLength(0);
+
+    await act(async () => {
+      resolveReplacementCancel({ success: true });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(backendApp.GenerateQueryID).toHaveBeenCalledTimes(1);
+    expect(backendApp.DBQueryMulti).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels a pending result refresh before its query id exists', async () => {
+    let resolveRefreshQueryId!: (queryId: string) => void;
+    backendApp.GenerateQueryID
+      .mockResolvedValueOnce('query-initial')
+      .mockReturnValueOnce(new Promise((resolve) => {
+        resolveRefreshQueryId = resolve;
+      }));
+    backendApp.DBQueryMulti
+      .mockResolvedValueOnce({
+        success: true,
+        data: [{ columns: ['value'], rows: [{ value: 1 }] }],
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: [{ columns: ['value'], rows: [{ value: 2 }] }],
+      });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ dbName: 'main', query: 'select 1 as value;' })} />);
+    });
+    await act(async () => {
+      await findButton(renderer, '运行').props.onClick();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(dataGridState.latestProps?.onReload).toEqual(expect.any(Function));
+
+    await act(async () => {
+      void dataGridState.latestProps.onReload();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await findButton(renderer, '停止').props.onClick();
+    });
+
+    await act(async () => {
+      resolveRefreshQueryId('query-refresh-too-late');
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(messageApi.success).toHaveBeenCalledWith('查询已中止。');
+    expect(backendApp.DBQueryMulti).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels a pending page query before its query id exists', async () => {
+    storeState.queryOptions.maxRows = 2;
+    let resolvePageQueryId!: (queryId: string) => void;
+    backendApp.GenerateQueryID
+      .mockResolvedValueOnce('query-initial')
+      .mockReturnValueOnce(new Promise((resolve) => {
+        resolvePageQueryId = resolve;
+      }));
+    backendApp.DBQueryMulti
+      .mockResolvedValueOnce({
+        success: true,
+        data: [{ columns: ['value'], rows: [{ value: 1 }, { value: 2 }] }],
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: [{ columns: ['value'], rows: [{ value: 3 }] }],
+      });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ dbName: 'main', query: 'select value from items;' })} />);
+    });
+    await act(async () => {
+      await findButton(renderer, '运行').props.onClick();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(dataGridState.latestProps?.onPageChange).toEqual(expect.any(Function));
+
+    await act(async () => {
+      void dataGridState.latestProps.onPageChange(2, 2);
+      await Promise.resolve();
+    });
+    expect(dataGridState.latestProps?.loading).toBe(true);
+    await act(async () => {
+      await findButton(renderer, '停止').props.onClick();
+    });
+    expect(dataGridState.latestProps?.loading).toBe(false);
+
+    await act(async () => {
+      resolvePageQueryId('query-page-too-late');
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(messageApi.success).toHaveBeenCalledWith('查询已中止。');
+    expect(backendApp.DBQueryMulti).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels a Mongo multi-statement run between statement query ids', async () => {
+    storeState.connections[0].config.type = 'mongodb';
+    const query = 'db.users.find({});\ndb.logs.find({});';
+    let resolveSecondQueryId!: (queryId: string) => void;
+    backendApp.GenerateQueryID
+      .mockResolvedValueOnce('query-mongo-first')
+      .mockReturnValueOnce(new Promise((resolve) => {
+        resolveSecondQueryId = resolve;
+      }));
+    backendApp.DBQueryWithCancel
+      .mockResolvedValueOnce({ success: true, data: [{ _id: 1 }], fields: ['_id'] })
+      .mockResolvedValueOnce({ success: true, data: [{ _id: 2 }], fields: ['_id'] });
+    backendApp.CancelQuery.mockResolvedValue({ success: false, message: 'query already completed' });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ dbName: 'main', query })} />);
+    });
+    editorState.selection = {
+      startLineNumber: 1,
+      startColumn: 1,
+      endLineNumber: 2,
+      endColumn: 'db.logs.find({});'.length + 1,
+      positionLineNumber: 2,
+      positionColumn: 'db.logs.find({});'.length + 1,
+    };
+
+    await act(async () => {
+      void findButton(renderer, '运行').props.onClick();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(backendApp.GenerateQueryID).toHaveBeenCalledTimes(2);
+    expect(backendApp.DBQueryWithCancel).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await findButton(renderer, '停止').props.onClick();
+    });
+    await act(async () => {
+      resolveSecondQueryId('query-mongo-too-late');
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(messageApi.success).toHaveBeenCalledWith('查询已中止。');
+    expect(backendApp.CancelQuery).not.toHaveBeenCalled();
+    expect(backendApp.DBQueryWithCancel).toHaveBeenCalledTimes(1);
   });
 
   it('shows "Failed to cancel query" in English while preserving the raw error detail', async () => {
@@ -3133,6 +3395,64 @@ describe('QueryEditor external SQL save', () => {
       String(node.props?.className || '').split(/\s+/).includes('query-result-tab-label'),
     )).toHaveLength(1);
     expect(dataGridState.latestProps?.data).toEqual(expect.arrayContaining([expect.objectContaining({ a: 1 })]));
+  });
+
+  it('preserves a restored result execution snapshot when reopening it in a native window', async () => {
+    const executionConnectionParams = 'application_name=gonavi&options=-c%20search_path%3D%22sales%22%2C%22public%22';
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ connectionId: 'conn-current', dbName: 'current_db' })} />);
+    });
+
+    const restoreRegistration = (window.addEventListener as any).mock.calls
+      .find(([eventName]: [string]) => eventName === 'gonavi:restore-query-result');
+    expect(restoreRegistration).toBeTruthy();
+
+    await act(async () => {
+      restoreRegistration[1](new CustomEvent('gonavi:restore-query-result', {
+        detail: {
+          sourceQueryTabId: 'tab-1',
+          result: {
+            key: 'result-snapshot',
+            sql: 'select * from orders',
+            columns: ['id'],
+            rows: [{ id: 1 }],
+            tableName: 'orders',
+            pkColumns: ['id'],
+            readOnly: false,
+            executionConnectionId: 'conn-snapshot',
+            executionDbName: 'snapshot_db',
+            executionConnectionParams,
+          },
+        },
+      }));
+    });
+
+    expect(dataGridState.latestProps).toMatchObject({
+      connectionId: 'conn-snapshot',
+      dbName: 'snapshot_db',
+      connectionParamsOverride: executionConnectionParams,
+    });
+
+    const openInWindowButton = renderer.root.findAll((node) =>
+      node.type === 'button' && textContent(node) === '在独立窗口打开',
+    )[0];
+    await act(async () => {
+      openInWindowButton.props.onClick();
+      await Promise.resolve();
+    });
+
+    expect(nativeDetachedWindowState.openNativeQueryResultWindow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connectionId: 'conn-snapshot',
+        dbName: 'snapshot_db',
+        result: expect.objectContaining({
+          executionConnectionId: 'conn-snapshot',
+          executionDbName: 'snapshot_db',
+          executionConnectionParams,
+        }),
+      }),
+    );
   });
 
   it('removes only the inline result inserted by a rolled-back native attach', async () => {
@@ -4035,6 +4355,89 @@ describe('QueryEditor external SQL save', () => {
       tableName: 'fs_mkefu_regist_record',
       objectType: 'table',
     }));
+  });
+
+  it('projects field drops from editor whitespace by x coordinate and previews the same anchor', async () => {
+    const domListeners: Record<string, ((event?: any) => void)[]> = {};
+    const sql = 'SELECT org_id, title FROM a_cninfo_announcement\n\n';
+    editorState.domNode = {
+      style: { cursor: '' },
+      addEventListener: vi.fn((type: string, listener: (event?: any) => void) => {
+        domListeners[type] ||= [];
+        domListeners[type].push(listener);
+      }),
+      removeEventListener: vi.fn(),
+      contains: vi.fn(() => false),
+      getBoundingClientRect: vi.fn(() => ({ left: 0, top: 0, width: 800, height: 300 })),
+    } as any;
+    editorState.editor.getTargetAtClientPoint = vi.fn(() => ({
+      type: 7,
+      position: { lineNumber: 3, column: 1 },
+    }));
+    editorState.editor.getVisibleRanges = vi.fn(() => [{ startLineNumber: 1, endLineNumber: 3 }]);
+    editorState.editor.getScrolledVisiblePosition = vi.fn(({ lineNumber, column }: any) => ({
+      left: (column - 1) * 10,
+      top: (lineNumber - 1) * 20,
+      height: 20,
+    }));
+    editorState.editor.render = vi.fn();
+    editorState.value = sql;
+
+    await act(async () => {
+      create(<QueryEditor tab={createTab({ query: sql })} />);
+    });
+
+    const titleOffset = sql.indexOf('title');
+    const createDataTransfer = () => ({
+      types: [
+        'application/x-gonavi-sql-object',
+        'application/x-gonavi-sql-field',
+        'text/plain',
+      ],
+      dropEffect: 'none',
+      getData: (type: string) => {
+        if (type === 'application/x-gonavi-sql-object') {
+          return JSON.stringify({ text: 'announcement_id', nodeType: 'column' });
+        }
+        return 'announcement_id';
+      },
+    });
+    const dragCoordinates = {
+      clientX: (titleOffset + 2) * 10,
+      clientY: 100,
+    };
+
+    await act(async () => {
+      domListeners.dragover?.forEach((listener) => listener({
+        ...dragCoordinates,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+        dataTransfer: createDataTransfer(),
+      }));
+    });
+
+    const previewDecoration = editorState.editor.deltaDecorations.mock.calls
+      .flatMap((call: any[]) => call[1] || [])
+      .find((decoration: any) => decoration?.options?.inlineClassName === 'gonavi-query-editor-field-drop-anchor');
+    expect(previewDecoration?.range).toMatchObject({
+      startLineNumber: 1,
+      startColumn: titleOffset + 1,
+      endLineNumber: 1,
+      endColumn: titleOffset + 'title'.length + 1,
+    });
+
+    await act(async () => {
+      domListeners.drop?.forEach((listener) => listener({
+        ...dragCoordinates,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+        dataTransfer: createDataTransfer(),
+      }));
+    });
+
+    expect(editorState.value).toBe(
+      'SELECT org_id, title, announcement_id FROM a_cninfo_announcement\n\n',
+    );
   });
 
   it('fetches database and completion metadata only for the active query tab', async () => {

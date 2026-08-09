@@ -4,6 +4,7 @@ import {connection} from '../models';
 import {sqlaudit} from '../models';
 import {app} from '../models';
 import {sync} from '../models';
+import {syncjob} from '../models';
 import {jvm} from '../models';
 import {redis} from '../models';
 import {resultdiff} from '../models';
@@ -19,6 +20,8 @@ export function ApplySavedQueryDirectory(arg1:string):Promise<connection.QueryRe
 export function BuildSQLAuditExport(arg1:sqlaudit.Filter,arg2:string):Promise<connection.QueryResult>;
 
 export function CancelApplicationQuit():Promise<connection.QueryResult>;
+
+export function CancelImportJob(arg1:string):Promise<connection.QueryResult>;
 
 export function CancelQuery(arg1:string):Promise<connection.QueryResult>;
 
@@ -112,13 +115,75 @@ export function DBRollbackTransactionWithTrigger(arg1:string,arg2:string):Promis
 
 export function DBShowCreateTable(arg1:connection.ConnectionConfig,arg2:string,arg3:string):Promise<connection.QueryResult>;
 
+export function DBTableExists(arg1:connection.ConnectionConfig,arg2:string,arg3:string):Promise<connection.QueryResult>;
+
+export function DataImportCapability(arg1:connection.ConnectionConfig):Promise<app.DataImportCapability>;
+
 export function DataSync(arg1:sync.SyncConfig):Promise<sync.SyncResult>;
 
 export function DataSyncAnalyze(arg1:sync.SyncConfig):Promise<connection.QueryResult>;
 
+export function DataSyncCDCAdapterList():Promise<connection.QueryResult>;
+
+export function DataSyncCDCProbe(arg1:string,arg2:string,arg3:string,arg4:string):Promise<connection.QueryResult>;
+
+export function DataSyncCapability(arg1:connection.ConnectionConfig,arg2:connection.ConnectionConfig):Promise<sync.MigrationCapability>;
+
+export function DataSyncCapabilityResolve(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string):Promise<connection.QueryResult>;
+
+export function DataSyncCheckpointGet(arg1:string):Promise<connection.QueryResult>;
+
+export function DataSyncCheckpointReset(arg1:string,arg2:number):Promise<connection.QueryResult>;
+
+export function DataSyncDatabaseList(arg1:string):Promise<connection.QueryResult>;
+
+export function DataSyncErrorRowDiscard(arg1:string):Promise<connection.QueryResult>;
+
+export function DataSyncErrorRowGet(arg1:string):Promise<connection.QueryResult>;
+
+export function DataSyncErrorRowList(arg1:string,arg2:string,arg3:number):Promise<connection.QueryResult>;
+
+export function DataSyncErrorRowRetry(arg1:string,arg2:number,arg3:string):Promise<connection.QueryResult>;
+
+export function DataSyncFieldList(arg1:string,arg2:string,arg3:string,arg4:string):Promise<connection.QueryResult>;
+
+export function DataSyncJobApprovalBegin(arg1:syncjob.JobDefinition):Promise<connection.QueryResult>;
+
+export function DataSyncJobApprove(arg1:syncjob.JobDefinition,arg2:string):Promise<connection.QueryResult>;
+
+export function DataSyncJobDelete(arg1:string):Promise<connection.QueryResult>;
+
+export function DataSyncJobGet(arg1:string):Promise<connection.QueryResult>;
+
+export function DataSyncJobList():Promise<connection.QueryResult>;
+
+export function DataSyncJobPreflight(arg1:syncjob.JobDefinition):Promise<connection.QueryResult>;
+
+export function DataSyncJobSave(arg1:syncjob.JobDefinition,arg2:string):Promise<connection.QueryResult>;
+
+export function DataSyncObjectList(arg1:string,arg2:string,arg3:string):Promise<connection.QueryResult>;
+
 export function DataSyncPreview(arg1:sync.SyncConfig,arg2:string,arg3:number):Promise<connection.QueryResult>;
 
+export function DataSyncRunCancel(arg1:string):Promise<connection.QueryResult>;
+
+export function DataSyncRunEventList(arg1:string,arg2:number,arg3:number):Promise<connection.QueryResult>;
+
+export function DataSyncRunGet(arg1:string):Promise<connection.QueryResult>;
+
+export function DataSyncRunList(arg1:string,arg2:number):Promise<connection.QueryResult>;
+
+export function DataSyncRunResume(arg1:string):Promise<connection.QueryResult>;
+
+export function DataSyncRunRetry(arg1:string):Promise<connection.QueryResult>;
+
+export function DataSyncRunStart(arg1:string,arg2:number,arg3:string):Promise<connection.QueryResult>;
+
+export function DataSyncSchedulePreview(arg1:syncjob.JobDefinition,arg2:number):Promise<connection.QueryResult>;
+
 export function DeleteConnection(arg1:string):Promise<void>;
+
+export function DeleteImportJob(arg1:string):Promise<connection.QueryResult>;
 
 export function DeleteQuery(arg1:string):Promise<void>;
 
@@ -166,6 +231,8 @@ export function ExportDatabaseSQLWithOptions(arg1:connection.ConnectionConfig,ar
 
 export function ExportDatabasesSQLWithOptions(arg1:connection.ConnectionConfig,arg2:Array<string>,arg3:boolean,arg4:app.ExportFileOptions):Promise<connection.QueryResult>;
 
+export function ExportImportErrorRows(arg1:string):Promise<connection.QueryResult>;
+
 export function ExportQuery(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string,arg5:string):Promise<connection.QueryResult>;
 
 export function ExportQueryWithOptions(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string,arg5:app.ExportFileOptions):Promise<connection.QueryResult>;
@@ -206,6 +273,8 @@ export function GetEditableSavedConnection(arg1:string):Promise<connection.Saved
 
 export function GetGlobalProxyConfig():Promise<connection.QueryResult>;
 
+export function GetImportJob(arg1:string):Promise<connection.QueryResult>;
+
 export function GetSQLAuditEvents(arg1:sqlaudit.Filter):Promise<connection.QueryResult>;
 
 export function GetSQLAuditHealth():Promise<connection.QueryResult>;
@@ -236,7 +305,7 @@ export function ImportDataWithProgress(arg1:connection.ConnectionConfig,arg2:str
 
 export function ImportDataWithProgressOptions(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string,arg5:app.ImportFileOptions):Promise<connection.QueryResult>;
 
-export function ImportDatabaseSQL(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string):Promise<connection.QueryResult>;
+export function ImportDatabaseSQL(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<connection.QueryResult>;
 
 export function ImportLegacyConnections(arg1:Array<connection.SavedConnectionInput>):Promise<Array<connection.SavedConnectionView>>;
 
@@ -281,6 +350,8 @@ export function JVMStopMonitoring(arg1:connection.ConnectionConfig,arg2:string):
 export function ListDatabaseCharsets(arg1:connection.ConnectionConfig):Promise<connection.QueryResult>;
 
 export function ListDatabaseCollations(arg1:connection.ConnectionConfig):Promise<connection.QueryResult>;
+
+export function ListImportJobs():Promise<connection.QueryResult>;
 
 export function ListInstalledFontFamilies():Promise<connection.QueryResult>;
 
@@ -384,6 +455,8 @@ export function PreviewChanges(arg1:connection.ConnectionConfig,arg2:string,arg3
 
 export function PreviewImportFile(arg1:string):Promise<connection.QueryResult>;
 
+export function PreviewImportFileWithOptions(arg1:string,arg2:app.ImportFileOptions):Promise<connection.QueryResult>;
+
 export function ReadAppLogTail(arg1:number,arg2:string):Promise<connection.QueryResult>;
 
 export function ReadSQLFile(arg1:string):Promise<connection.QueryResult>;
@@ -414,9 +487,9 @@ export function RedisImportKeys(arg1:connection.ConnectionConfig,arg2:app.RedisI
 
 export function RedisKeyExists(arg1:connection.ConnectionConfig,arg2:string):Promise<connection.QueryResult>;
 
-export function RedisListPush(arg1:connection.ConnectionConfig,arg2:string,arg3:Array<string>):Promise<connection.QueryResult>;
+export function RedisListPush(arg1:connection.ConnectionConfig,arg2:string,arg3:app.RedisListPushOptions):Promise<connection.QueryResult>;
 
-export function RedisListRemove(arg1:connection.ConnectionConfig,arg2:string,arg3:string):Promise<connection.QueryResult>;
+export function RedisListRemove(arg1:connection.ConnectionConfig,arg2:string,arg3:number,arg4:string):Promise<connection.QueryResult>;
 
 export function RedisListSet(arg1:connection.ConnectionConfig,arg2:string,arg3:number,arg4:string):Promise<connection.QueryResult>;
 
@@ -447,6 +520,8 @@ export function RedisTestConnection(arg1:connection.ConnectionConfig):Promise<co
 export function RedisZSetAdd(arg1:connection.ConnectionConfig,arg2:string,arg3:Array<redis.ZSetMember>):Promise<connection.QueryResult>;
 
 export function RedisZSetRemove(arg1:connection.ConnectionConfig,arg2:string,arg3:Array<string>):Promise<connection.QueryResult>;
+
+export function RefreshWebViewBounds():Promise<connection.QueryResult>;
 
 export function RemoveDriverPackage(arg1:string,arg2:string):Promise<connection.QueryResult>;
 

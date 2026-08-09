@@ -38,6 +38,7 @@ const (
 	optionalAgentMethodElasticsearchConsole = "executeElasticsearchConsoleRequest"
 	optionalAgentMethodGetDatabases         = "getDatabases"
 	optionalAgentMethodGetTables            = "getTables"
+	optionalAgentMethodTableExists          = "tableExists"
 	optionalAgentMethodGetCreateStmt        = "getCreateStatement"
 	optionalAgentMethodGetColumns           = "getColumns"
 	optionalAgentMethodGetAllColumns        = "getAllColumns"
@@ -229,6 +230,13 @@ func (c *optionalDriverAgentClient) call(req optionalAgentRequest, out interface
 	})
 }
 
+func markOptionalAgentApplyChangesTransportUnknown(req optionalAgentRequest, err error) error {
+	if err != nil && req.Method == optionalAgentMethodApplyChanges {
+		return MarkWriteOutcomeUnknown(err)
+	}
+	return err
+}
+
 func (c *optionalDriverAgentClient) callLocked(req optionalAgentRequest, out interface{}, fields *[]string, messages *[]string, rowsAffected *int64) error {
 	if err := c.stoppedError(); err != nil {
 		return fmt.Errorf("%s 驱动代理传输不可用：%w", driverDisplayName(c.driver), err)
@@ -245,23 +253,23 @@ func (c *optionalDriverAgentClient) callLocked(req optionalAgentRequest, out int
 	if _, err := c.stdin.Write(payload); err != nil {
 		stderrText := c.stderrText()
 		if stderrText == "" {
-			return fmt.Errorf("调用 %s 驱动代理失败：%w", driverDisplayName(c.driver), err)
+			return markOptionalAgentApplyChangesTransportUnknown(req, fmt.Errorf("调用 %s 驱动代理失败：%w", driverDisplayName(c.driver), err))
 		}
-		return fmt.Errorf("调用 %s 驱动代理失败：%w（stderr: %s）", driverDisplayName(c.driver), err, stderrText)
+		return markOptionalAgentApplyChangesTransportUnknown(req, fmt.Errorf("调用 %s 驱动代理失败：%w（stderr: %s）", driverDisplayName(c.driver), err, stderrText))
 	}
 
 	line, err := c.reader.ReadBytes('\n')
 	if err != nil {
 		stderrText := c.stderrText()
 		if stderrText == "" {
-			return fmt.Errorf("读取 %s 驱动代理响应失败：%w", driverDisplayName(c.driver), err)
+			return markOptionalAgentApplyChangesTransportUnknown(req, fmt.Errorf("读取 %s 驱动代理响应失败：%w", driverDisplayName(c.driver), err))
 		}
-		return fmt.Errorf("读取 %s 驱动代理响应失败：%w（stderr: %s）", driverDisplayName(c.driver), err, stderrText)
+		return markOptionalAgentApplyChangesTransportUnknown(req, fmt.Errorf("读取 %s 驱动代理响应失败：%w（stderr: %s）", driverDisplayName(c.driver), err, stderrText))
 	}
 
 	var resp optionalAgentResponse
 	if err := json.Unmarshal(line, &resp); err != nil {
-		return fmt.Errorf("解析 %s 驱动代理响应失败：%w", driverDisplayName(c.driver), err)
+		return markOptionalAgentApplyChangesTransportUnknown(req, fmt.Errorf("解析 %s 驱动代理响应失败：%w", driverDisplayName(c.driver), err))
 	}
 	if !resp.Success {
 		errText := strings.TrimSpace(resp.Error)
@@ -1157,6 +1165,45 @@ func (d *OptionalDriverAgentDB) GetTables(dbName string) ([]string, error) {
 	return tables, nil
 }
 
+func (d *OptionalDriverAgentDB) TableExists(dbName, tableName string) (bool, error) {
+	client, err := d.requireClient()
+	if err != nil {
+		return false, err
+	}
+	var exists bool
+	err = client.callWithTimeout(optionalAgentRequest{
+		Method:    optionalAgentMethodTableExists,
+		DBName:    dbName,
+		TableName: tableName,
+	}, &exists, nil, nil, nil, optionalAgentControlCallTimeout)
+	if err == nil {
+		return exists, nil
+	}
+	if !isOptionalAgentTableExistsUnsupported(err) {
+		return false, err
+	}
+
+	tables, fallbackErr := d.GetTables(dbName)
+	if fallbackErr != nil {
+		return false, fallbackErr
+	}
+	target := strings.TrimSpace(tableName)
+	for _, table := range tables {
+		if strings.TrimSpace(table) == target {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func isOptionalAgentTableExistsUnsupported(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(text, "不支持的方法") || strings.Contains(text, "unsupported method")
+}
+
 func (d *OptionalDriverAgentDB) GetTableRowCounts(_ string, tables []string) (map[string]int64, error) {
 	if normalizeRuntimeDriverType(d.driverType) != "sqlite" {
 		return map[string]int64{}, nil
@@ -1267,6 +1314,16 @@ func (d *OptionalDriverAgentDB) GetTriggers(dbName, tableName string) ([]connect
 }
 
 func (d *OptionalDriverAgentDB) ApplyChanges(tableName string, changes connection.ChangeSet) error {
+	return d.ApplyChangesContext(context.Background(), tableName, changes)
+}
+
+func (d *OptionalDriverAgentDB) ApplyChangesContext(ctx context.Context, tableName string, changes connection.ChangeSet) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	client, err := d.requireClient()
 	if err != nil {
 		return err
@@ -1281,11 +1338,15 @@ func (d *OptionalDriverAgentDB) ApplyChanges(tableName string, changes connectio
 			logger.Warnf("Kingbase ApplyChanges 字段名规范化失败：%v", normErr)
 		}
 	}
-	return client.call(optionalAgentRequest{
+	err = client.callContext(ctx, optionalAgentRequest{
 		Method:    optionalAgentMethodApplyChanges,
 		TableName: tableName,
 		Changes:   &changes,
 	}, nil, nil, nil, nil)
+	if err != nil && ctx.Err() != nil {
+		return MarkWriteOutcomeUnknown(err)
+	}
+	return err
 }
 
 func (d *OptionalDriverAgentDB) requireClient() (*optionalDriverAgentClient, error) {

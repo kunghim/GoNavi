@@ -17,6 +17,7 @@ import DataGridPreviewPanel from './DataGridPreviewPanel';
 import { DataGridJsonView, DataGridTextView } from './DataGridRecordViews';
 import DataGridResultViewSwitcher from './DataGridResultViewSwitcher';
 import DataGridSecondaryActions from './DataGridSecondaryActions';
+import { buildDataGridCssText } from './dataGridStyles';
 import { DataGridV2DdlSideWorkspace, DataGridV2DdlView } from './DataGridV2DdlWorkspace';
 import { DataGridV2ErView, DataGridV2FieldsView } from './DataGridV2MetadataViews';
 import { I18nProvider } from '../i18n/provider';
@@ -91,6 +92,8 @@ vi.mock('../store', () => ({
 
 vi.mock('../../wailsjs/go/app/App', () => ({
   ImportData: vi.fn(),
+  PreviewImportFileWithOptions: vi.fn(),
+  CancelImportJob: vi.fn(),
   ExportTable: vi.fn(),
   ExportData: vi.fn(),
   ExportQuery: vi.fn(),
@@ -208,7 +211,7 @@ describe('DataGrid layout', () => {
     expect(markup).toContain('data-grid-view-switcher="true"');
     expect(markup).toContain('data-grid-column-display-action="true"');
     expect(markup).toContain('data-grid-column-quick-find-action="true"');
-    expect(markup).toContain('字段显示');
+    expect(markup).toContain('显示/隐藏字段列');
     expect(markup).toContain('跳列');
     expect(markup).toContain('日志');
     expect(markup).toContain(zhObjectDesignLabel);
@@ -481,6 +484,89 @@ describe('DataGrid layout', () => {
     expect(css).not.toContain('.react-resizable-handle:hover::after');
   });
 
+  it('keeps DataGrid rows unchanged on hover', () => {
+    const css = buildDataGridCssText({
+      darkMode: false,
+      densityParams: { dataFontSize: 12 },
+      gridId: 'hover-grid',
+      rowAddedBg: 'added-bg',
+      rowAddedHover: 'added-hover',
+      rowModBg: 'modified-bg',
+      rowModHover: 'modified-hover',
+    });
+
+    expect(css).toContain(
+      '.hover-grid.data-grid-root .ant-table-tbody .ant-table-row:hover > .ant-table-cell { background-color: transparent !important; }',
+    );
+    expect(css).not.toContain('var(--gn-bg-hover');
+    expect(css).not.toContain('rgba(34, 197, 94, 0.18)');
+    expect(css).not.toContain('added-hover');
+    expect(css).not.toContain('modified-hover');
+  });
+
+  it('uses the table cell as the only V2 inline edit frame', () => {
+    const css = readV2ThemeCss();
+    const inlineEditorCss = css.slice(
+      css.indexOf('body[data-ui-version="v2"] .gn-v2-data-grid .data-grid-virtual-inline-editing .ant-input,'),
+      css.indexOf('body[data-ui-version="v2"] .gn-v2-data-grid-statusbar'),
+    );
+
+    expect(inlineEditorCss).toContain('border: 0 !important;');
+    expect(inlineEditorCss).toContain('border-radius: 0 !important;');
+    expect(inlineEditorCss).toContain('background: transparent !important;');
+    expect(inlineEditorCss).toContain('box-shadow: none !important;');
+  });
+
+  it('paints pending edits across the real table cell without mixing selection color', () => {
+    const css = buildDataGridCssText({
+      darkMode: false,
+      densityParams: { dataFontSize: 12 },
+      gridId: 'pending-grid',
+    });
+    const getRuleBlock = (selector: string) => {
+      const start = css.indexOf(selector);
+      expect(start).toBeGreaterThanOrEqual(0);
+      const end = css.indexOf('}', start);
+      expect(end).toBeGreaterThan(start);
+      return css.slice(start, end + 1);
+    };
+
+    const pendingRule = getRuleBlock(
+      '.pending-grid.data-grid-root .ant-table-tbody-virtual-holder .ant-table-row > .ant-table-cell[data-cell-modified="true"]',
+    );
+    expect(pendingRule).toContain('background-color: var(--gn-bg-panel, #ffffff) !important;');
+    expect(pendingRule).toContain('background-image: linear-gradient(');
+    expect(pendingRule).toContain('var(--gn-warn-soft, #FFF3B0)');
+    expect(pendingRule).not.toContain('background-image: none');
+
+    const selectedPendingRule = getRuleBlock(
+      '.pending-grid.data-grid-root .ant-table-tbody-virtual-holder .ant-table-row > .ant-table-cell[data-cell-modified="true"][data-cell-selected="true"]',
+    );
+    expect(selectedPendingRule).toContain('box-shadow: inset 0 0 0 2px var(--gn-accent, #22c55e) !important;');
+    expect(selectedPendingRule).toContain('background-color: var(--gn-bg-panel, #ffffff) !important;');
+    expect(selectedPendingRule).toContain('background-image: linear-gradient(');
+    expect(selectedPendingRule).toContain('var(--gn-warn-soft, #FFF3B0)');
+
+    const editingRule = getRuleBlock(
+      '.pending-grid.gn-v2-data-grid .ant-table-tbody-virtual-holder .ant-table-row > .ant-table-cell[data-cell-editing="true"]',
+    );
+    expect(editingRule).toContain('box-shadow: inset 0 0 0 2px var(--gn-accent, #22c55e) !important;');
+
+    const fixedEditingRule = getRuleBlock(
+      '.pending-grid.gn-v2-data-grid .ant-table-tbody-virtual-holder .ant-table-row > .ant-table-cell.ant-table-cell-fix-left-last[data-cell-editing="true"]',
+    );
+    expect(fixedEditingRule).toContain(
+      'box-shadow: inset 0 0 0 2px var(--gn-accent, #22c55e), 4px 0 6px -2px rgba(15, 23, 42, 0.16) !important;',
+    );
+
+    const darkCss = buildDataGridCssText({
+      darkMode: true,
+      densityParams: { dataFontSize: 12 },
+      gridId: 'pending-grid-dark',
+    });
+    expect(darkCss).toContain('var(--gn-warn-soft, rgba(255, 214, 102, 0.16))');
+  });
+
   it('avoids duplicating legacy pagination page text beside the pager', () => {
     const markup = renderToStaticMarkup(
       <DataGridPaginationBar
@@ -535,11 +621,15 @@ describe('DataGrid layout', () => {
       'data_grid.toolbar.undo_delete',
       'data_grid.toolbar.delete_selected',
       'data_grid.toolbar.selected_count',
-      'data_grid.toolbar.cell_editor',
+      'data_grid.toolbar.cell_selection_enter',
+      'data_grid.toolbar.cell_selection_exit',
+      'data_grid.toolbar.cell_selection_mode',
       'data_grid.toolbar.copy_selection',
       'data_grid.toolbar.copy_selection_columns',
+      'data_grid.toolbar.copy_selection_columns_same_row',
       'data_grid.toolbar.batch_fill',
       'data_grid.toolbar.paste_to_selected_rows',
+      'data_grid.toolbar.select_fill_template_targets',
       'data_grid.toolbar.copied_columns_count',
       'data_grid.toolbar.commit_label',
       'data_grid.toolbar.commit',
@@ -585,7 +675,7 @@ describe('DataGrid layout', () => {
       /translate\('data_grid\.toolbar\.copy_selection', \{ count: selectedCellsSize \}\)/,
       /translate\('data_grid\.toolbar\.copy_selection_columns', \{ count: selectedCellsSize \}\)/,
       /translate\('data_grid\.toolbar\.batch_fill', \{ count: selectedCellsSize \}\)/,
-      /translate\('data_grid\.toolbar\.paste_to_selected_rows', \{ count: selectedRowKeysLength \}\)/,
+      /translate\('data_grid\.toolbar\.paste_to_selected_rows', \{[\s\S]*count: fillTemplateTargetRowCount,[\s\S]*\}\)/,
       /translate\('data_grid\.toolbar\.copied_columns_count', \{ count: copiedCellPatchColumnCount \}\)/,
       /translate\('data_grid\.toolbar\.commit', \{ count: pendingChangeCount \}\)/,
     ].forEach((pattern) => {
@@ -597,11 +687,14 @@ describe('DataGrid layout', () => {
       '添加行',
       '撤销删除',
       '删除选中',
-      '单元格编辑器',
-      '复制选区',
-      '复制选区列值',
-      '批量填充',
-      '粘贴到选中行',
+      '选择多个单元格',
+      '单元格选择模式',
+      '退出单元格选择',
+      '复制到剪贴板',
+      '复制为填充模板',
+      '批量设值',
+      '将模板应用到目标行',
+      '请框选目标单元格，或勾选目标行',
       '提交事务',
       '生成预览 SQL',
       '预览SQL',
@@ -737,7 +830,7 @@ describe('DataGrid layout', () => {
       '文本',
       '数据预览',
       '字段信息',
-      '字段显示',
+      '显示/隐藏字段列',
       '跳列',
       '未提交',
       '跳页',
@@ -943,6 +1036,8 @@ describe('DataGrid layout', () => {
         'data_grid.record_view.next': 'Next label',
         'data_grid.record_view.record_position': `Record label ${params?.current} of ${params?.total}`,
         'data_grid.record_view.edit_current': 'Edit current label',
+        'data_grid.record_view.field_or_comment_search_placeholder': 'Search field or comment label',
+        'data_grid.column_quick_find.placeholder': 'Search field label',
         'data_grid.column.type_tooltip': `TYPE ${params?.type}`,
         'data_grid.column.comment_tooltip': `COMMENT ${params?.comment}`,
         'data_grid.preview_panel.no_cell_title': 'Select cell title',
@@ -1066,6 +1161,10 @@ describe('DataGrid layout', () => {
     expect(jsonRecordMarkup).toContain('5 JSON rows label');
     expect(jsonRecordMarkup).toContain('Edit JSON label');
     expect(jsonRecordMarkup).toContain('Back to table label');
+    expect(jsonRecordMarkup).toContain('Search field label');
+    expect(jsonRecordMarkup).toContain('data-grid-record-field-search="true"');
+    expect(jsonRecordMarkup).toContain('data-grid-record-field-search--navigation');
+    expect(jsonRecordMarkup).toContain('data-grid-record-field-search-navigation');
     expect(jsonRecordMarkup).not.toContain('data_grid.record_view');
 
     const textRecordMarkup = renderToStaticMarkup(
@@ -1093,6 +1192,8 @@ describe('DataGrid layout', () => {
     expect(textRecordMarkup).toContain('Record label 1 of 2');
     expect(textRecordMarkup).toContain('Edit current label');
     expect(textRecordMarkup).toContain('Back to table label');
+    expect(textRecordMarkup).toContain('Search field or comment label');
+    expect(textRecordMarkup).toContain('data-grid-record-field-search="true"');
     expect(textRecordMarkup).toContain('Field label');
     expect(textRecordMarkup).toContain('Value label');
     expect(textRecordMarkup).toContain('Comment label');
@@ -1114,6 +1215,19 @@ describe('DataGrid layout', () => {
     expect(textRecordMarkup).toContain('SQL text payload');
     expect(textRecordMarkup).toContain('GitHub release HTTP 500 checksum abc123');
     expect(textRecordMarkup).not.toContain('data_grid.record_view');
+
+    const recordSearchCss = buildDataGridCssText({
+      darkMode: false,
+      densityParams: { dataFontSize: 12 },
+      gridId: 'record-grid',
+    });
+    expect(recordSearchCss).toContain('.record-grid .data-grid-record-field-search-navigation.ant-btn');
+    expect(recordSearchCss).toContain('.record-grid .data-grid-record-field-search .ant-input-affix-wrapper-focused');
+    expect(recordSearchCss).toContain('.record-grid .data-grid-record-field-search-autocomplete.ant-select-focused .ant-select-selector');
+    expect(recordSearchCss).toContain('.record-grid .data-grid-record-field-search .ant-input::placeholder');
+    expect(recordSearchCss).toContain('font-size: 12px !important;');
+    expect(recordSearchCss).toContain('height: 24px !important;');
+    expect(recordSearchCss).toContain('box-shadow: none !important;');
 
     const hiddenTextRecordMarkup = renderToStaticMarkup(
       <DataGridTextView
@@ -1319,7 +1433,7 @@ describe('DataGrid layout', () => {
       '筛选',
       '新增行',
       '删除选中',
-      '单元格编辑',
+      '单元格选择模式',
       '提交事务',
       '手动提交',
       '导入',
@@ -1334,7 +1448,7 @@ describe('DataGrid layout', () => {
       '查看 DDL',
       'ER 图',
       '日志',
-      '字段显示',
+      '显示/隐藏字段列',
     ].forEach((label) => {
       expect(getButtonBody(label)).not.toContain(label);
     });

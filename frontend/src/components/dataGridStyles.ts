@@ -36,9 +36,7 @@ export const buildDataGridCssText = ({
     paginationShellShadow,
     panelRadius,
     rowAddedBg,
-    rowAddedHover,
     rowModBg,
-    rowModHover,
     selectionAccentHex,
     selectionAccentRgb,
     tableBodyBottomPadding,
@@ -349,18 +347,15 @@ export const buildDataGridCssText = ({
                         ? '-4px 0 6px -2px rgba(0,0,0,0.45)'
                         : '-4px 0 6px -2px rgba(15, 23, 42, 0.16)'} !important;
                 }
-                /* hover / 选中：与 v2-theme 的 --gn-bg-hover / --gn-bg-selected 对齐 */
+                /* 固定列悬浮时保持实心底，防止透出横向滚动内容 */
                 .${gridId} .ant-table-tbody-virtual-holder .ant-table-row:hover > .ant-table-cell.ant-table-cell-fix-left,
                 .${gridId} .ant-table-tbody-virtual-holder .ant-table-row:hover > .ant-table-cell.ant-table-cell-fix-right,
                 .${gridId} .ant-table-tbody-virtual-holder .ant-table-row:hover > .ant-table-cell.ant-table-selection-column,
                 .${gridId} .ant-table-tbody > tr:hover > td.ant-table-cell-fix-left,
                 .${gridId} .ant-table-tbody > tr:hover > td.ant-table-cell-fix-right,
                 .${gridId} .ant-table-tbody > tr:hover > td.ant-table-selection-column {
-                    background-color: var(--gn-bg-panel, ${bgContent}) !important;
-                    background-image: linear-gradient(
-                        var(--gn-bg-hover, ${darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.02)'}),
-                        var(--gn-bg-hover, ${darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.02)'})
-                    ) !important;
+                    background: var(--gn-bg-panel, ${bgContent}) !important;
+                    background-image: none !important;
                 }
                 /* 固定列选中：与整行同一绿色（实心底防透出滚动内容） */
                 .${gridId} .ant-table-tbody-virtual-holder .ant-table-row.ant-table-row-selected > .ant-table-cell.ant-table-cell-fix-left,
@@ -379,8 +374,8 @@ export const buildDataGridCssText = ({
                 .${gridId} .ant-table-tbody > tr.ant-table-row-selected:hover > td.ant-table-cell-fix-left,
                 .${gridId} .ant-table-tbody > tr.ant-table-row-selected:hover > td.ant-table-cell-fix-right,
                 .${gridId} .ant-table-tbody > tr.ant-table-row-selected:hover > td.ant-table-selection-column {
-                    background: rgba(34, 197, 94, 0.18) !important;
-                    background-color: rgba(34, 197, 94, 0.18) !important;
+                    background: rgba(34, 197, 94, 0.14) !important;
+                    background-color: rgba(34, 197, 94, 0.14) !important;
                     background-image: none !important;
                 }
                 .${gridId} .data-grid-row-number-cell {
@@ -427,9 +422,9 @@ export const buildDataGridCssText = ({
 
                 .${gridId} .ant-table-thead > tr > th .ant-table-column-sorter * { cursor: pointer !important; }
 
-                .${gridId} .ant-table-tbody > tr:hover > td,
+                .${gridId}.data-grid-root .ant-table-tbody > tr:hover > td,
 
-                .${gridId} .ant-table-tbody .ant-table-row:hover > .ant-table-cell { background-color: ${darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.02)'} !important; }
+                .${gridId}.data-grid-root .ant-table-tbody .ant-table-row:hover > .ant-table-cell { background-color: transparent !important; }
 
                 /*
                  * 行选中：整行统一绿色。
@@ -457,8 +452,8 @@ export const buildDataGridCssText = ({
                 .${gridId} .ant-table-tbody .ant-table-row.ant-table-row-selected:hover > .ant-table-cell,
                 .${gridId} .ant-table-tbody > tr.ant-table-row-selected:hover > td,
                 .${gridId} .ant-table-row.ant-table-row-selected:hover > .ant-table-cell {
-                    background: rgba(34, 197, 94, 0.18) !important;
-                    background-color: rgba(34, 197, 94, 0.18) !important;
+                    background: rgba(34, 197, 94, 0.14) !important;
+                    background-color: rgba(34, 197, 94, 0.14) !important;
                     background-image: none !important;
                 }
 
@@ -476,15 +471,15 @@ export const buildDataGridCssText = ({
 
                 .${gridId} .ant-table-tbody > tr.row-added:hover > td,
 
-                .${gridId} .ant-table-tbody .ant-table-row.row-added:hover > .ant-table-cell { background-color: ${rowAddedHover} !important; }
+                .${gridId} .ant-table-tbody .ant-table-row.row-added:hover > .ant-table-cell { background-color: ${rowAddedBg} !important; }
 
                 .${gridId} .ant-table-tbody > tr.row-modified:hover > td,
 
-                .${gridId} .ant-table-tbody .ant-table-row.row-modified:hover > .ant-table-cell { background-color: ${rowModHover} !important; }
+                .${gridId} .ant-table-tbody .ant-table-row.row-modified:hover > .ant-table-cell { background-color: ${rowModBg} !important; }
 
                 .${gridId} .ant-table-tbody > tr.row-deleted:hover > td,
 
-                .${gridId} .ant-table-tbody .ant-table-row.row-deleted:hover > .ant-table-cell { background-color: ${darkMode ? '#2a2a2a' : '#e8e8e8'} !important; }
+                .${gridId} .ant-table-tbody .ant-table-row.row-deleted:hover > .ant-table-cell { background-color: ${darkMode ? '#1f1f1f' : '#f0f0f0'} !important; }
 
                 .${gridId}.cell-edit-mode .ant-table-tbody > tr > td[data-col-name],
 
@@ -501,6 +496,57 @@ export const buildDataGridCssText = ({
                         var(--gn-bg-selected, rgba(34, 197, 94, 0.14)),
                         var(--gn-bg-selected, rgba(34, 197, 94, 0.14))
                     ) !important;
+                }
+
+                /* 待提交编辑：由真实 table cell 统一承载底色；data-grid-root 的特异性保证其压过整行选中/悬停及固定列底色。 */
+                .${gridId}.data-grid-root .ant-table-tbody > tr > td.ant-table-cell[data-cell-modified="true"],
+                .${gridId}.data-grid-root .ant-table-tbody .ant-table-row > .ant-table-cell[data-cell-modified="true"],
+                .${gridId}.data-grid-root .ant-table-tbody-virtual-holder .ant-table-row > .ant-table-cell[data-cell-modified="true"] {
+                    background-color: var(--gn-bg-panel, ${bgContent || (darkMode ? '#141414' : '#ffffff')}) !important;
+                    background-image: linear-gradient(
+                        var(--gn-warn-soft, ${darkMode ? 'rgba(255, 214, 102, 0.16)' : '#FFF3B0'}),
+                        var(--gn-warn-soft, ${darkMode ? 'rgba(255, 214, 102, 0.16)' : '#FFF3B0'})
+                    ) !important;
+                }
+
+                .${gridId}.data-grid-root .ant-table-tbody > tr:hover > td.ant-table-cell[data-cell-modified="true"],
+                .${gridId}.data-grid-root .ant-table-tbody .ant-table-row:hover > .ant-table-cell[data-cell-modified="true"],
+                .${gridId}.data-grid-root .ant-table-tbody-virtual-holder .ant-table-row:hover > .ant-table-cell[data-cell-modified="true"] {
+                    background-color: var(--gn-bg-panel, ${bgContent || (darkMode ? '#141414' : '#ffffff')}) !important;
+                    background-image: linear-gradient(
+                        var(--gn-warn-soft, ${darkMode ? 'rgba(255, 214, 102, 0.16)' : '#FFF3B0'}),
+                        var(--gn-warn-soft, ${darkMode ? 'rgba(255, 214, 102, 0.16)' : '#FFF3B0'})
+                    ) !important;
+                }
+
+                .${gridId}.data-grid-root .ant-table-tbody > tr > td.ant-table-cell[data-cell-modified="true"][data-cell-selected="true"],
+                .${gridId}.data-grid-root .ant-table-tbody .ant-table-row > .ant-table-cell[data-cell-modified="true"][data-cell-selected="true"],
+                .${gridId}.data-grid-root .ant-table-tbody-virtual-holder .ant-table-row > .ant-table-cell[data-cell-modified="true"][data-cell-selected="true"] {
+                    box-shadow: inset 0 0 0 2px var(--gn-accent, #22c55e) !important;
+                    background-color: var(--gn-bg-panel, ${bgContent || (darkMode ? '#141414' : '#ffffff')}) !important;
+                    background-image: linear-gradient(
+                        var(--gn-warn-soft, ${darkMode ? 'rgba(255, 214, 102, 0.16)' : '#FFF3B0'}),
+                        var(--gn-warn-soft, ${darkMode ? 'rgba(255, 214, 102, 0.16)' : '#FFF3B0'})
+                    ) !important;
+                }
+
+                /* V2 虚拟编辑器自身无边框，由实际 cell 提供不被 overflow 裁切的焦点描边。 */
+                .${gridId}.gn-v2-data-grid .ant-table-tbody-virtual-holder .ant-table-row > .ant-table-cell[data-cell-editing="true"] {
+                    box-shadow: inset 0 0 0 2px var(--gn-accent, #22c55e) !important;
+                }
+
+                .${gridId} .ant-table-tbody-virtual-holder .ant-table-row > .ant-table-cell.ant-table-cell-fix-left-last[data-cell-modified="true"][data-cell-selected="true"],
+                .${gridId}.gn-v2-data-grid .ant-table-tbody-virtual-holder .ant-table-row > .ant-table-cell.ant-table-cell-fix-left-last[data-cell-editing="true"] {
+                    box-shadow: inset 0 0 0 2px var(--gn-accent, #22c55e), ${darkMode
+                        ? '4px 0 6px -2px rgba(0,0,0,0.45)'
+                        : '4px 0 6px -2px rgba(15, 23, 42, 0.16)'} !important;
+                }
+
+                .${gridId} .ant-table-tbody-virtual-holder .ant-table-row > .ant-table-cell.ant-table-cell-fix-right-first[data-cell-modified="true"][data-cell-selected="true"],
+                .${gridId}.gn-v2-data-grid .ant-table-tbody-virtual-holder .ant-table-row > .ant-table-cell.ant-table-cell-fix-right-first[data-cell-editing="true"] {
+                    box-shadow: inset 0 0 0 2px var(--gn-accent, #22c55e), ${darkMode
+                        ? '-4px 0 6px -2px rgba(0,0,0,0.45)'
+                        : '-4px 0 6px -2px rgba(15, 23, 42, 0.16)'} !important;
                 }
 
                 .${gridId} .ant-table-content,
@@ -614,6 +660,152 @@ export const buildDataGridCssText = ({
                     background: ${darkMode ? 'rgba(246, 196, 83, 0.42)' : 'rgba(255, 193, 7, 0.42)'};
 
                     color: inherit;
+
+                }
+
+                .${gridId} .data-grid-record-json-field-match {
+
+                    padding: 0 1px;
+
+                    border-radius: 3px;
+
+                    background: ${darkMode ? 'rgba(246, 196, 83, 0.22)' : 'rgba(255, 193, 7, 0.22)'};
+
+                    box-shadow: inset 0 -1px 0 ${darkMode ? 'rgba(246, 196, 83, 0.7)' : 'rgba(181, 132, 0, 0.65)'};
+
+                }
+
+                .${gridId} .data-grid-record-json-field-match-active {
+
+                    background: ${darkMode ? 'rgba(246, 196, 83, 0.48)' : 'rgba(255, 193, 7, 0.48)'};
+
+                    outline: 1px solid ${darkMode ? 'rgba(246, 196, 83, 0.92)' : 'rgba(181, 132, 0, 0.86)'};
+
+                }
+
+                .${gridId} .data-grid-record-field-search {
+
+                    display: inline-flex;
+
+                    align-items: center;
+
+                    gap: 4px;
+
+                    height: 24px;
+
+                    min-height: 24px;
+
+                }
+
+                .${gridId} .data-grid-record-field-search-autocomplete,
+
+                .${gridId} .data-grid-record-field-search-autocomplete .ant-select-selector,
+
+                .${gridId} .data-grid-record-field-search .ant-input-affix-wrapper {
+
+                    height: 24px !important;
+
+                    min-height: 24px !important;
+
+                    box-sizing: border-box !important;
+
+                }
+
+                .${gridId} .data-grid-record-field-search-autocomplete,
+
+                .${gridId} .data-grid-record-field-search .ant-input-affix-wrapper {
+
+                    display: inline-flex !important;
+
+                    align-items: center !important;
+
+                }
+
+                .${gridId} .data-grid-record-field-search .ant-input-affix-wrapper {
+
+                    padding-top: 0 !important;
+
+                    padding-bottom: 0 !important;
+
+                }
+
+                .${gridId} .data-grid-record-field-search .ant-input,
+
+                .${gridId} .data-grid-record-field-search .ant-input::placeholder {
+
+                    font-size: 12px !important;
+
+                }
+
+                .${gridId} .data-grid-record-field-search .ant-input-affix-wrapper-focused,
+
+                .${gridId} .data-grid-record-field-search .ant-input-affix-wrapper:focus,
+
+                .${gridId} .data-grid-record-field-search .ant-input-affix-wrapper:focus-within,
+
+                .${gridId} .data-grid-record-field-search-autocomplete.ant-select-focused,
+
+                .${gridId} .data-grid-record-field-search-autocomplete.ant-select-focused .ant-select-selector,
+
+                .${gridId} .data-grid-record-field-search .ant-input:focus,
+
+                .${gridId} .data-grid-record-field-search .ant-input:focus-visible {
+
+                    outline: none !important;
+
+                    box-shadow: none !important;
+
+                }
+
+                .${gridId} .data-grid-record-field-search-navigation.ant-btn {
+
+                    display: inline-flex !important;
+
+                    align-items: center !important;
+
+                    justify-content: center !important;
+
+                    align-self: center !important;
+
+                    width: 24px !important;
+
+                    min-width: 24px !important;
+
+                    height: 24px !important;
+
+                    min-height: 24px !important;
+
+                    margin: 0 !important;
+
+                    padding: 0 !important;
+
+                    line-height: 1 !important;
+
+                    box-sizing: border-box !important;
+
+                }
+
+                .${gridId} .data-grid-record-field-search-position {
+
+                    display: inline-flex;
+
+                    align-items: center;
+
+                    justify-content: flex-end;
+
+                    min-width: 42px;
+
+                    height: 24px;
+
+                    font-size: 12px;
+
+                    line-height: 24px;
+
+                    opacity: 0.66;
+
+                    white-space: nowrap;
+
+                    text-align: right;
 
                 }
 

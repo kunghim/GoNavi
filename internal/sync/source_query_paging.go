@@ -3,16 +3,30 @@ package sync
 import (
 	"GoNavi-Wails/internal/connection"
 	"GoNavi-Wails/internal/db"
+	"context"
 	"fmt"
 	"strings"
 )
 
 func (s *SyncEngine) tryApplySourceQueryInPages(config SyncConfig, res *SyncResult, tableName string, sourceDB db.Database, targetDB db.Database, ctx sourceQuerySyncContext, opts TableOptions, tableMode string, applyTableName string) (bool, pagedDiffCounts, error) {
+	if hasExplicitSyncMappings(config) {
+		return false, pagedDiffCounts{}, nil
+	}
 	sourceType := resolveMigrationDBType(config.SourceConfig)
 	if !supportsPagedSourceQuery(sourceType) || !supportsPagedDiffPKLookup(ctx.TargetType) {
 		return false, pagedDiffCounts{}, nil
 	}
-	if strings.TrimSpace(buildSourceQueryPageSQL(sourceType, config.SourceQuery, ctx.PKColumn, defaultSyncReadPageSize, 0)) == "" {
+	// 源是任意 SQL，无法可靠判断它是否引用了目标表。同一物理服务上边分页读取边写入
+	// 可能让 OFFSET 结果集发生收缩/扩张；full_overwrite 还会在首批后清空源查询所依赖的表。
+	// 因此统一退回先完整读取、再写入的非分页路径。
+	if isSamePhysicalSyncServer(config, sourceType, ctx.TargetType) {
+		return false, pagedDiffCounts{}, nil
+	}
+	pageSize, err := normalizedSyncBatchSize(config.BatchSize)
+	if err != nil {
+		return true, pagedDiffCounts{}, err
+	}
+	if strings.TrimSpace(buildSourceQueryPageSQL(sourceType, config.SourceQuery, ctx.PKColumn, pageSize, 0)) == "" {
 		return false, pagedDiffCounts{}, nil
 	}
 
@@ -22,10 +36,11 @@ func (s *SyncEngine) tryApplySourceQueryInPages(config SyncConfig, res *SyncResu
 	}
 	targetColSet := buildTargetColumnSet(ctx.TargetCols)
 	counts := pagedDiffCounts{}
+	rowIndexBase := 0
 
 	if tableMode == "insert_update" {
 		includeDeletes := opts.Delete
-		handled, _, err := scanSourceQueryDiffInPages(sourceDB, targetDB, sourceType, ctx.TargetType, strings.TrimSpace(config.SourceQuery), ctx.TargetQueryTable, ctx.TargetCols, ctx.PKColumn, includeDeletes, func(page pagedDiffPage) error {
+		handled, _, err := scanSourceQueryDiffInPagesContextWithBatchSize(s.context(), sourceDB, targetDB, sourceType, ctx.TargetType, strings.TrimSpace(config.SourceQuery), ctx.TargetQueryTable, ctx.TargetCols, ctx.PKColumn, includeDeletes, pageSize, func(page pagedDiffPage) error {
 			changeSet := connection.ChangeSet{
 				Inserts: filterRowsByPKSelection(ctx.PKColumn, page.Inserts, opts.Insert, opts.SelectedInsertPKs),
 				Updates: filterPagedUpdatesByPKSelection(ctx.PKColumn, page.Updates, opts.Update, opts.SelectedUpdatePKs),
@@ -36,13 +51,12 @@ func (s *SyncEngine) tryApplySourceQueryInPages(config SyncConfig, res *SyncResu
 			if len(changeSet.Inserts) == 0 && len(changeSet.Updates) == 0 && len(changeSet.Deletes) == 0 {
 				return nil
 			}
-			if err := s.applyChangesInBatches(config.JobID, res, applyTableName, applier, changeSet); err != nil {
-				return err
-			}
-			counts.Inserts += len(changeSet.Inserts)
-			counts.Updates += len(changeSet.Updates)
-			counts.Deletes += len(changeSet.Deletes)
-			return nil
+			committed, err := s.applySnapshotChanges(config, res, tableName, applyTableName, applier, changeSet, rowIndexBase)
+			counts.Inserts += committed.Inserts
+			counts.Updates += committed.Updates
+			counts.Deletes += committed.Deletes
+			rowIndexBase += len(changeSet.Inserts) + len(changeSet.Updates) + len(changeSet.Deletes)
+			return err
 		})
 		if err != nil {
 			return true, counts, err
@@ -52,19 +66,10 @@ func (s *SyncEngine) tryApplySourceQueryInPages(config SyncConfig, res *SyncResu
 
 	clearTarget := func() error {
 		clearSQL := buildClearTargetTableSQL(ctx.TargetType, ctx.TargetQueryTable)
-		if _, err := targetDB.Exec(clearSQL); err != nil {
+		if _, err := execSyncDatabaseContext(s.context(), targetDB, clearSQL); err != nil {
 			return fmt.Errorf("清空目标表失败: %w", err)
 		}
 		return nil
-	}
-
-	if tableMode == "full_overwrite" {
-		// 源是任意 SQL，无法可靠判断它是否引用了目标表。只要源与目标是同一物理端点就退回
-		// 非分页路径（该路径先把源行全部读入内存、之后才清空目标，语义安全）。
-		// 分页 + 自表覆盖本质上不可行：清空之后的分页会读到空表，目标最终只剩第一页数据。
-		if isSameSyncEndpoint(config, sourceType, ctx.TargetType) {
-			return false, pagedDiffCounts{}, nil
-		}
 	}
 
 	if !opts.Insert {
@@ -80,8 +85,8 @@ func (s *SyncEngine) tryApplySourceQueryInPages(config SyncConfig, res *SyncResu
 	// 先读首页、成功后才清空目标（与 tryApplyDirectImportInPages 一致）。
 	// 原先的顺序是先 TRUNCATE 再首读，一旦源查询报错就留下一张被清空且无法恢复的目标表，
 	// 而函数还会把「读到 0 行」当成同步成功返回。
-	firstQuery := buildSourceQueryPageSQL(sourceType, config.SourceQuery, ctx.PKColumn, defaultSyncReadPageSize, 0)
-	firstRows, _, err := sourceDB.Query(firstQuery)
+	firstQuery := buildSourceQueryPageSQL(sourceType, config.SourceQuery, ctx.PKColumn, pageSize, 0)
+	firstRows, _, err := querySyncDatabaseContext(s.context(), sourceDB, firstQuery)
 	if err != nil {
 		return true, counts, fmt.Errorf("分页读取源查询失败(offset=%d): %w", 0, err)
 	}
@@ -98,11 +103,10 @@ func (s *SyncEngine) tryApplySourceQueryInPages(config SyncConfig, res *SyncResu
 		if len(insertRows) == 0 {
 			return nil
 		}
-		if err := s.applyChangesInBatches(config.JobID, res, applyTableName, applier, connection.ChangeSet{Inserts: insertRows}); err != nil {
-			return err
-		}
-		counts.Inserts += len(insertRows)
-		return nil
+		committed, err := s.applySnapshotChanges(config, res, tableName, applyTableName, applier, connection.ChangeSet{Inserts: insertRows}, rowIndexBase)
+		counts.Inserts += committed.Inserts
+		rowIndexBase += len(insertRows)
+		return err
 	}
 
 	if len(firstRows) == 0 {
@@ -111,13 +115,13 @@ func (s *SyncEngine) tryApplySourceQueryInPages(config SyncConfig, res *SyncResu
 	if err := applyPage(firstRows); err != nil {
 		return true, counts, err
 	}
-	if len(firstRows) < defaultSyncReadPageSize {
+	if len(firstRows) < pageSize {
 		return true, counts, nil
 	}
 
-	for offset := defaultSyncReadPageSize; ; offset += defaultSyncReadPageSize {
-		query := buildSourceQueryPageSQL(sourceType, config.SourceQuery, ctx.PKColumn, defaultSyncReadPageSize, offset)
-		rows, _, err := sourceDB.Query(query)
+	for offset := pageSize; ; offset += pageSize {
+		query := buildSourceQueryPageSQL(sourceType, config.SourceQuery, ctx.PKColumn, pageSize, offset)
+		rows, _, err := querySyncDatabaseContext(s.context(), sourceDB, query)
 		if err != nil {
 			return true, counts, fmt.Errorf("分页读取源查询失败(offset=%d): %w", offset, err)
 		}
@@ -127,13 +131,25 @@ func (s *SyncEngine) tryApplySourceQueryInPages(config SyncConfig, res *SyncResu
 		if err := applyPage(rows); err != nil {
 			return true, counts, err
 		}
-		if len(rows) < defaultSyncReadPageSize {
+		if len(rows) < pageSize {
 			return true, counts, nil
 		}
 	}
 }
 
 func scanSourceQueryDiffInPages(sourceDB db.Database, targetDB db.Database, sourceType, targetType, sourceQuery, targetQueryTable string, targetCols []connection.ColumnDefinition, pkCol string, includeDeletes bool, consume func(page pagedDiffPage) error) (bool, pagedDiffCounts, error) {
+	return scanSourceQueryDiffInPagesContext(context.Background(), sourceDB, targetDB, sourceType, targetType, sourceQuery, targetQueryTable, targetCols, pkCol, includeDeletes, consume)
+}
+
+func scanSourceQueryDiffInPagesContext(ctx context.Context, sourceDB db.Database, targetDB db.Database, sourceType, targetType, sourceQuery, targetQueryTable string, targetCols []connection.ColumnDefinition, pkCol string, includeDeletes bool, consume func(page pagedDiffPage) error) (bool, pagedDiffCounts, error) {
+	return scanSourceQueryDiffInPagesContextWithBatchSize(ctx, sourceDB, targetDB, sourceType, targetType, sourceQuery, targetQueryTable, targetCols, pkCol, includeDeletes, defaultSyncReadPageSize, consume)
+}
+
+func scanSourceQueryDiffInPagesContextWithBatchSize(ctx context.Context, sourceDB db.Database, targetDB db.Database, sourceType, targetType, sourceQuery, targetQueryTable string, targetCols []connection.ColumnDefinition, pkCol string, includeDeletes bool, batchSize int, consume func(page pagedDiffPage) error) (bool, pagedDiffCounts, error) {
+	pageSize, err := normalizedSyncBatchSize(batchSize)
+	if err != nil {
+		return false, pagedDiffCounts{}, err
+	}
 	if !supportsPagedSourceQuery(sourceType) || !supportsPagedDiffPKLookup(targetType) {
 		return false, pagedDiffCounts{}, nil
 	}
@@ -141,7 +157,7 @@ func scanSourceQueryDiffInPages(sourceDB db.Database, targetDB db.Database, sour
 		return false, pagedDiffCounts{}, nil
 	}
 
-	sourcePageQuery := buildSourceQueryPageSQL(sourceType, sourceQuery, pkCol, defaultSyncReadPageSize, 0)
+	sourcePageQuery := buildSourceQueryPageSQL(sourceType, sourceQuery, pkCol, pageSize, 0)
 	if strings.TrimSpace(sourcePageQuery) == "" {
 		return false, pagedDiffCounts{}, nil
 	}
@@ -151,9 +167,9 @@ func scanSourceQueryDiffInPages(sourceDB db.Database, targetDB db.Database, sour
 	}
 
 	totals := pagedDiffCounts{}
-	for offset := 0; ; offset += defaultSyncReadPageSize {
-		query := buildSourceQueryPageSQL(sourceType, sourceQuery, pkCol, defaultSyncReadPageSize, offset)
-		sourceRows, _, err := sourceDB.Query(query)
+	for offset := 0; ; offset += pageSize {
+		query := buildSourceQueryPageSQL(sourceType, sourceQuery, pkCol, pageSize, offset)
+		sourceRows, _, err := querySyncDatabaseContext(ctx, sourceDB, query)
 		if err != nil {
 			return true, totals, fmt.Errorf("分页读取源查询失败(offset=%d): %w", offset, err)
 		}
@@ -168,7 +184,7 @@ func scanSourceQueryDiffInPages(sourceDB db.Database, targetDB db.Database, sour
 			if strings.TrimSpace(targetQuery) == "" {
 				return false, pagedDiffCounts{}, nil
 			}
-			targetRows, _, err = targetDB.Query(targetQuery)
+			targetRows, _, err = querySyncDatabaseContext(ctx, targetDB, targetQuery)
 			if err != nil {
 				return true, totals, fmt.Errorf("按主键读取目标表失败(offset=%d): %w", offset, err)
 			}
@@ -183,7 +199,7 @@ func scanSourceQueryDiffInPages(sourceDB db.Database, targetDB db.Database, sour
 				return true, totals, err
 			}
 		}
-		if len(sourceRows) < defaultSyncReadPageSize {
+		if len(sourceRows) < pageSize {
 			break
 		}
 	}
@@ -192,8 +208,8 @@ func scanSourceQueryDiffInPages(sourceDB db.Database, targetDB db.Database, sour
 		lastPK, hasLastPK := interface{}(nil), false
 		targetPKCols := []connection.ColumnDefinition{{Name: pkCol}}
 		for {
-			query := buildKeysetPagedTableQuery(targetType, targetQueryTable, targetPKCols, pkCol, lastPK, hasLastPK, defaultSyncReadPageSize)
-			targetRows, _, err := targetDB.Query(query)
+			query := buildKeysetPagedTableQuery(targetType, targetQueryTable, targetPKCols, pkCol, lastPK, hasLastPK, pageSize)
+			targetRows, _, err := querySyncDatabaseContext(ctx, targetDB, query)
 			if err != nil {
 				return true, totals, fmt.Errorf("分页读取目标主键失败: %w", err)
 			}
@@ -214,7 +230,7 @@ func scanSourceQueryDiffInPages(sourceDB db.Database, targetDB db.Database, sour
 				if strings.TrimSpace(sourceQuery) == "" {
 					return false, pagedDiffCounts{}, nil
 				}
-				sourcePKRows, _, err = sourceDB.Query(sourceQuery)
+				sourcePKRows, _, err = querySyncDatabaseContext(ctx, sourceDB, sourceQuery)
 				if err != nil {
 					return true, totals, fmt.Errorf("按主键反查源查询失败: %w", err)
 				}
@@ -240,7 +256,7 @@ func scanSourceQueryDiffInPages(sourceDB db.Database, targetDB db.Database, sour
 					}
 				}
 			}
-			if len(targetRows) < defaultSyncReadPageSize {
+			if len(targetRows) < pageSize {
 				break
 			}
 		}

@@ -306,6 +306,7 @@ export interface ConnectionConfig {
   dsn?: string;
   connectionParams?: string;
   timeout?: number;
+  queryTimeout?: number; // transient per-request override; not a saved connection setting
   keepAliveEnabled?: boolean;
   keepAliveIntervalMinutes?: number;
   keepAliveSQL?: string;
@@ -386,7 +387,6 @@ export interface GlobalProxyConfig extends ProxyConfig {
 export interface ConnectionTag {
   id: string;
   name: string;
-  environmentType?: ConnectionEnvironmentType;
   /**
    * Parent group id. An omitted value keeps the group at the sidebar root.
    * Hosts are always owned by exactly one direct group, while groups can nest.
@@ -623,7 +623,14 @@ export interface ExternalSQLDirectory {
   path: string;
   connectionId?: string;
   dbName?: string;
+  fileBindings?: ExternalSQLFileBinding[];
   createdAt: number;
+}
+
+export interface ExternalSQLFileBinding {
+  filePath: string;
+  connectionId: string;
+  dbName: string;
 }
 
 export interface ExternalSQLTreeEntry {

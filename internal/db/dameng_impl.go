@@ -403,15 +403,20 @@ func (d *DamengDB) GetTriggers(dbName, tableName string) ([]connection.TriggerDe
 }
 
 func (d *DamengDB) ApplyChanges(tableName string, changes connection.ChangeSet) error {
+	return d.ApplyChangesContext(context.Background(), tableName, changes)
+}
+
+func (d *DamengDB) ApplyChangesContext(ctx context.Context, tableName string, changes connection.ChangeSet) (err error) {
 	if d.conn == nil {
 		return fmt.Errorf("连接未打开")
 	}
 
-	tx, err := d.conn.Begin()
+	tx, err := d.conn.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	transactionCommitted := false
+	defer func() { rollbackUnfinishedWriteTransaction(tx, transactionCommitted, &err) }()
 
 	quoteIdent := func(name string) string {
 		n := strings.TrimSpace(name)
@@ -423,12 +428,7 @@ func (d *DamengDB) ApplyChanges(tableName string, changes connection.ChangeSet) 
 		return `"` + n + `"`
 	}
 
-	schema := ""
-	table := strings.TrimSpace(tableName)
-	if parts := strings.SplitN(table, ".", 2); len(parts) == 2 {
-		schema = strings.TrimSpace(parts[0])
-		table = strings.TrimSpace(parts[1])
-	}
+	schema, table := SplitSQLQualifiedName(tableName)
 
 	qualifiedTable := ""
 	if schema != "" {
@@ -451,7 +451,7 @@ func (d *DamengDB) ApplyChanges(tableName string, changes connection.ChangeSet) 
 			continue
 		}
 		query := fmt.Sprintf("DELETE FROM %s WHERE %s", qualifiedTable, strings.Join(wheres, " AND "))
-		if _, err := tx.Exec(query, args...); err != nil {
+		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
 			return fmt.Errorf("删除失败：%v", err)
 		}
 	}
@@ -484,7 +484,7 @@ func (d *DamengDB) ApplyChanges(tableName string, changes connection.ChangeSet) 
 		}
 
 		query := fmt.Sprintf("UPDATE %s SET %s WHERE %s", qualifiedTable, strings.Join(sets, ", "), strings.Join(wheres, " AND "))
-		if _, err := tx.Exec(query, args...); err != nil {
+		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
 			return fmt.Errorf("更新失败：%v", err)
 		}
 	}
@@ -508,12 +508,16 @@ func (d *DamengDB) ApplyChanges(tableName string, changes connection.ChangeSet) 
 		}
 
 		query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", qualifiedTable, strings.Join(cols, ", "), strings.Join(placeholders, ", "))
-		if _, err := tx.Exec(query, args...); err != nil {
+		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
 			return fmt.Errorf("插入失败：%v", err)
 		}
 	}
 
-	return tx.Commit()
+	if err := commitWriteTransaction(tx); err != nil {
+		return err
+	}
+	transactionCommitted = true
+	return nil
 }
 
 func (d *DamengDB) GetAllColumns(dbName string) ([]connection.ColumnDefinitionWithTable, error) {

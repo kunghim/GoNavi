@@ -11,6 +11,14 @@ html, body, #root {
   background-color: transparent !important; /* CRITICAL: Allow Wails window transparency */
 }
 
+/* Native detached WebViews use the same transparent window composition as the
+   main macOS surface. Paint the resolved app token behind any child content so
+   loading gaps and transparent component pixels never fall back to white. */
+body[data-gonavi-detached='true'],
+body[data-gonavi-detached='true'] #root {
+  background-color: var(--gn-bg-app, transparent) !important;
+}
+
 body, #root {
   border-radius: var(--gonavi-border-radius); /* Slightly rounded app window corners */
 }
@@ -296,27 +304,27 @@ body[data-theme='light'] ::-webkit-scrollbar-thumb:hover {
 
 /* 表候选使用 Monaco 原生 CompletionItemLabel：第一行表名，第二行注释。 */
 .gn-query-monaco-stage .monaco-editor .suggest-widget .monaco-list .monaco-list-row:not(.string-label) {
-    height: 36px !important;
-    min-height: 36px !important;
-    max-height: 36px !important;
+    height: var(--gn-query-suggest-row-height, 36px) !important;
+    min-height: var(--gn-query-suggest-row-height, 36px) !important;
+    max-height: var(--gn-query-suggest-row-height, 36px) !important;
 }
 
 .gn-query-monaco-stage .monaco-editor .suggest-widget .monaco-list .monaco-list-row:not(.string-label) > .contents {
-    height: 36px !important;
+    height: var(--gn-query-suggest-row-height, 36px) !important;
     overflow: visible !important;
 }
 
 .gn-query-monaco-stage .monaco-editor .suggest-widget .monaco-list .monaco-list-row:not(.string-label) > .contents > .main {
     display: grid !important;
     grid-template-columns: 18px minmax(0, 1fr);
-    grid-template-rows: 18px 18px;
+    grid-template-rows: var(--gn-query-suggest-name-row-height, 18px) var(--gn-query-suggest-comment-row-height, 18px);
     grid-template-areas:
         "icon name"
         "comment comment";
     align-content: center;
     gap: 0 !important;
-    height: 36px;
-    line-height: 18px !important;
+    height: var(--gn-query-suggest-row-height, 36px);
+    line-height: var(--gn-query-suggest-name-row-height, 18px) !important;
     overflow: visible;
     white-space: normal;
 }
@@ -333,19 +341,21 @@ body[data-theme='light'] ::-webkit-scrollbar-thumb:hover {
     display: flex;
     align-items: center;
     width: 100%;
-    height: 18px;
+    height: var(--gn-query-suggest-name-row-height, 18px);
     min-width: 0;
     max-width: none;
     overflow: visible;
-    line-height: 18px !important;
+    line-height: var(--gn-query-suggest-name-row-height, 18px) !important;
 }
 
 .gn-query-monaco-stage .monaco-editor .suggest-widget .monaco-list .monaco-list-row:not(.string-label) > .contents > .main > .left > .monaco-icon-label {
     min-width: 0;
     max-width: 100%;
+    height: var(--gn-query-suggest-name-row-height, 18px);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    line-height: var(--gn-query-suggest-name-row-height, 18px);
 }
 
 .gn-query-monaco-stage .monaco-editor .suggest-widget .monaco-list .monaco-list-row:not(.string-label) > .contents > .main > .right {
@@ -358,7 +368,7 @@ body[data-theme='light'] ::-webkit-scrollbar-thumb:hover {
     min-width: 0;
     max-width: none;
     overflow: visible;
-    line-height: 18px !important;
+    line-height: var(--gn-query-suggest-comment-row-height, 18px) !important;
 }
 
 .gn-query-monaco-stage .monaco-editor .suggest-widget .monaco-list .monaco-list-row:not(.string-label) > .contents > .main > .right > .details-label {
@@ -371,7 +381,7 @@ body[data-theme='light'] ::-webkit-scrollbar-thumb:hover {
     overflow: visible;
     color: var(--vscode-editorSuggestWidget-foreground);
     font-size: 11px !important;
-    line-height: 18px !important;
+    line-height: var(--gn-query-suggest-comment-row-height, 18px) !important;
     opacity: 0.68;
     text-align: right;
     white-space: nowrap;
@@ -2889,6 +2899,11 @@ body[data-platform='windows'] .titlebar-window-controls {
   color: #0f766e;
 }
 
+.gonavi-query-editor-field-drop-anchor {
+  background-color: rgba(0, 0, 0, 0.12);
+  border-radius: 2px;
+}
+
 .gonavi-query-editor-db-token {
   color: #7c3aed;
 }
@@ -2903,6 +2918,10 @@ body[data-theme='dark'] .gonavi-query-editor-link-hint {
 
 body[data-theme='dark'] .gonavi-query-editor-column-token {
   color: #5eead4;
+}
+
+body[data-theme='dark'] .gonavi-query-editor-field-drop-anchor {
+  background-color: rgba(255, 255, 255, 0.16);
 }
 
 body[data-theme='dark'] .gonavi-query-editor-db-token {

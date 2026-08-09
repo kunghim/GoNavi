@@ -10,6 +10,8 @@ import type { SavedQuery, TabData } from '../types';
 import { ORACLE_ROWID_LOCATOR_COLUMN } from '../utils/rowLocator';
 import { setGlobalImeCompositionActive } from '../utils/shortcuts';
 import { clearQueryEditorResultSession } from '../utils/queryEditorResultSessionCache';
+import { resolveNewQueryContext } from '../utils/newQueryContext';
+import { QUERY_TAB_RENAME_REQUEST_EVENT } from '../utils/queryTabTitle';
 import { clearQueryTabDraft, clearSQLFileTabDraft, getQueryTabDraft, getSQLFileTabDraft } from '../utils/sqlFileTabDrafts';
 import { clearQueryEditorInlineRuntimeReadinessCache } from './queryEditor/QueryEditorAiAssist';
 import QueryEditor, {
@@ -17,6 +19,7 @@ import QueryEditor, {
   resolveQueryEditorNavigationDecorations,
   resolveQueryEditorNavigationTarget,
 } from './QueryEditor';
+import QueryEditorToolbar from './QueryEditorToolbar';
 const mountedRenderers = new Set<ReactTestRenderer>();
 const create = (...args: Parameters<typeof createRenderer>): ReactTestRenderer => {
   const renderer = createRenderer(...args);
@@ -54,6 +57,7 @@ const storeState = vi.hoisted(() => ({
   clearSqlLogs: vi.fn(),
   addSqlLog: vi.fn(),
   addTab: vi.fn(),
+  activeContext: null as { connectionId: string; dbName: string } | null,
   setActiveContext: vi.fn(),
   updateQueryTabDraft: vi.fn(),
   savedQueries: [] as SavedQuery[],
@@ -98,6 +102,10 @@ const storeState = vi.hoisted(() => ({
     saveQuery: {
       mac: { enabled: true, combo: 'Meta+S' },
       windows: { enabled: true, combo: 'Ctrl+S' },
+    },
+    saveQueryAs: {
+      mac: { enabled: true, combo: 'Meta+Shift+S' },
+      windows: { enabled: true, combo: 'Ctrl+Shift+S' },
     },
     toggleQueryResultsPanel: {
       mac: { enabled: true, combo: 'Meta+Shift+M' },
@@ -154,6 +162,7 @@ const backendApp = vi.hoisted(() => ({
   DBRollbackTransaction: vi.fn(),
   DBRollbackTransactionWithTrigger: vi.fn(),
   DBGetTables: vi.fn(),
+  DBTableExists: vi.fn(),
   DBGetAllColumns: vi.fn(),
   DBGetDatabases: vi.fn(),
   DBGetColumns: vi.fn(),
@@ -173,6 +182,8 @@ const messageApi = vi.hoisted(() => ({
   warning: vi.fn(),
 }));
 
+const saveQueryNameInputFocus = vi.hoisted(() => vi.fn());
+
 const dataGridState = vi.hoisted(() => ({
   latestProps: null as any,
 }));
@@ -183,6 +194,10 @@ const tabsState = vi.hoisted(() => ({
 
 const autoFetchState = vi.hoisted(() => ({
   visible: false,
+}));
+
+const antdSelectState = vi.hoisted(() => ({
+  props: [] as any[],
 }));
 
 const monacoEditorMockState = vi.hoisted(() => ({
@@ -553,10 +568,31 @@ vi.mock('antd', () => {
   );
   const Empty = ({ description }: { description?: React.ReactNode }) => <div>{description}</div>;
   (Empty as any).PRESENTED_IMAGE_SIMPLE = 'simple';
-  const Input: any = ({ value, onChange, placeholder }: any) => <input value={value} onChange={onChange} placeholder={placeholder} />;
+  const Input: any = React.forwardRef(({ value, onChange, placeholder }: any, ref) => {
+    React.useImperativeHandle(ref, () => ({
+      focus: saveQueryNameInputFocus,
+    }), []);
+    return <input value={value} onChange={onChange} placeholder={placeholder} />;
+  });
+  Input.displayName = 'Input';
   Input.TextArea = ({ value, onChange, placeholder, disabled }: any) => (
     <textarea value={value} onChange={onChange} placeholder={placeholder} disabled={disabled} />
   );
+
+  const Modal = ({ children, open, onOk, okText = '确认', afterOpenChange }: any) => {
+    React.useEffect(() => {
+      if (open) {
+        afterOpenChange?.(true);
+      }
+    }, [afterOpenChange, open]);
+
+    return open ? (
+      <section>
+        {children}
+        <button type="button" onClick={onOk}>{okText}</button>
+      </section>
+    ) : null;
+  };
 
   return {
     Button,
@@ -565,12 +601,7 @@ vi.mock('antd', () => {
     Tag: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
     Empty,
     message: messageApi,
-    Modal: ({ children, open, onOk, okText = '确认' }: any) => (open ? (
-      <section>
-        {children}
-        <button type="button" onClick={onOk}>{okText}</button>
-      </section>
-    ) : null),
+    Modal,
     Input,
     Form,
     Dropdown: ({ children, menu }: any) => (
@@ -584,7 +615,10 @@ vi.mock('antd', () => {
       </>
     ),
     Tooltip: ({ children }: any) => <>{children}</>,
-    Select: () => null,
+    Select: (props: any) => {
+      antdSelectState.props.push(props);
+      return null;
+    },
     Segmented: ({ value, onChange, options }: any) => (
       <div>
         {(options || []).map((option: any) => {
@@ -820,12 +854,18 @@ describe('QueryEditor external SQL save', () => {
     storeState.shortcutOptions.duplicateCurrentLine.windows = { enabled: false, combo: '' };
     storeState.shortcutOptions.saveQuery.mac = { enabled: true, combo: 'Meta+S' };
     storeState.shortcutOptions.saveQuery.windows = { enabled: true, combo: 'Ctrl+S' };
+    storeState.shortcutOptions.saveQueryAs.mac = { enabled: true, combo: 'Meta+Shift+S' };
+    storeState.shortcutOptions.saveQueryAs.windows = { enabled: true, combo: 'Ctrl+Shift+S' };
     runtimeApi.EventsOn.mockClear();
     runtimeApi.LogError.mockReset();
     runtimeApi.LogInfo.mockReset();
     runtimeEventListeners.clear();
     storeState.addTab.mockReset();
     storeState.setActiveContext.mockReset();
+    storeState.activeContext = null;
+    storeState.setActiveContext.mockImplementation((context: { connectionId: string; dbName: string } | null) => {
+      storeState.activeContext = context;
+    });
     storeState.saveQuery.mockReset();
     storeState.saveQuery.mockImplementation(async (query: SavedQuery) => query);
     storeState.savedQueries = [];
@@ -864,6 +904,10 @@ describe('QueryEditor external SQL save', () => {
         mac: { enabled: true, combo: 'Meta+S' },
         windows: { enabled: true, combo: 'Ctrl+S' },
       },
+      saveQueryAs: {
+        mac: { enabled: true, combo: 'Meta+Shift+S' },
+        windows: { enabled: true, combo: 'Ctrl+Shift+S' },
+      },
       toggleQueryResultsPanel: {
         mac: { enabled: true, combo: 'Meta+Shift+M' },
         windows: { enabled: true, combo: 'Ctrl+Shift+M' },
@@ -895,6 +939,7 @@ describe('QueryEditor external SQL save', () => {
     messageApi.error.mockReset();
     messageApi.info.mockReset();
     messageApi.warning.mockReset();
+    saveQueryNameInputFocus.mockReset();
     backendApp.DBQuery.mockResolvedValue({ success: true, data: [] });
     backendApp.WriteSQLFile.mockResolvedValue({ success: true });
     backendApp.ExportSQLFile.mockResolvedValue({ success: true });
@@ -912,6 +957,7 @@ describe('QueryEditor external SQL save', () => {
     backendApp.DBGetAllColumns.mockResolvedValue({ success: true, data: [] });
     backendApp.DBGetDatabases.mockResolvedValue({ success: true, data: [] });
     backendApp.DBGetTables.mockResolvedValue({ success: true, data: [] });
+    backendApp.DBTableExists.mockResolvedValue({ success: true, data: { exists: true } });
     backendApp.DBShowCreateTable.mockResolvedValue({ success: false, data: '' });
     backendApp.GenerateQueryID.mockResolvedValue('query-1');
     storeState.connections = createDefaultConnections();
@@ -923,6 +969,7 @@ describe('QueryEditor external SQL save', () => {
     storeState.connections[0].config.database = 'main';
     storeState.appearance.uiVersion = 'legacy';
     autoFetchState.visible = false;
+    antdSelectState.props = [];
     dataGridState.latestProps = null;
     tabsState.activeKey = undefined;
     editorState.value = '';
@@ -1062,6 +1109,165 @@ describe('QueryEditor external SQL save', () => {
     await act(async () => {
       renderer.unmount();
     });
+  });
+
+  it('loads PostgreSQL schemas and executes SQL with the selected search_path', async () => {
+    storeState.connections[0].config.type = 'postgres';
+    storeState.connections[0].config.port = 5432;
+    (storeState.connections[0].config as any).connectionParams = 'application_name=gonavi';
+    autoFetchState.visible = true;
+    backendApp.DBGetDatabases.mockResolvedValue({
+      success: true,
+      data: [{ Database: 'main' }],
+    });
+    backendApp.DBQuery.mockImplementation((_config: unknown, _dbName: string, sql: string) => {
+      const normalizedSql = String(sql || '').toLowerCase();
+      if (normalizedSql.includes('current_schema()')) {
+        return Promise.resolve({ success: true, data: [{ schema_name: 'public' }] });
+      }
+      if (normalizedSql.includes('pg_namespace')) {
+        return Promise.resolve({
+          success: true,
+          data: [{ schema_name: 'public' }, { schema_name: 'sales' }],
+        });
+      }
+      return Promise.resolve({ success: true, data: [] });
+    });
+    backendApp.DBGetColumns.mockResolvedValue({
+      success: true,
+      data: [{ name: 'sales_id', key: 'PRI' }, { name: 'name', key: '' }],
+    });
+    backendApp.DBGetIndexes.mockResolvedValue({ success: true, data: [] });
+    backendApp.DBQueryMulti.mockResolvedValue({
+      success: true,
+      data: [{ columns: ['sales_id', 'name'], rows: [{ sales_id: 1, name: 'Alice' }] }],
+    });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({
+        query: 'SELECT * FROM users',
+        schemaName: 'removed_schema',
+      })} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const latestSchemaSelect = () => [...antdSelectState.props].reverse().find((props) => (
+      String(props.className || '').includes('gn-v2-query-toolbar-schema-select')
+      || props['aria-label'] === catalogs['zh-CN']['query_editor.object_info.label.schema']
+    ));
+    expect(latestSchemaSelect()).toMatchObject({
+      value: 'public',
+      options: [
+        { label: 'public', value: 'public', title: '', fullName: 'public' },
+        { label: 'sales', value: 'sales', title: '', fullName: 'sales' },
+      ],
+    });
+
+    await act(async () => {
+      latestSchemaSelect()?.onChange('sales');
+    });
+    await act(async () => {
+      await findButton(renderer, '运行').props.onClick();
+    });
+
+    const executionConfig = backendApp.DBQueryMulti.mock.calls[0]?.[0];
+    const connectionParams = new URLSearchParams(String(executionConfig?.connectionParams || ''));
+    expect(connectionParams.get('application_name')).toBe('gonavi');
+    expect(connectionParams.get('search_path')).toBe('"sales","public"');
+    const locatorColumnsCall = backendApp.DBGetColumns.mock.calls.find((call) => call[2] === 'users');
+    const locatorIndexesCall = backendApp.DBGetIndexes.mock.calls.find((call) => call[2] === 'users');
+    expect(new URLSearchParams(String(locatorColumnsCall?.[0]?.connectionParams || '')).get('search_path'))
+      .toBe('"sales","public"');
+    expect(new URLSearchParams(String(locatorIndexesCall?.[0]?.connectionParams || '')).get('search_path'))
+      .toBe('"sales","public"');
+    expect(dataGridState.latestProps?.pkColumns).toEqual(['sales_id']);
+    expect(dataGridState.latestProps?.editLocator).toMatchObject({
+      strategy: 'primary-key',
+      columns: ['sales_id'],
+    });
+    const resultConnectionParams = new URLSearchParams(String(
+      dataGridState.latestProps?.connectionParamsOverride || '',
+    ));
+    expect(resultConnectionParams.get('application_name')).toBe('gonavi');
+    expect(resultConnectionParams.get('search_path')).toBe('"sales","public"');
+    expect(storeState.updateQueryTabDraft).toHaveBeenCalledWith('tab-1', {
+      schemaName: 'sales',
+    });
+
+    await act(async () => {
+      latestSchemaSelect()?.onChange('public');
+    });
+    backendApp.DBQueryMulti.mockClear();
+    backendApp.DBQueryMulti.mockResolvedValueOnce({
+      success: true,
+      data: [{ columns: ['sales_id', 'name'], rows: [{ sales_id: 2, name: 'Bob' }] }],
+    });
+    await act(async () => {
+      await dataGridState.latestProps?.onReload?.();
+    });
+    const reloadConfig = backendApp.DBQueryMulti.mock.calls[0]?.[0];
+    expect(new URLSearchParams(String(reloadConfig?.connectionParams || '')).get('search_path'))
+      .toBe('"sales","public"');
+  });
+
+  it('does not reload an old database result through the current managed transaction', async () => {
+    backendApp.DBQueryMulti.mockResolvedValueOnce({
+      success: true,
+      data: [{ columns: ['id'], rows: [{ id: 1 }] }],
+    });
+    backendApp.DBQueryMultiTransactional.mockResolvedValueOnce({
+      success: true,
+      transactionId: 'tx-archive',
+      transactionPending: true,
+      data: [{ columns: ['affectedRows'], rows: [{ affectedRows: 1 }] }],
+    });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ dbName: 'main', query: 'SELECT id FROM users' })} />);
+    });
+    await act(async () => {
+      await findButton(renderer, '运行').props.onClick();
+    });
+    const oldResultProps = dataGridState.latestProps;
+    expect(oldResultProps?.onReload).toEqual(expect.any(Function));
+
+    const databaseSelect = [...antdSelectState.props].reverse().find((props) => (
+      props.placeholder === catalogs['zh-CN']['query_editor.placeholder.database']
+    ));
+    await act(async () => {
+      databaseSelect?.onChange('archive');
+      await Promise.resolve();
+    });
+
+    editorState.value = "UPDATE users SET name = 'archived' WHERE id = 1";
+    await act(async () => {
+      await findButton(renderer, '运行').props.onClick();
+    });
+    expect(storeState.sqlEditorPendingTransactions['tab-1']).toMatchObject({
+      id: 'tx-archive',
+      dbName: 'archive',
+    });
+
+    backendApp.DBQueryMulti.mockClear();
+    backendApp.DBQueryMultiInTransaction.mockClear();
+    backendApp.DBQueryMulti.mockResolvedValueOnce({
+      success: true,
+      data: [{ columns: ['id'], rows: [{ id: 2 }] }],
+    });
+    await act(async () => {
+      await oldResultProps.onReload();
+    });
+
+    expect(backendApp.DBQueryMultiInTransaction).not.toHaveBeenCalled();
+    expect(backendApp.DBQueryMulti).toHaveBeenCalledWith(
+      expect.anything(),
+      'main',
+      expect.stringContaining('SELECT id FROM users'),
+      expect.any(String),
+    );
   });
 
   it('shows the empty query results panel after toggling the results button', async () => {
@@ -1962,9 +2168,18 @@ describe('QueryEditor external SQL save', () => {
     }
   });
 
-  it('accepts the AI inline ghost with the default Tab shortcut and consumes the keydown', async () => {
+  it('accepts a metadata-normalized inline ghost with the default Tab shortcut and preserves trailing SQL', async () => {
     vi.useFakeTimers();
     try {
+      storeState.sqlLogs = [{
+        id: 'sql-log-inline-case',
+        timestamp: Date.now(),
+        sql: 'SELECT * FROM a_cninfo_announcement WHERE id = 1;',
+        status: 'success',
+        duration: 12,
+        dbName: 'main',
+      } as any];
+
       const inlineAiService = {
         AIGetProviders: vi.fn(async () => [{
           id: 'openai-main',
@@ -1989,8 +2204,7 @@ describe('QueryEditor external SQL save', () => {
       backendApp.DBGetTables.mockResolvedValueOnce({
         success: true,
         data: [
-          { TABLE_NAME: 'videos' },
-          { TABLE_NAME: 'visits' },
+          { TABLE_NAME: 'a_cninfo_announcement' },
         ],
       });
 
@@ -2018,25 +2232,30 @@ describe('QueryEditor external SQL save', () => {
       });
 
       await act(async () => {
-        create(<QueryEditor tab={createTab({ query: 'SELECT', dbName: 'main' })} />);
+        create(<QueryEditor tab={createTab({ query: 'SELECT * FROM A_C', dbName: 'main' })} />);
       });
 
-      editorState.value = 'SELECT';
-      editorState.position = { lineNumber: 1, column: 'SELECT'.length + 1 };
+      editorState.value = 'SELECT * FROM A_C';
+      editorState.position = { lineNumber: 1, column: 'SELECT * FROM A_C'.length + 1 };
       editorState.editor.executeEdits.mockClear();
       editorState.editor.trigger.mockClear();
       editorState.domNode.appendChild.mockClear();
 
       await act(async () => {
-        editorState.latestOnChange?.('SELECT');
+        editorState.latestOnChange?.('SELECT * FROM A_C');
         editorState.modelContentListeners.forEach((listener) => listener({
-          changes: [{ text: 'T' }],
+          changes: [{ text: 'C' }],
         }));
         vi.advanceTimersByTime(220);
         for (let i = 0; i < 8; i += 1) {
           await Promise.resolve();
         }
       });
+
+      const ghostOverlay = editorState.domNode.appendChild.mock.calls[
+        editorState.domNode.appendChild.mock.calls.length - 1
+      ]?.[0];
+      expect(ghostOverlay?.textContent).toBe('ninfo_announcement WHERE id = 1;');
 
       const shortcutEvent = {
         type: 'keydown',
@@ -2067,8 +2286,16 @@ describe('QueryEditor external SQL save', () => {
 
       expect(editorState.editor.executeEdits).toHaveBeenCalledWith(
         'gonavi-ai-inline-sql-completion',
-        [expect.objectContaining({ text: expect.any(String) })],
+        [expect.objectContaining({
+          text: 'a_cninfo_announcement WHERE id = 1;',
+          range: expect.objectContaining({
+            startColumn: 15,
+            endColumn: 18,
+          }),
+        })],
       );
+      expect(editorState.value).toBe('SELECT * FROM a_cninfo_announcement WHERE id = 1;');
+      expect(inlineAiService.AIChatSend).not.toHaveBeenCalled();
       expect(monacoShortcutEvent.preventDefault).toHaveBeenCalled();
       expect(monacoShortcutEvent.stopPropagation).toHaveBeenCalled();
       expect(shortcutEvent.preventDefault).toHaveBeenCalled();
@@ -3177,16 +3404,69 @@ describe('QueryEditor external SQL save', () => {
     });
   });
 
-  it('keeps table name completion available after typing in a fresh query tab', async () => {
+  it('syncs a cleared database to the active context when the toolbar switches connections', async () => {
+    storeState.connections = [
+      ...createDefaultConnections(),
+      {
+        id: 'conn-2',
+        name: 'analytics',
+        config: {
+          type: 'mysql',
+          host: '127.0.0.2',
+          port: 3306,
+          user: 'root',
+          password: '',
+          database: '',
+        },
+      },
+    ];
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ connectionId: 'conn-1', dbName: 'main' })} />);
+    });
+
+    const toolbar = renderer.root.findByType(QueryEditorToolbar);
+    await act(async () => {
+      toolbar.props.onConnectionChange('conn-2');
+    });
+
+    expect(storeState.setActiveContext).toHaveBeenLastCalledWith({
+      connectionId: 'conn-2',
+      dbName: '',
+    });
+    expect(storeState.activeContext).toEqual({ connectionId: 'conn-2', dbName: '' });
+    expect(resolveNewQueryContext({
+      sidebarContext: storeState.activeContext,
+      activeTab: createTab({ connectionId: 'conn-1', dbName: 'main' }),
+      validConnectionIds: new Set(storeState.connections.map((connection) => connection.id)),
+    })).toEqual({ connectionId: 'conn-2', dbName: '' });
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('loads table completions after selecting a database in a connection-scoped query tab', async () => {
     let renderer!: ReactTestRenderer;
     autoFetchState.visible = true;
     storeState.connections[0].config.database = '';
     backendApp.DBGetDatabases.mockResolvedValueOnce({ success: true, data: [{ Database: 'information_schema' }, { Database: 'main' }] });
-    backendApp.DBGetTables.mockResolvedValueOnce({ success: true, data: [{ Tables_in_main: 'organization' }] });
+    backendApp.DBGetTables.mockImplementation(async (_config: unknown, dbName: string) => ({
+      success: true,
+      data: dbName === 'main'
+        ? [{ Tables_in_main: 'organization' }]
+        : [{ Tables_in_database_a: 'legacy_table' }],
+    }));
     backendApp.DBGetAllColumns.mockResolvedValueOnce({ success: true, data: [] });
 
     await act(async () => {
-      renderer = create(<QueryEditor tab={createTab({ query: '' })} />);
+      renderer = create(
+        <>
+          <QueryEditor tab={createTab({ id: 'old-tab', dbName: 'database_a' })} isActive={false} />
+          <QueryEditor tab={createTab({ dbName: '', query: '' })} isActive />
+        </>,
+      );
     });
     await act(async () => {
       await Promise.resolve();
@@ -3196,15 +3476,61 @@ describe('QueryEditor external SQL save', () => {
 
     const sqlProvider = editorState.providers.find((provider) => Array.isArray(provider.triggerCharacters) && provider.triggerCharacters.includes('.'));
     expect(sqlProvider).toBeTruthy();
+    expect(backendApp.DBGetTables).not.toHaveBeenCalled();
+
+    let immediateCompletion!: Promise<any>;
+    await act(async () => {
+      const activeToolbar = renderer.root.findAllByType(QueryEditorToolbar).find((toolbar) => toolbar.props.currentDb === '');
+      expect(activeToolbar).toBeTruthy();
+      activeToolbar!.props.onDatabaseChange('main');
+
+      editorState.value = 'SELECT * FROM org';
+      editorState.latestOnChange?.(editorState.value);
+      immediateCompletion = sqlProvider.provideCompletionItems(
+        editorState.editor.getModel(),
+        { lineNumber: 1, column: editorState.value.length + 1 },
+      );
+      await immediateCompletion;
+    });
+    await vi.waitFor(() => {
+      expect(backendApp.DBGetTables).toHaveBeenCalledWith(expect.any(Object), 'main');
+    });
     expect(storeState.updateQueryTabDraft).toHaveBeenLastCalledWith('tab-1', expect.objectContaining({
       dbName: 'main',
     }));
+    expect(storeState.setActiveContext).toHaveBeenCalledWith({ connectionId: 'conn-1', dbName: 'main' });
 
-    editorState.value = 'SELECT * FROM org';
-    editorState.latestOnChange?.(editorState.value);
-    const result = await sqlProvider.provideCompletionItems(editorState.editor.getModel(), { lineNumber: 1, column: editorState.value.length + 1 });
+    const result = await immediateCompletion;
 
     expect(result.suggestions.map((item: any) => item.label)).toContain('organization');
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('keeps the database empty after loading options for a connection-scoped query tab', async () => {
+    let renderer!: ReactTestRenderer;
+    autoFetchState.visible = true;
+    backendApp.DBGetDatabases.mockResolvedValueOnce({
+      success: true,
+      data: [{ Database: 'information_schema' }, { Database: 'main' }],
+    });
+
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ dbName: '', query: '' })} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(backendApp.DBGetDatabases).toHaveBeenCalledTimes(1);
+    expect(storeState.updateQueryTabDraft).toHaveBeenCalledWith('tab-1', expect.objectContaining({
+      dbName: '',
+    }));
+    expect(backendApp.DBGetTables).not.toHaveBeenCalled();
+
     await act(async () => {
       renderer.unmount();
     });
@@ -3436,15 +3762,28 @@ describe('QueryEditor external SQL save', () => {
     });
   });
 
-  it('fuzzy matches table names in FROM completion before column candidates', async () => {
+  it('matches table names from the beginning in FROM completion', async () => {
     let renderer!: ReactTestRenderer;
     autoFetchState.visible = true;
     storeState.connections[0].config.database = '';
     backendApp.DBGetDatabases.mockResolvedValueOnce({ success: true, data: [{ Database: 'information_schema' }, { Database: 'main' }] });
-    backendApp.DBGetTables.mockResolvedValueOnce({ success: true, data: [{ Tables_in_main: 'fs_org_auth_application' }] });
+    backendApp.DBGetTables.mockResolvedValueOnce({
+      success: true,
+      data: [
+        { Tables_in_main: 'users' },
+        { Tables_in_main: 'a_cninfo_announcement' },
+        { Tables_in_main: 'hrmresource' },
+        { Tables_in_main: 'hrm_resource_export_template' },
+        { Tables_in_main: 'archive_hrmresource' },
+      ],
+    });
     backendApp.DBGetAllColumns.mockResolvedValueOnce({
       success: true,
-      data: [{ tableName: 'fs_org_auth_application', name: 'orgi', type: 'varchar(32)' }],
+      data: [
+        { tableName: 'hrmresource', name: 'hrmresult', type: 'varchar(32)' },
+        { tableName: 'users', name: 'hrmresult_from_users', type: 'varchar(32)' },
+        { tableName: 'users', name: 'SHORT_TITLE', type: 'varchar(255)' },
+      ],
     });
 
     await act(async () => {
@@ -3459,13 +3798,211 @@ describe('QueryEditor external SQL save', () => {
     const sqlProvider = editorState.providers.find((provider) => Array.isArray(provider.triggerCharacters) && provider.triggerCharacters.includes('.'));
     expect(sqlProvider).toBeTruthy();
 
-    editorState.value = 'SELECT * FROM org';
+    editorState.value = 'SELECT * FROM hrmres';
     editorState.latestOnChange?.(editorState.value);
     const result = await sqlProvider.provideCompletionItems(editorState.editor.getModel(), { lineNumber: 1, column: editorState.value.length + 1 });
     const labels = result.suggestions.map((item: any) => item.label);
 
-    expect(labels).toContain('fs_org_auth_application');
-    expect(labels).not.toContain('orgi');
+    expect(labels).toContain('hrmresource');
+    expect(labels).not.toContain('hrm_resource_export_template');
+    expect(labels).not.toContain('archive_hrmresource');
+    expect(labels).not.toContain('hrmresult');
+
+    editorState.value = 'SELECT * FROM users u, hrmres';
+    editorState.latestOnChange?.(editorState.value);
+    const commaResult = await sqlProvider.provideCompletionItems(
+      editorState.editor.getModel(),
+      { lineNumber: 1, column: editorState.value.length + 1 },
+    );
+    const commaLabels = commaResult.suggestions.map((item: any) => item.label);
+    expect(commaLabels).toContain('hrmresource');
+    expect(commaLabels).not.toContain('archive_hrmresource');
+    expect(commaLabels).not.toContain('hrmresult_from_users');
+    expect(backendApp.DBGetColumns.mock.calls.map((call: any[]) => call[2])).not.toContain('hrmres');
+
+    editorState.value = 'SELECT * FROM A_C';
+    editorState.latestOnChange?.(editorState.value);
+    const uppercaseTableResult = await sqlProvider.provideCompletionItems(
+      editorState.editor.getModel(),
+      { lineNumber: 1, column: editorState.value.length + 1 },
+    );
+    const uppercaseTable = uppercaseTableResult.suggestions.find((item: any) => item.label === 'a_cninfo_announcement');
+    expect(uppercaseTable?.insertText).toBe('a_cninfo_announcement');
+
+    editorState.value = 'SELECT * FROM users WHERE sh';
+    editorState.latestOnChange?.(editorState.value);
+    const lowercaseColumnResult = await sqlProvider.provideCompletionItems(
+      editorState.editor.getModel(),
+      { lineNumber: 1, column: editorState.value.length + 1 },
+    );
+    const lowercaseColumn = lowercaseColumnResult.suggestions.find((item: any) => item.label === 'SHORT_TITLE');
+    expect(lowercaseColumn?.insertText).toBe('short_title');
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('marks bounded FROM completion as incomplete so Monaco retriggers with the final prefix', async () => {
+    let renderer!: ReactTestRenderer;
+    autoFetchState.visible = true;
+    storeState.connections[0].config.database = 'main';
+    backendApp.DBGetDatabases.mockResolvedValueOnce({ success: true, data: [{ Database: 'main' }] });
+    backendApp.DBGetTables.mockResolvedValueOnce({
+      success: true,
+      data: [
+        ...Array.from({ length: 201 }, (_, index) => ({
+          Tables_in_main: `hrm_resource_${String(index).padStart(3, '0')}`,
+        })),
+        { Tables_in_main: 'hrmresource' },
+      ],
+    });
+    backendApp.DBGetAllColumns.mockResolvedValueOnce({ success: true, data: [] });
+
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ query: '', dbName: 'main' })} />);
+    });
+    await act(async () => {
+      for (let index = 0; index < 8; index += 1) {
+        await Promise.resolve();
+      }
+    });
+
+    const sqlProvider = findSqlCompletionProvider();
+    expect(sqlProvider).toBeTruthy();
+
+    editorState.value = 'SELECT * FROM h';
+    editorState.latestOnChange?.(editorState.value);
+    const initialResult = await sqlProvider.provideCompletionItems(
+      editorState.editor.getModel(),
+      { lineNumber: 1, column: editorState.value.length + 1 },
+    );
+    expect(initialResult.suggestions).toHaveLength(200);
+    expect(initialResult.suggestions.map((item: any) => item.label)).not.toContain('hrmresource');
+    expect(initialResult.incomplete).toBe(true);
+
+    editorState.value = 'SELECT * FROM hrmres';
+    editorState.latestOnChange?.(editorState.value);
+    const retriggeredResult = await sqlProvider.provideCompletionItems(
+      editorState.editor.getModel(),
+      { lineNumber: 1, column: editorState.value.length + 1 },
+      { triggerKind: 2 },
+    );
+    expect(retriggeredResult.suggestions.map((item: any) => item.label)).toEqual(['hrmresource']);
+    expect(retriggeredResult.incomplete).toBe(true);
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('resolves columns from comma-separated Dameng table references and aliases', async () => {
+    let renderer!: ReactTestRenderer;
+    autoFetchState.visible = true;
+    storeState.connections[0].config.type = 'dameng';
+    storeState.connections[0].config.database = 'DEV';
+    backendApp.DBGetDatabases.mockResolvedValueOnce({ success: true, data: [{ Database: 'DEV' }] });
+    backendApp.DBGetTables.mockResolvedValueOnce({
+      success: true,
+      data: [
+        { Table: 'VULNERABILITY_INFO_T' },
+        { Table: 'VULNERABILITY_DETAIL_T' },
+      ],
+    });
+    backendApp.DBGetAllColumns.mockResolvedValueOnce({ success: true, data: [] });
+    backendApp.DBGetColumns.mockImplementation(async (_config: any, _dbName: string, tableName: string) => ({
+      success: true,
+      data: tableName === 'VULNERABILITY_DETAIL_T'
+        ? [
+            { name: 'DETAIL_ID', type: 'VARCHAR' },
+            { name: 'VULNERABILITY_ID', type: 'VARCHAR' },
+          ]
+        : [
+            { name: 'CODE', type: 'VARCHAR' },
+            { name: 'CONTENT', type: 'VARCHAR' },
+            { name: 'ID', type: 'VARCHAR' },
+          ],
+    }));
+
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ query: '', dbName: 'DEV' })} />);
+    });
+    await act(async () => {
+      for (let index = 0; index < 16; index += 1) {
+        await Promise.resolve();
+      }
+    });
+
+    const sqlProvider = findSqlCompletionProvider();
+    expect(sqlProvider).toBeTruthy();
+    const sqlPrefix = 'SELECT * FROM VULNERABILITY_INFO_T a, VULNERABILITY_DETAIL_T b '
+      + 'WHERE VULNERABILITY_INFO_T.CODE = ';
+
+    for (const qualifier of ['VULNERABILITY_DETAIL_T', 'b']) {
+      editorState.value = `${sqlPrefix}${qualifier}.`;
+      editorState.latestOnChange?.(editorState.value);
+      const result = await sqlProvider.provideCompletionItems(
+        editorState.editor.getModel(),
+        { lineNumber: 1, column: editorState.value.length + 1 },
+      );
+      const labels = result.suggestions.map((item: any) => item.label);
+
+      expect(result.suggestions).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          label: 'DETAIL_ID',
+          detail: expect.stringContaining('VULNERABILITY_DETAIL_T'),
+        }),
+      ]));
+      expect(labels).toEqual(expect.arrayContaining(['DETAIL_ID', 'VULNERABILITY_ID']));
+      expect(labels).not.toEqual(expect.arrayContaining(['CODE', 'CONTENT', 'ID']));
+    }
+    expect(backendApp.DBGetColumns).toHaveBeenCalledWith(expect.anything(), 'DEV', 'VULNERABILITY_DETAIL_T');
+    expect(backendApp.DBGetColumns).not.toHaveBeenCalledWith(expect.anything(), 'DEV', 'VULNERABILITY_INFO_T');
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('keeps FROM inside an unfinished EXTRACT expression in column completion context', async () => {
+    let renderer!: ReactTestRenderer;
+    autoFetchState.visible = true;
+    storeState.connections[0].config.type = 'postgres';
+    storeState.connections[0].config.database = 'main';
+    backendApp.DBGetDatabases.mockResolvedValueOnce({ success: true, data: [{ Database: 'main' }] });
+    backendApp.DBGetTables.mockResolvedValueOnce({
+      success: true,
+      data: [
+        { Table: 'users' },
+        { Table: 'archive_created_at' },
+      ],
+    });
+    backendApp.DBGetAllColumns.mockResolvedValueOnce({
+      success: true,
+      data: [{ tableName: 'users', name: 'created_at', type: 'timestamp' }],
+    });
+
+    const sql = 'SELECT EXTRACT(YEAR FROM creat) FROM users';
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ query: sql, dbName: 'main' })} />);
+    });
+    await act(async () => {
+      for (let index = 0; index < 8; index += 1) {
+        await Promise.resolve();
+      }
+    });
+
+    const sqlProvider = findSqlCompletionProvider();
+    expect(sqlProvider).toBeTruthy();
+    const cursorPrefix = 'SELECT EXTRACT(YEAR FROM creat';
+    const result = await sqlProvider.provideCompletionItems(
+      createSqlCompletionModel(sql, 'creat'),
+      { lineNumber: 1, column: cursorPrefix.length + 1 },
+    );
+
+    expect(result.suggestions.map((item: any) => item.label)).toContain('created_at');
+    expect(backendApp.DBGetColumns.mock.calls.map((call: any[]) => call[2])).not.toContain('created_at');
+
     await act(async () => {
       renderer.unmount();
     });
@@ -3540,7 +4077,7 @@ describe('QueryEditor external SQL save', () => {
     const sqlProvider = editorState.providers.find((provider) => Array.isArray(provider.triggerCharacters) && provider.triggerCharacters.includes('.'));
     expect(sqlProvider).toBeTruthy();
 
-    editorState.value = 'SELECT * FROM or';
+    editorState.value = 'SELECT * FROM fs_org';
     editorState.latestOnChange?.(editorState.value);
     const result = await sqlProvider.provideCompletionItems(editorState.editor.getModel(), { lineNumber: 1, column: editorState.value.length + 1 });
     const labels = result.suggestions.map((item: any) => item.label);
@@ -4014,7 +4551,7 @@ describe('QueryEditor external SQL save', () => {
     storeState.connections[0].config.type = 'mysql';
     storeState.connections[0].config.database = 'main';
     const noisyTableRows = Array.from({ length: 2_000 }, (_, index) => ({
-      Tables_in_main: `archive_entity_${String(index).padStart(4, '0')}`,
+      Tables_in_main: `entity_z_archive_${String(index).padStart(4, '0')}`,
     }));
     const noisyColumnRows = Array.from({ length: 2_000 }, (_, index) => ({
       tableName: 'users',
@@ -4397,9 +4934,15 @@ describe('QueryEditor external SQL save', () => {
           stopPropagation,
         },
       });
+      for (let i = 0; i < 4; i += 1) {
+        await Promise.resolve();
+      }
     });
 
     expect(storeState.setActiveContext).not.toHaveBeenCalled();
+    expect(backendApp.DBGetColumns).not.toHaveBeenCalled();
+    expect(backendApp.DBTableExists).toHaveBeenCalledWith(expect.anything(), 'analytics', 'events');
+    expect(backendApp.DBGetTables).toHaveBeenCalledTimes(2);
     expect(storeState.addTab).toHaveBeenCalledWith({
       id: 'conn-1-analytics-table-events',
       title: 'events',
@@ -4447,9 +4990,19 @@ describe('QueryEditor external SQL save', () => {
           stopPropagation,
         },
       });
+      for (let i = 0; i < 4; i += 1) {
+        await Promise.resolve();
+      }
     });
 
     expect(storeState.setActiveContext).not.toHaveBeenCalled();
+    expect(backendApp.DBGetColumns).not.toHaveBeenCalled();
+    expect(backendApp.DBTableExists).toHaveBeenCalledWith(
+      expect.anything(),
+      'mkefu_location_dev_local',
+      'fs_mkefu_regist_record',
+    );
+    expect(backendApp.DBGetTables).toHaveBeenCalledTimes(1);
     expect(storeState.addTab).toHaveBeenCalledWith(expect.objectContaining({
       type: 'table',
       connectionId: 'conn-1',
@@ -4465,6 +5018,660 @@ describe('QueryEditor external SQL save', () => {
     }));
     expect(preventDefault).toHaveBeenCalled();
     expect(stopPropagation).toHaveBeenCalled();
+  });
+
+  it('revalidates fresh table metadata and ignores a stale cmd-click table link', async () => {
+    editorState.value = 'select * from customr;';
+    autoFetchState.visible = true;
+    backendApp.DBGetDatabases.mockResolvedValueOnce({ success: true, data: [{ Database: 'mkefu_ai_dev' }] });
+    backendApp.DBGetTables.mockResolvedValueOnce({
+      success: true,
+      data: [{ Tables_in_mkefu_ai_dev: 'customr' }],
+    });
+    backendApp.DBGetAllColumns.mockResolvedValueOnce({ success: true, data: [] });
+
+    await act(async () => {
+      create(<QueryEditor tab={createTab({ query: editorState.value, dbName: 'mkefu_ai_dev' })} />);
+    });
+    await act(async () => {
+      for (let i = 0; i < 8; i += 1) {
+        await Promise.resolve();
+      }
+    });
+
+    backendApp.DBTableExists.mockResolvedValueOnce({ success: true, data: { exists: false } });
+    const preventDefault = vi.fn();
+    const stopPropagation = vi.fn();
+
+    await act(async () => {
+      editorState.mouseMoveListeners[0]?.({
+        target: { position: { lineNumber: 1, column: 'select * from customr'.length } },
+        event: { ctrlKey: false, metaKey: true },
+      });
+    });
+    expect(editorState.domNode.style.cursor).toBe('pointer');
+
+    await act(async () => {
+      editorState.mouseDownListeners[0]?.({
+        target: { position: { lineNumber: 1, column: 'select * from customr'.length } },
+        event: {
+          browserEvent: { button: 0, buttons: 1 },
+          ctrlKey: false,
+          metaKey: true,
+          preventDefault,
+          stopPropagation,
+        },
+      });
+      for (let i = 0; i < 8; i += 1) {
+        await Promise.resolve();
+      }
+    });
+
+    expect(backendApp.DBGetColumns).not.toHaveBeenCalled();
+    expect(backendApp.DBTableExists).toHaveBeenCalledWith(expect.anything(), 'mkefu_ai_dev', 'customr');
+    expect(backendApp.DBGetTables).toHaveBeenCalledTimes(1);
+    expect(storeState.addTab).not.toHaveBeenCalled();
+    expect(messageApi.warning).toHaveBeenCalledWith('表 customr 已不存在，已刷新 SQL 编辑器元数据。');
+    expect(preventDefault).toHaveBeenCalled();
+    expect(stopPropagation).toHaveBeenCalled();
+    expect(editorState.domNode.style.cursor).toBe('');
+    expect(editorState.editor.updateOptions).toHaveBeenLastCalledWith({ mouseStyle: 'text' });
+
+    backendApp.DBGetColumns.mockClear();
+    backendApp.DBGetTables.mockClear();
+    backendApp.DBTableExists.mockClear();
+    await act(async () => {
+      editorState.mouseDownListeners[0]?.({
+        target: { position: { lineNumber: 1, column: 'select * from customr'.length } },
+        event: {
+          browserEvent: { button: 0, buttons: 1 },
+          ctrlKey: false,
+          metaKey: true,
+          preventDefault: vi.fn(),
+          stopPropagation: vi.fn(),
+        },
+      });
+      await Promise.resolve();
+    });
+
+    expect(backendApp.DBGetColumns).not.toHaveBeenCalled();
+    expect(backendApp.DBGetTables).not.toHaveBeenCalled();
+    expect(backendApp.DBTableExists).not.toHaveBeenCalled();
+    expect(storeState.addTab).not.toHaveBeenCalled();
+  });
+
+  it('does not treat a same-name table in another schema as the deleted navigation target', async () => {
+    editorState.value = 'select * from dbo.users;';
+    autoFetchState.visible = true;
+    backendApp.DBGetDatabases.mockResolvedValueOnce({ success: true, data: [{ Database: 'main' }] });
+    backendApp.DBGetTables.mockResolvedValueOnce({
+      success: true,
+      data: [{ Table: 'dbo.users' }, { Table: 'audit.users' }],
+    });
+    backendApp.DBGetAllColumns.mockResolvedValueOnce({ success: true, data: [] });
+    backendApp.DBTableExists.mockResolvedValueOnce({ success: true, data: { exists: false } });
+
+    await act(async () => {
+      create(<QueryEditor tab={createTab({ query: editorState.value, dbName: 'main' })} />);
+    });
+    await act(async () => {
+      for (let i = 0; i < 8; i += 1) {
+        await Promise.resolve();
+      }
+    });
+    await act(async () => {
+      editorState.mouseDownListeners[0]?.({
+        target: { position: { lineNumber: 1, column: 'select * from dbo.users'.length } },
+        event: {
+          browserEvent: { button: 0, buttons: 1 },
+          ctrlKey: false,
+          metaKey: true,
+          preventDefault: vi.fn(),
+          stopPropagation: vi.fn(),
+        },
+      });
+      for (let i = 0; i < 6; i += 1) {
+        await Promise.resolve();
+      }
+    });
+
+    expect(backendApp.DBTableExists).toHaveBeenCalledWith(expect.anything(), 'main', 'dbo.users');
+    expect(storeState.addTab).not.toHaveBeenCalled();
+    expect(messageApi.warning).toHaveBeenCalledWith('表 dbo.users 已不存在，已刷新 SQL 编辑器元数据。');
+
+    backendApp.DBTableExists.mockClear();
+    storeState.addTab.mockClear();
+    editorState.value = 'select * from audit.users;';
+    await act(async () => {
+      editorState.mouseDownListeners[0]?.({
+        target: { position: { lineNumber: 1, column: 'select * from audit.users'.length } },
+        event: {
+          browserEvent: { button: 0, buttons: 1 },
+          ctrlKey: false,
+          metaKey: true,
+          preventDefault: vi.fn(),
+          stopPropagation: vi.fn(),
+        },
+      });
+      for (let i = 0; i < 6; i += 1) {
+        await Promise.resolve();
+      }
+    });
+
+    expect(backendApp.DBTableExists).toHaveBeenCalledWith(expect.anything(), 'main', 'audit.users');
+    expect(storeState.addTab).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'table',
+      dbName: 'main',
+      tableName: 'audit.users',
+    }));
+  });
+
+  it('does not restore a missing table from a metadata request that started before validation', async () => {
+    editorState.value = 'select * from customr;';
+    autoFetchState.visible = true;
+    backendApp.DBGetDatabases.mockResolvedValueOnce({ success: true, data: [{ Database: 'mkefu_ai_dev' }] });
+    backendApp.DBGetTables.mockResolvedValueOnce({
+      success: true,
+      data: [{ Tables_in_mkefu_ai_dev: 'customr' }],
+    });
+    let resolveColumns: ((value: { success: boolean; data: Array<Record<string, string>> }) => void) | undefined;
+    backendApp.DBGetAllColumns.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveColumns = resolve;
+    }));
+    backendApp.DBTableExists.mockResolvedValueOnce({ success: true, data: { exists: false } });
+
+    await act(async () => {
+      create(<QueryEditor tab={createTab({ query: editorState.value, dbName: 'mkefu_ai_dev' })} />);
+    });
+    await act(async () => {
+      for (let i = 0; i < 8; i += 1) {
+        await Promise.resolve();
+      }
+    });
+
+    const clickCustomr = () => editorState.mouseDownListeners[0]?.({
+      target: { position: { lineNumber: 1, column: 'select * from customr'.length } },
+      event: {
+        browserEvent: { button: 0, buttons: 1 },
+        ctrlKey: false,
+        metaKey: true,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      },
+    });
+    await act(async () => {
+      clickCustomr();
+      for (let i = 0; i < 6; i += 1) {
+        await Promise.resolve();
+      }
+    });
+    expect(messageApi.warning).toHaveBeenCalledWith('表 customr 已不存在，已刷新 SQL 编辑器元数据。');
+
+    await act(async () => {
+      resolveColumns?.({
+        success: true,
+        data: [{ tableName: 'customr', name: 'id', type: 'bigint' }],
+      });
+      for (let i = 0; i < 8; i += 1) {
+        await Promise.resolve();
+      }
+    });
+
+    backendApp.DBTableExists.mockClear();
+    storeState.addTab.mockClear();
+    await act(async () => {
+      clickCustomr();
+      for (let i = 0; i < 4; i += 1) {
+        await Promise.resolve();
+      }
+    });
+
+    expect(backendApp.DBTableExists).not.toHaveBeenCalled();
+    expect(storeState.addTab).not.toHaveBeenCalled();
+  });
+
+  it('keeps table navigation available when existence validation fails', async () => {
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    try {
+      editorState.value = 'select * from customer;';
+      autoFetchState.visible = true;
+      backendApp.DBGetDatabases.mockResolvedValueOnce({ success: true, data: [{ Database: 'main' }] });
+      backendApp.DBGetTables.mockResolvedValueOnce({
+        success: true,
+        data: [{ Tables_in_main: 'customer' }],
+      });
+      backendApp.DBGetAllColumns.mockResolvedValueOnce({ success: true, data: [] });
+
+      await act(async () => {
+        create(<QueryEditor tab={createTab({ query: editorState.value, dbName: 'main' })} />);
+      });
+      await act(async () => {
+        for (let i = 0; i < 8; i += 1) {
+          await Promise.resolve();
+        }
+      });
+
+      backendApp.DBTableExists.mockRejectedValueOnce(new Error('metadata unavailable'));
+      await act(async () => {
+        editorState.mouseDownListeners[0]?.({
+          target: { position: { lineNumber: 1, column: 'select * from customer'.length } },
+          event: {
+            browserEvent: { button: 0, buttons: 1 },
+            ctrlKey: false,
+            metaKey: true,
+            preventDefault: vi.fn(),
+            stopPropagation: vi.fn(),
+          },
+        });
+        for (let i = 0; i < 8; i += 1) {
+          await Promise.resolve();
+        }
+      });
+
+      expect(backendApp.DBGetTables).toHaveBeenCalledTimes(1);
+      expect(backendApp.DBTableExists).toHaveBeenCalledWith(expect.anything(), 'main', 'customer');
+      expect(backendApp.DBGetColumns).not.toHaveBeenCalled();
+      expect(storeState.addTab).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'table',
+        connectionId: 'conn-1',
+        dbName: 'main',
+        tableName: 'customer',
+      }));
+      expect(messageApi.warning).not.toHaveBeenCalled();
+    } finally {
+      consoleWarnSpy.mockRestore();
+    }
+  });
+
+  it('ignores a table navigation response after the query editor becomes inactive', async () => {
+    editorState.value = 'select * from customer;';
+    autoFetchState.visible = true;
+    backendApp.DBGetDatabases.mockResolvedValueOnce({ success: true, data: [{ Database: 'main' }] });
+    backendApp.DBGetTables.mockResolvedValueOnce({
+      success: true,
+      data: [{ Tables_in_main: 'customer' }],
+    });
+    backendApp.DBGetAllColumns.mockResolvedValueOnce({ success: true, data: [] });
+
+    let resolveValidation: ((value: { success: boolean; data: { exists: boolean } }) => void) | undefined;
+    backendApp.DBTableExists.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveValidation = resolve;
+    }));
+
+    let renderer: ReactTestRenderer;
+    const tab = createTab({ query: editorState.value, dbName: 'main' });
+    await act(async () => {
+      renderer = create(<QueryEditor tab={tab} />);
+    });
+    await act(async () => {
+      for (let i = 0; i < 8; i += 1) {
+        await Promise.resolve();
+      }
+    });
+
+    await act(async () => {
+      editorState.mouseDownListeners[0]?.({
+        target: { position: { lineNumber: 1, column: 'select * from customer'.length } },
+        event: {
+          browserEvent: { button: 0, buttons: 1 },
+          ctrlKey: false,
+          metaKey: true,
+          preventDefault: vi.fn(),
+          stopPropagation: vi.fn(),
+        },
+      });
+      await Promise.resolve();
+    });
+
+    expect(backendApp.DBGetTables).toHaveBeenCalledTimes(1);
+    expect(backendApp.DBTableExists).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      renderer!.update(<QueryEditor tab={tab} isActive={false} />);
+    });
+    await act(async () => {
+      resolveValidation?.({ success: true, data: { exists: true } });
+      for (let i = 0; i < 4; i += 1) {
+        await Promise.resolve();
+      }
+    });
+
+    expect(backendApp.DBGetColumns).not.toHaveBeenCalled();
+    expect(storeState.addTab).not.toHaveBeenCalled();
+    expect(messageApi.warning).not.toHaveBeenCalled();
+  });
+
+  it('ignores a table navigation response after the Monaco editor is disposed', async () => {
+    editorState.value = 'select * from customer;';
+    autoFetchState.visible = true;
+    backendApp.DBGetDatabases.mockResolvedValueOnce({ success: true, data: [{ Database: 'main' }] });
+    backendApp.DBGetTables.mockResolvedValueOnce({
+      success: true,
+      data: [{ Tables_in_main: 'customer' }],
+    });
+    backendApp.DBGetAllColumns.mockResolvedValueOnce({ success: true, data: [] });
+
+    let resolveValidation: ((value: { success: boolean; data: { exists: boolean } }) => void) | undefined;
+    backendApp.DBTableExists.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveValidation = resolve;
+    }));
+
+    await act(async () => {
+      create(<QueryEditor tab={createTab({ query: editorState.value, dbName: 'main' })} />);
+    });
+    await act(async () => {
+      for (let i = 0; i < 8; i += 1) {
+        await Promise.resolve();
+      }
+    });
+    await act(async () => {
+      editorState.mouseDownListeners[0]?.({
+        target: { position: { lineNumber: 1, column: 'select * from customer'.length } },
+        event: {
+          browserEvent: { button: 0, buttons: 1 },
+          ctrlKey: false,
+          metaKey: true,
+          preventDefault: vi.fn(),
+          stopPropagation: vi.fn(),
+        },
+      });
+      await Promise.resolve();
+    });
+
+    const mountedModel = editorState.editor.getModel();
+    editorState.editor.getModel.mockReturnValue(null);
+    try {
+      await act(async () => {
+        resolveValidation?.({ success: true, data: { exists: false } });
+        for (let i = 0; i < 4; i += 1) {
+          await Promise.resolve();
+        }
+      });
+
+      expect(backendApp.DBTableExists).toHaveBeenCalledTimes(1);
+      expect(storeState.addTab).not.toHaveBeenCalled();
+      expect(messageApi.warning).not.toHaveBeenCalled();
+    } finally {
+      editorState.editor.getModel.mockReturnValue(mountedModel);
+    }
+  });
+
+  it('ignores a table navigation response after switching databases on the same connection', async () => {
+    editorState.value = 'select * from customer;';
+    autoFetchState.visible = true;
+    backendApp.DBGetDatabases.mockResolvedValueOnce({
+      success: true,
+      data: [{ Database: 'main' }, { Database: 'archive' }],
+    });
+    backendApp.DBGetTables.mockResolvedValueOnce({
+      success: true,
+      data: [{ Tables_in_main: 'customer' }],
+    });
+    backendApp.DBGetAllColumns.mockResolvedValueOnce({ success: true, data: [] });
+
+    let resolveValidation: ((value: { success: boolean; data: { exists: boolean } }) => void) | undefined;
+    backendApp.DBTableExists.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveValidation = resolve;
+    }));
+
+    let renderer: ReactTestRenderer;
+    const tab = createTab({ query: editorState.value, dbName: 'main' });
+    await act(async () => {
+      renderer = create(<QueryEditor tab={tab} />);
+    });
+    await act(async () => {
+      for (let i = 0; i < 8; i += 1) {
+        await Promise.resolve();
+      }
+    });
+    await act(async () => {
+      editorState.mouseDownListeners[0]?.({
+        target: { position: { lineNumber: 1, column: 'select * from customer'.length } },
+        event: {
+          browserEvent: { button: 0, buttons: 1 },
+          ctrlKey: false,
+          metaKey: true,
+          preventDefault: vi.fn(),
+          stopPropagation: vi.fn(),
+        },
+      });
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      renderer!.update(<QueryEditor tab={{ ...tab, dbName: 'archive' }} />);
+      for (let i = 0; i < 4; i += 1) {
+        await Promise.resolve();
+      }
+    });
+    await act(async () => {
+      resolveValidation?.({ success: true, data: { exists: true } });
+      for (let i = 0; i < 4; i += 1) {
+        await Promise.resolve();
+      }
+    });
+
+    expect(backendApp.DBTableExists).toHaveBeenCalledWith(expect.anything(), 'main', 'customer');
+    expect(storeState.addTab).not.toHaveBeenCalled();
+    expect(messageApi.warning).not.toHaveBeenCalled();
+  });
+
+  it('ignores a table navigation response after replacing the config of the same connection', async () => {
+    editorState.value = 'select * from customer;';
+    autoFetchState.visible = true;
+    backendApp.DBGetDatabases.mockResolvedValueOnce({ success: true, data: [{ Database: 'main' }] });
+    backendApp.DBGetTables.mockResolvedValueOnce({
+      success: true,
+      data: [{ Tables_in_main: 'customer' }],
+    });
+    backendApp.DBGetAllColumns.mockResolvedValueOnce({ success: true, data: [] });
+
+    let resolveValidation: ((value: { success: boolean; data: { exists: boolean } }) => void) | undefined;
+    backendApp.DBTableExists.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveValidation = resolve;
+    }));
+
+    await act(async () => {
+      create(<QueryEditor tab={createTab({ query: editorState.value, dbName: 'main' })} />);
+    });
+    await act(async () => {
+      for (let i = 0; i < 8; i += 1) {
+        await Promise.resolve();
+      }
+    });
+    await act(async () => {
+      editorState.mouseDownListeners[0]?.({
+        target: { position: { lineNumber: 1, column: 'select * from customer'.length } },
+        event: {
+          browserEvent: { button: 0, buttons: 1 },
+          ctrlKey: false,
+          metaKey: true,
+          preventDefault: vi.fn(),
+          stopPropagation: vi.fn(),
+        },
+      });
+      await Promise.resolve();
+    });
+
+    storeState.connections = storeState.connections.map((connection) => (
+      connection.id === 'conn-1'
+        ? { ...connection, config: { ...connection.config, host: '10.0.0.2' } }
+        : connection
+    ));
+    await act(async () => {
+      notifyStoreSubscribers();
+      for (let i = 0; i < 4; i += 1) {
+        await Promise.resolve();
+      }
+    });
+    await act(async () => {
+      resolveValidation?.({ success: true, data: { exists: true } });
+      for (let i = 0; i < 4; i += 1) {
+        await Promise.resolve();
+      }
+    });
+
+    expect(backendApp.DBTableExists).toHaveBeenCalledTimes(1);
+    expect(storeState.addTab).not.toHaveBeenCalled();
+    expect(messageApi.warning).not.toHaveBeenCalled();
+  });
+
+  it('fails open when table existence validation times out', async () => {
+    vi.useFakeTimers();
+    try {
+      editorState.value = 'select * from customer;';
+      autoFetchState.visible = true;
+      backendApp.DBGetDatabases.mockResolvedValueOnce({ success: true, data: [{ Database: 'main' }] });
+      backendApp.DBGetTables.mockResolvedValueOnce({
+        success: true,
+        data: [{ Tables_in_main: 'customer' }],
+      });
+      backendApp.DBGetAllColumns.mockResolvedValueOnce({ success: true, data: [] });
+      backendApp.DBTableExists.mockImplementationOnce(() => new Promise(() => undefined));
+
+      await act(async () => {
+        create(<QueryEditor tab={createTab({ query: editorState.value, dbName: 'main' })} />);
+      });
+      await act(async () => {
+        for (let i = 0; i < 8; i += 1) {
+          await Promise.resolve();
+        }
+      });
+      await act(async () => {
+        editorState.mouseDownListeners[0]?.({
+          target: { position: { lineNumber: 1, column: 'select * from customer'.length } },
+          event: {
+            browserEvent: { button: 0, buttons: 1 },
+            ctrlKey: false,
+            metaKey: true,
+            preventDefault: vi.fn(),
+            stopPropagation: vi.fn(),
+          },
+        });
+        await Promise.resolve();
+      });
+
+      expect(storeState.addTab).not.toHaveBeenCalled();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+        for (let i = 0; i < 4; i += 1) {
+          await Promise.resolve();
+        }
+      });
+
+      expect(backendApp.DBTableExists).toHaveBeenCalledTimes(1);
+      expect(storeState.addTab).toHaveBeenCalledTimes(1);
+      expect(storeState.addTab).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'table',
+        dbName: 'main',
+        tableName: 'customer',
+      }));
+      expect(messageApi.warning).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('performs one table navigation action for repeated clicks on the same pending target', async () => {
+    editorState.value = 'select * from customer;';
+    autoFetchState.visible = true;
+    backendApp.DBGetDatabases.mockResolvedValueOnce({ success: true, data: [{ Database: 'main' }] });
+    backendApp.DBGetTables.mockResolvedValueOnce({
+      success: true,
+      data: [{ Tables_in_main: 'customer' }],
+    });
+    backendApp.DBGetAllColumns.mockResolvedValueOnce({ success: true, data: [] });
+    let resolveValidation: ((value: { success: boolean; data: { exists: boolean } }) => void) | undefined;
+    backendApp.DBTableExists.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveValidation = resolve;
+    }));
+
+    await act(async () => {
+      create(<QueryEditor tab={createTab({ query: editorState.value, dbName: 'main' })} />);
+    });
+    await act(async () => {
+      for (let i = 0; i < 8; i += 1) {
+        await Promise.resolve();
+      }
+    });
+
+    const clickCustomer = () => editorState.mouseDownListeners[0]?.({
+      target: { position: { lineNumber: 1, column: 'select * from customer'.length } },
+      event: {
+        browserEvent: { button: 0, buttons: 1 },
+        ctrlKey: false,
+        metaKey: true,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      },
+    });
+    await act(async () => {
+      clickCustomer();
+      clickCustomer();
+      await Promise.resolve();
+    });
+    expect(backendApp.DBTableExists).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveValidation?.({ success: true, data: { exists: true } });
+      for (let i = 0; i < 6; i += 1) {
+        await Promise.resolve();
+      }
+    });
+
+    expect(storeState.addTab).toHaveBeenCalledTimes(1);
+    expect(messageApi.warning).not.toHaveBeenCalled();
+  });
+
+  it('validates concurrent table links independently and clears each missing target', async () => {
+    editorState.value = 'select * from alpha join beta on alpha.id = beta.id;';
+    autoFetchState.visible = true;
+    backendApp.DBGetDatabases.mockResolvedValueOnce({ success: true, data: [{ Database: 'main' }] });
+    backendApp.DBGetTables.mockResolvedValueOnce({
+      success: true,
+      data: [{ Tables_in_main: 'alpha' }, { Tables_in_main: 'beta' }],
+    });
+    backendApp.DBGetAllColumns.mockResolvedValueOnce({ success: true, data: [] });
+
+    backendApp.DBTableExists.mockResolvedValue({ success: true, data: { exists: false } });
+
+    await act(async () => {
+      create(<QueryEditor tab={createTab({ query: editorState.value, dbName: 'main' })} />);
+    });
+    await act(async () => {
+      for (let i = 0; i < 8; i += 1) {
+        await Promise.resolve();
+      }
+    });
+
+    const clickTable = (tableName: string) => {
+      editorState.mouseDownListeners[0]?.({
+        target: { position: { lineNumber: 1, column: editorState.value.indexOf(tableName) + 2 } },
+        event: {
+          browserEvent: { button: 0, buttons: 1 },
+          ctrlKey: false,
+          metaKey: true,
+          preventDefault: vi.fn(),
+          stopPropagation: vi.fn(),
+        },
+      });
+    };
+    await act(async () => {
+      clickTable('alpha');
+      clickTable('beta');
+      for (let i = 0; i < 6; i += 1) {
+        await Promise.resolve();
+      }
+    });
+
+    expect(backendApp.DBGetTables).toHaveBeenCalledTimes(1);
+    expect(backendApp.DBTableExists).toHaveBeenCalledTimes(2);
+    expect(backendApp.DBTableExists).toHaveBeenCalledWith(expect.anything(), 'main', 'alpha');
+    expect(backendApp.DBTableExists).toHaveBeenCalledWith(expect.anything(), 'main', 'beta');
+    expect(backendApp.DBGetColumns).not.toHaveBeenCalled();
+    expect(storeState.addTab).not.toHaveBeenCalled();
+    expect(messageApi.warning).toHaveBeenCalledWith('表 alpha 已不存在，已刷新 SQL 编辑器元数据。');
+    expect(messageApi.warning).toHaveBeenCalledWith('表 beta 已不存在，已刷新 SQL 编辑器元数据。');
   });
 
   it('opens a routine object-edit tab on ctrl click without locating the sidebar tree', async () => {
@@ -4645,6 +5852,9 @@ describe('QueryEditor external SQL save', () => {
           stopPropagation,
         },
       });
+      for (let i = 0; i < 4; i += 1) {
+        await Promise.resolve();
+      }
     });
 
     expect(editorState.editor.getModel().getValueLength).not.toHaveBeenCalled();
@@ -4811,6 +6021,9 @@ describe('QueryEditor external SQL save', () => {
           stopPropagation,
         },
       });
+      for (let i = 0; i < 4; i += 1) {
+        await Promise.resolve();
+      }
     });
 
     expect(storeState.addTab).toHaveBeenCalledWith(expect.objectContaining({
@@ -4860,6 +6073,9 @@ describe('QueryEditor external SQL save', () => {
           stopPropagation,
         },
       });
+      for (let i = 0; i < 4; i += 1) {
+        await Promise.resolve();
+      }
     });
 
     expect(storeState.addTab).toHaveBeenCalledWith(expect.objectContaining({
@@ -7197,6 +8413,45 @@ describe('QueryEditor external SQL save', () => {
       expect(completionItems?.suggestions?.some((item: any) => item?.label === 'sbdev.SBDEV.AAA3_NJ')).toBe(false);
     });
 
+    it('keeps a dotted Dameng owner intact in table completion detail', async () => {
+      storeState.languagePreference = 'zh-CN';
+      setCurrentLanguage('zh-CN');
+      storeState.connections[0].config.type = 'dameng';
+      storeState.connections[0].config.database = 'PEM2.4_V1_1';
+      editorState.value = 'select * from COM';
+      autoFetchState.visible = true;
+      backendApp.DBGetDatabases.mockResolvedValueOnce({
+        success: true,
+        data: [{ Database: 'PEM2.4_V1_1' }],
+      });
+      backendApp.DBGetTables.mockResolvedValueOnce({
+        success: true,
+        data: [{ Table: 'PEM2.4_V1_1.COM_APPROVE_INFO' }],
+      });
+      backendApp.DBGetAllColumns.mockResolvedValueOnce({ success: true, data: [] });
+
+      await act(async () => {
+        create(<QueryEditor tab={createTab({ query: editorState.value, dbName: 'PEM2.4_V1_1' })} />);
+      });
+      await act(async () => {
+        for (let index = 0; index < 6; index += 1) {
+          await Promise.resolve();
+        }
+      });
+
+      const completionProvider = findSqlCompletionProvider();
+      expect(completionProvider).toBeTruthy();
+      const completionItems = await completionProvider.provideCompletionItems(
+        editorState.editor.getModel(),
+        { lineNumber: 1, column: editorState.value.length + 1 },
+      );
+      const tableSuggestion = completionItems?.suggestions?.find((item: any) => item?.label === 'COM_APPROVE_INFO');
+
+      expect(tableSuggestion).toBeTruthy();
+      expect(tableSuggestion.detail).toContain('表 (PEM2.4_V1_1)');
+      expect(tableSuggestion.detail).not.toBe('表 (4_V1_1)');
+    });
+
     it('localizes schema-qualified table completion detail in zh-CN while preserving the raw database and schema names', async () => {
       storeState.languagePreference = 'zh-CN';
       setCurrentLanguage('zh-CN');
@@ -8870,6 +10125,117 @@ END;`;
     expect(messageApi.success).toHaveBeenCalledWith('查询已保存。');
   });
 
+  it('registers Cmd/Ctrl+Shift+S to open save as for a saved query', async () => {
+    const windowListeners: Record<string, ((event?: any) => void)[]> = {};
+    vi.stubGlobal('window', {
+      addEventListener: vi.fn((type: string, listener: (event?: any) => void) => {
+        windowListeners[type] ||= [];
+        windowListeners[type].push(listener);
+      }),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    });
+
+    storeState.savedQueries = [
+      {
+        id: 'saved-1',
+        name: '常用查询',
+        sql: 'select 1;',
+        connectionId: 'conn-1',
+        dbName: 'main',
+        createdAt: 100,
+      },
+    ];
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ savedQueryId: 'saved-1' })} />);
+    });
+
+    const saveAsAction = findEditorAction('gonavi.saveQueryAs');
+    expect(saveAsAction).toMatchObject({
+      label: 'GoNavi: 查询另存为',
+      keybindings: [2048 | 1024 | 83],
+    });
+    expect(textContent(findButton(renderer, '另存为'))).toContain('⌘⇧S');
+
+    const event = {
+      ctrlKey: false,
+      metaKey: true,
+      altKey: false,
+      shiftKey: true,
+      key: 's',
+      target: null,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+
+    await act(async () => {
+      windowListeners.keydown?.forEach((listener) => listener(event));
+    });
+
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(event.stopPropagation).toHaveBeenCalled();
+    expect(saveQueryNameInputFocus).toHaveBeenCalledWith({ cursor: 'all' });
+    expect(storeState.saveQuery).not.toHaveBeenCalled();
+  });
+
+  it('does not consume Cmd/Ctrl+Shift+S for new or external SQL query tabs', async () => {
+    const windowListeners: Record<string, ((event?: any) => void)[]> = {};
+    vi.stubGlobal('window', {
+      addEventListener: vi.fn((type: string, listener: (event?: any) => void) => {
+        windowListeners[type] ||= [];
+        windowListeners[type].push(listener);
+      }),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    });
+
+    await act(async () => {
+      create(<QueryEditor tab={createTab({ title: '新建查询' })} />);
+    });
+
+    const newQueryEvent = {
+      ctrlKey: false,
+      metaKey: true,
+      altKey: false,
+      shiftKey: true,
+      key: 's',
+      target: null,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    await act(async () => {
+      windowListeners.keydown?.forEach((listener) => listener(newQueryEvent));
+    });
+    expect(newQueryEvent.preventDefault).not.toHaveBeenCalled();
+    expect(newQueryEvent.stopPropagation).not.toHaveBeenCalled();
+    expect(saveQueryNameInputFocus).not.toHaveBeenCalled();
+
+    let externalRenderer!: ReactTestRenderer;
+    await act(async () => {
+      externalRenderer = create(<QueryEditor tab={createTab({ filePath: '/tmp/report.sql' })} />);
+    });
+
+    const externalQueryEvent = {
+      ctrlKey: false,
+      metaKey: true,
+      altKey: false,
+      shiftKey: true,
+      key: 's',
+      target: null,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    await act(async () => {
+      windowListeners.keydown?.forEach((listener) => listener(externalQueryEvent));
+    });
+    expect(externalQueryEvent.preventDefault).not.toHaveBeenCalled();
+    expect(externalQueryEvent.stopPropagation).not.toHaveBeenCalled();
+    expect(saveQueryNameInputFocus).not.toHaveBeenCalled();
+    externalRenderer.unmount();
+  });
+
   it('allows Ctrl/Cmd+S to save external SQL files from document-level targets', async () => {
     const windowListeners: Record<string, ((event?: any) => void)[]> = {};
     vi.stubGlobal('window', {
@@ -8932,6 +10298,20 @@ END;`;
     expect(messageApi.error).toHaveBeenCalledWith('保存 SQL 文件失败：磁盘只读');
   });
 
+  it('focuses the query name input when first saving a new query', async () => {
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ title: '新建查询' })} />);
+    });
+
+    await act(async () => {
+      findButton(renderer!, '保存').props.onClick();
+      await Promise.resolve();
+    });
+
+    expect(saveQueryNameInputFocus).toHaveBeenCalledWith({ cursor: 'all' });
+  });
+
   it('keeps saved query quick-save behavior for non-file tabs', async () => {
     storeState.savedQueries = [
       {
@@ -8976,6 +10356,86 @@ END;`;
       createdAt: 100,
     }));
     expect(getQueryTabDraft('tab-1')).toBe('');
+  });
+
+  it('saves a copy of an existing query without overwriting the original', async () => {
+    const originalQuery: SavedQuery = {
+      id: 'saved-1',
+      name: '常用查询',
+      sql: 'select 1;',
+      connectionId: 'conn-1',
+      dbName: 'main',
+      createdAt: 100,
+    };
+    storeState.savedQueries = [originalQuery];
+    const sourceTab = createTab({
+      id: originalQuery.id,
+      title: originalQuery.name,
+      query: originalQuery.sql,
+      savedQueryId: originalQuery.id,
+    });
+    storeState.tabs = [sourceTab];
+    storeState.addTab.mockImplementation((nextTab: TabData) => {
+      const existingIndex = storeState.tabs.findIndex((item) => item.id === nextTab.id);
+      storeState.tabs = existingIndex >= 0
+        ? storeState.tabs.map((item, index) => index === existingIndex ? { ...item, ...nextTab } : item)
+        : [...storeState.tabs, nextTab];
+      storeState.activeTabId = nextTab.id;
+      notifyStoreSubscribers();
+    });
+    storeState.saveQuery.mockImplementation(async (savedQuery: SavedQuery) => {
+      const existing = storeState.savedQueries.some((item) => item.id === savedQuery.id);
+      storeState.savedQueries = existing
+        ? storeState.savedQueries.map((item) => item.id === savedQuery.id ? savedQuery : item)
+        : [...storeState.savedQueries, savedQuery];
+      notifyStoreSubscribers();
+      return savedQuery;
+    });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={sourceTab} />);
+    });
+
+    await act(async () => {
+      editorState.value = 'select 9;';
+      editorState.latestOnChange?.(editorState.value);
+      findButton(renderer!, '另存为').props.onClick();
+    });
+    await act(async () => {
+      const saveAsButtons = renderer!.root.findAll(
+        (node) => node.type === 'button' && textContent(node) === '另存为',
+      );
+      await saveAsButtons[saveAsButtons.length - 1]?.props.onClick();
+    });
+
+    const copiedQuery = storeState.saveQuery.mock.calls[0]?.[0] as SavedQuery;
+    expect(copiedQuery).toEqual(expect.objectContaining({
+      name: '查询',
+      sql: 'select 9;',
+      connectionId: 'conn-1',
+      dbName: 'main',
+    }));
+    expect(copiedQuery.id).not.toBe(originalQuery.id);
+    expect(copiedQuery.createdAt).not.toBe(originalQuery.createdAt);
+    expect(storeState.savedQueries).toEqual(expect.arrayContaining([originalQuery, copiedQuery]));
+    expect(storeState.addTab).toHaveBeenLastCalledWith(expect.objectContaining({
+      id: copiedQuery.id,
+      title: '查询',
+      savedQueryId: copiedQuery.id,
+      query: 'select 9;',
+    }));
+    expect(storeState.tabs).toEqual(expect.arrayContaining([
+      sourceTab,
+      expect.objectContaining({
+        id: copiedQuery.id,
+        savedQueryId: copiedQuery.id,
+        query: 'select 9;',
+      }),
+    ]));
+    expect(storeState.activeTabId).toBe(copiedQuery.id);
+    expect(getQueryTabDraft(sourceTab.id)).toBe('select 9;');
+    expect(getQueryTabDraft(copiedQuery.id)).toBe('');
   });
 
   it('keeps edits made while a saved-query write is pending', async () => {
@@ -9295,6 +10755,43 @@ END;`;
     expect(messageApi.success).toHaveBeenCalledWith('查询已重命名。');
   });
 
+  it('opens the existing rename flow for the query tab context-menu request', async () => {
+    storeState.savedQueries = [
+      {
+        id: 'saved-1',
+        name: '常用查询',
+        sql: 'select 1;',
+        connectionId: 'conn-1',
+        dbName: 'main',
+        createdAt: 100,
+      },
+    ];
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ savedQueryId: 'saved-1' })} />);
+    });
+
+    const renameRequestListenerCalls = (window.addEventListener as any).mock.calls
+      .filter(([eventName]: [string]) => eventName === QUERY_TAB_RENAME_REQUEST_EVENT);
+    const renameRequestListener = renameRequestListenerCalls[renameRequestListenerCalls.length - 1]?.[1];
+    expect(renameRequestListener).toBeTypeOf('function');
+
+    await act(async () => {
+      renameRequestListener(new CustomEvent(QUERY_TAB_RENAME_REQUEST_EVENT, {
+        detail: { tabId: 'another-tab' },
+      }));
+    });
+    expect(findExactButton(renderer!, '重命名')).toBeUndefined();
+
+    await act(async () => {
+      renameRequestListener(new CustomEvent(QUERY_TAB_RENAME_REQUEST_EVENT, {
+        detail: { tabId: 'tab-1' },
+      }));
+    });
+    expect(findExactButton(renderer!, '重命名')).toBeTruthy();
+  });
+
   it('exports the current editor SQL without changing saved query state', async () => {
     storeState.savedQueries = [
       {
@@ -9477,6 +10974,23 @@ END;`;
       executionDurationMs: expect.any(Number),
     });
 
+    const latestConnectionSelect = [...antdSelectState.props].reverse().find((props) => (
+      props.placeholder === catalogs['zh-CN']['query_editor.placeholder.connection']
+    ));
+    const latestDatabaseSelect = [...antdSelectState.props].reverse().find((props) => (
+      props.placeholder === catalogs['zh-CN']['query_editor.placeholder.database']
+    ));
+    expect(latestConnectionSelect?.disabled).toBe(true);
+    expect(latestDatabaseSelect?.disabled).toBe(true);
+
+    await act(async () => {
+      latestDatabaseSelect?.onChange('analytics');
+    });
+    expect(storeState.updateQueryTabDraft).not.toHaveBeenCalledWith(
+      'tab-1',
+      expect.objectContaining({ dbName: 'analytics' }),
+    );
+
     await act(async () => {
       await findButton(renderer!, '提交').props.onClick();
     });
@@ -9492,6 +11006,54 @@ END;`;
       dbName: 'main',
     }));
     expect(textContent(renderer!.root)).not.toContain('未提交');
+  });
+
+  it('locks the query context while a managed transaction request is in flight', async () => {
+    let resolveTransaction!: (value: any) => void;
+    backendApp.DBQueryMultiTransactional.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveTransaction = resolve;
+    }));
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ query: "UPDATE users SET name = 'new' WHERE id = 1" })} />);
+    });
+
+    let runPromise!: Promise<void>;
+    await act(async () => {
+      runPromise = Promise.resolve(findButton(renderer!, '运行').props.onClick());
+      await vi.waitFor(() => {
+        expect(backendApp.DBQueryMultiTransactional).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    const inFlightToolbar = renderer.root.findByType(QueryEditorToolbar);
+    expect(inFlightToolbar.props.contextSelectionDisabled).toBe(true);
+
+    await act(async () => {
+      inFlightToolbar.props.onDatabaseChange('analytics');
+    });
+    expect(storeState.updateQueryTabDraft).not.toHaveBeenCalledWith(
+      'tab-1',
+      expect.objectContaining({ dbName: 'analytics' }),
+    );
+    expect(renderer.root.findByType(QueryEditorToolbar).props.currentDb).toBe('main');
+
+    await act(async () => {
+      resolveTransaction({
+        success: true,
+        transactionId: 'tx-in-flight',
+        transactionPending: true,
+        data: [],
+      });
+      await runPromise;
+    });
+
+    expect(storeState.sqlEditorPendingTransactions['tab-1']).toMatchObject({
+      id: 'tx-in-flight',
+      dbName: 'main',
+    });
+    expect(renderer.root.findByType(QueryEditorToolbar).props.contextSelectionDisabled).toBe(true);
   });
 
   it('keeps DML with a trailing line comment in a pending managed transaction', async () => {
@@ -10291,6 +11853,44 @@ END;`;
     expect(messageApi.warning).not.toHaveBeenCalled();
   });
 
+  it('keeps dotted Dameng owner and table boundaries in editable query results', async () => {
+    storeState.connections[0].config.type = 'dameng';
+    storeState.connections[0].config.database = 'PEM2.4_V1_1';
+    backendApp.DBQueryMulti.mockResolvedValueOnce({
+      success: true,
+      data: [{ columns: ['ID', 'NAME'], rows: [{ ID: 7, NAME: 'old-name' }] }],
+    });
+    backendApp.DBGetColumns.mockResolvedValueOnce({
+      success: true,
+      data: [{ name: 'ID', key: 'PRI' }, { name: 'NAME', key: '' }],
+    });
+
+    let renderer: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({
+        dbName: 'PEM2.4_V1_1',
+        query: 'SELECT * FROM "PEM2.4_V1_1"."COM_APPROVE_INFO"',
+      })} />);
+    });
+
+    await act(async () => {
+      await findButton(renderer!, '运行').props.onClick();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(backendApp.DBGetColumns).toHaveBeenCalledWith(
+      expect.anything(),
+      'PEM2.4_V1_1',
+      'COM_APPROVE_INFO',
+    );
+    expect(dataGridState.latestProps?.dbName).toBe('PEM2.4_V1_1');
+    expect(dataGridState.latestProps?.tableName).toBe('PEM2.4_V1_1.COM_APPROVE_INFO');
+    expect(dataGridState.latestProps?.readOnly).toBe(false);
+  });
+
   it('keeps Dameng USER_COL_COMMENTS queries read-only without injecting ROWID', async () => {
     storeState.connections[0].config.type = 'dameng';
     storeState.connections[0].config.database = 'APP';
@@ -10598,6 +12198,49 @@ WHERE GRANTEE = 'APPUSER';`;
     expect(messageApi.warning).not.toHaveBeenCalled();
   });
 
+  it('keeps Oracle FOR UPDATE result columns editable when column metadata is unavailable', async () => {
+    storeState.connections[0].config.type = 'oracle';
+    storeState.connections[0].config.user = 'dev';
+    storeState.connections[0].config.database = 'ORCLPDB1';
+    backendApp.DBGetTables.mockResolvedValueOnce({ success: true, data: [] });
+    backendApp.DBQueryMulti.mockResolvedValueOnce({
+      success: true,
+      data: [{
+        columns: ['WAFER_ID', 'STATUS'],
+        rows: [{ WAFER_ID: 'R015Z10F08', STATUS: 'READY' }],
+      }],
+    });
+    backendApp.DBGetColumns.mockResolvedValueOnce({ success: true, data: [] });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({
+        dbName: 'ORCLPDB1',
+        query: 'SELECT * FROM table_name FOR UPDATE;',
+      })} />);
+    });
+
+    await act(async () => {
+      await findButton(renderer!, '运行').props.onClick();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const executedSql = String(backendApp.DBQueryMulti.mock.calls[0][2]);
+    expect(executedSql).toBe('SELECT * FROM table_name FOR UPDATE');
+    expect(dataGridState.latestProps?.tableName).toBe('DEV.TABLE_NAME');
+    expect(dataGridState.latestProps?.editLocator).toMatchObject({
+      strategy: 'all-columns',
+      columns: [],
+      valueColumns: [],
+      readOnly: false,
+    });
+    expect(dataGridState.latestProps?.readOnly).toBe(false);
+    renderer?.unmount();
+  });
+
   it('does not inject Oracle ROWID when the selected object is a view', async () => {
     storeState.connections[0].config.type = 'oracle';
     storeState.connections[0].config.database = 'ORCLPDB1';
@@ -10618,7 +12261,7 @@ WHERE GRANTEE = 'APPUSER';`;
     await act(async () => {
       renderer = create(<QueryEditor tab={createTab({
         dbName: 'H2',
-        query: 'select * from cv_gd_yncrm_salesdtllist',
+        query: 'select * from cv_gd_yncrm_salesdtllist for update',
       })} />);
     });
 
@@ -12350,11 +13993,14 @@ WHERE GRANTEE = 'APPUSER';`;
     });
   });
 
-  it('shows "No running query to cancel." in English when stop is clicked before a query id exists', async () => {
+  it('cancels the pending run before a query id exists', async () => {
     storeState.languagePreference = 'en-US';
     setCurrentLanguage('en-US');
 
-    backendApp.GenerateQueryID.mockReturnValueOnce(new Promise(() => {}));
+    let resolveQueryId!: (queryId: string) => void;
+    backendApp.GenerateQueryID.mockReturnValueOnce(new Promise((resolve) => {
+      resolveQueryId = resolve;
+    }));
 
     let renderer!: ReactTestRenderer;
     await act(async () => {
@@ -12370,8 +14016,26 @@ WHERE GRANTEE = 'APPUSER';`;
       await findButton(renderer, 'Stop').props.onClick();
     });
 
-    expect(messageApi.warning).toHaveBeenCalledWith('No running query to cancel.');
-    expect(messageApi.warning).not.toHaveBeenCalledWith('没有正在运行的查询可取消');
+    expect(messageApi.success).toHaveBeenCalledWith('Query canceled.');
+    expect(messageApi.warning).not.toHaveBeenCalledWith('No running query to cancel.');
+    expect(findButtons(renderer, 'Stop')).toHaveLength(0);
+    const unlockedToolbar = renderer.root.findByType(QueryEditorToolbar);
+    expect(unlockedToolbar.props.contextSelectionDisabled).toBe(false);
+
+    await act(async () => {
+      unlockedToolbar.props.onDatabaseChange('analytics');
+    });
+    expect(storeState.updateQueryTabDraft).toHaveBeenCalledWith(
+      'tab-1',
+      expect.objectContaining({ dbName: 'analytics' }),
+    );
+
+    await act(async () => {
+      resolveQueryId('query-too-late');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(backendApp.DBQueryMulti).not.toHaveBeenCalled();
   });
 
   it('shows "Query canceled." in English when stop cancels a running query', async () => {
@@ -12399,6 +14063,7 @@ WHERE GRANTEE = 'APPUSER';`;
 
     expect(messageApi.success).toHaveBeenCalledWith('Query canceled.');
     expect(messageApi.success).not.toHaveBeenCalledWith('查询已取消');
+    expect(findButtons(renderer, 'Stop')).toHaveLength(0);
   });
 
   it('shows "Failed to cancel query" in English while preserving the raw error detail', async () => {
@@ -13023,6 +14688,9 @@ WHERE GRANTEE = 'APPUSER';`;
           stopPropagation: vi.fn(),
         },
       });
+      for (let i = 0; i < 4; i += 1) {
+        await Promise.resolve();
+      }
     });
 
     expect(storeState.setActiveContext).not.toHaveBeenCalled();

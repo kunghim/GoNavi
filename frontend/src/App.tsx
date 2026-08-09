@@ -7,7 +7,9 @@ import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } 
 import { CSS } from '@dnd-kit/utilities';
 import { BrowserOpenURL, Environment, EventsOn, WindowFullscreen, WindowGetPosition, WindowGetSize, WindowIsFullscreen, WindowIsMaximised, WindowIsMinimised, WindowIsNormal, WindowMaximise, WindowMinimise, WindowSetDarkTheme, WindowSetLightTheme, WindowSetPosition, WindowSetSize, WindowSetSystemDefaultTheme, WindowUnfullscreen, WindowUnmaximise } from '../wailsjs/runtime';
 import Sidebar from './components/Sidebar';
-import TitleBarPrimaryActions from './components/TitleBarPrimaryActions';
+import TitleBarPrimaryActions, {
+  resolveTitleBarPrimaryActionShortcut,
+} from './components/TitleBarPrimaryActions';
 import TabManager from './components/TabManager';
 import FloatingWorkbenchWindows from './components/FloatingWorkbenchWindows';
 import FloatingAIChatWindow from './components/FloatingAIChatWindow';
@@ -22,6 +24,10 @@ import {
   isReleaseNotesRead,
   markReleaseNotesRead,
 } from './utils/updateReleaseNotesReadState';
+import {
+  shouldShowFooterReleaseNotesAction,
+  type AboutUpdateActionsSurface,
+} from './utils/aboutUpdateActions';
 import { type DataSyncEntryMode } from './components/dataSyncEntryMode';
 import DriverManagerModal from './components/DriverManagerModal';
 import LinuxCJKFontBanner from './components/LinuxCJKFontBanner';
@@ -96,6 +102,8 @@ import {
 import { downloadBrowserTextFile } from './utils/browserFileTransfer';
 import { buildDataSyncWorkbenchTab } from './utils/dataSyncTab';
 import { buildSqlAuditWorkbenchTab } from './utils/sqlAuditTab';
+import { resolveDataSourceType } from './utils/dataSourceCapabilities';
+import { buildContextualNewQueryTemplate } from './utils/objectQueryTemplates';
 import {
   extractCustomThemeAntTokens,
 } from './utils/customTheme';
@@ -149,6 +157,8 @@ import {
 import { getWindowsScaleFixNudgedWidth, hasWindowsViewportScaleDrift } from './utils/windowsScaleFix';
 import {
   clearStartupWindowRestorePending,
+  isStartupMaximisedWindowSettled,
+  isStartupWindowSurfaceCoveringViewport,
   isStartupWindowRestorePending,
   markStartupWindowRestorePending,
   resolveDefaultStartupWindowBounds,
@@ -197,7 +207,7 @@ import {
   type WindowsScaleCheckTrigger,
 } from './utils/windowStateUi';
 import { resolveVisibleStartupWindowBounds } from './utils/windowRestoreBounds';
-import { resolveWailsWindowVisibleViewport } from './utils/wailsWindowViewport';
+import { resolveWailsWindowSetPosition, resolveWailsWindowVisibleViewport } from './utils/wailsWindowViewport';
 import {
   SIDEBAR_UTILITY_ITEM_KEYS,
   resolveAIEntryPlacement,
@@ -207,6 +217,7 @@ import {
 } from './utils/aiEntryLayout';
 import { DEFAULT_AI_PANEL_WIDTH, resolveOverlayAIPanelWidth, shouldOverlayAIPanel } from './utils/aiPanelLayout';
 import { safeWindowRuntimeCall } from './utils/wailsRuntime';
+import { waitForWindowCondition } from './utils/windowTransition';
 import {
   hasNativeDetachedWindowManager,
   openNativeAIChatWindow,
@@ -227,6 +238,7 @@ import {
 import { useAppUpdateManager } from './hooks/useAppUpdateManager';
 import { useAppLogPanelResize } from './hooks/useAppLogPanelResize';
 import { useAppSidebarResize } from './hooks/useAppSidebarResize';
+import { canInheritNewQueryTableContext, resolveNewQueryContext } from './utils/newQueryContext';
 import { useAppUtilityStyles } from './hooks/useAppUtilityStyles';
 import { useWorkbenchTabs } from './hooks/useWorkbenchTabs';
 import {
@@ -1356,16 +1368,95 @@ function App() {
       const applyRetryDelayMs = 350;
       const settleDelayMs = 180;
       const startupRestoreGraceMs = 6000;
+      let refreshWebViewBoundsUnavailableLogged = false;
+      let refreshWebViewBoundsDisabled = false;
+      const wait = (delayMs: number) => new Promise<void>((resolve) => window.setTimeout(resolve, delayMs));
+
+      const waitForMaximisedState = (expected: boolean): Promise<boolean> => waitForWindowCondition({
+          read: async () => (await WindowIsMaximised()) === expected,
+          wait,
+          isCancelled: () => cancelled,
+          maxChecks: 16,
+          intervalMs: 40,
+      });
 
       const checkStartupPreferenceApplied = async (): Promise<boolean> => {
           try {
-              if (await WindowIsMaximised()) {
-                  return true;
-              }
+              const isMaximised = await WindowIsMaximised();
+              return isStartupMaximisedWindowSettled({
+                  isMaximised,
+                  isWindows: isWindowsPlatform(),
+                  surfaceWidth: window.innerWidth,
+                  surfaceHeight: window.innerHeight,
+                  viewport: readCurrentVisibleViewport(),
+              });
           } catch (_) {
               // ignore
           }
           return false;
+      };
+
+      const tryRefreshStartupWebViewBounds = async (): Promise<boolean> => {
+          if (
+              !isWindowsPlatform()
+              || refreshWebViewBoundsDisabled
+              || (window as any).__GONAVI_WEB_RUNTIME__?.buildType === 'web'
+          ) {
+              return false;
+          }
+          const backendApp = (window as any).go?.app?.App;
+          if (typeof backendApp?.RefreshWebViewBounds !== 'function') {
+              refreshWebViewBoundsDisabled = true;
+              if (!refreshWebViewBoundsUnavailableLogged) {
+                  refreshWebViewBoundsUnavailableLogged = true;
+                  console.warn('RefreshWebViewBounds backend is unavailable during startup maximise');
+              }
+              return false;
+          }
+          try {
+              const result = await backendApp.RefreshWebViewBounds();
+              if (result?.success) {
+                  window.dispatchEvent(new Event('resize'));
+                  return true;
+              }
+              refreshWebViewBoundsDisabled = true;
+              if (!refreshWebViewBoundsUnavailableLogged) {
+                  refreshWebViewBoundsUnavailableLogged = true;
+                  console.warn('RefreshWebViewBounds failed during startup maximise:', result?.message);
+              }
+          } catch (error) {
+              refreshWebViewBoundsDisabled = true;
+              if (!refreshWebViewBoundsUnavailableLogged) {
+                  refreshWebViewBoundsUnavailableLogged = true;
+                  console.warn('RefreshWebViewBounds call failed during startup maximise', error);
+              }
+          }
+          return false;
+      };
+
+      const waitForStartupPreferenceApplied = (): Promise<boolean> => waitForWindowCondition({
+          read: checkStartupPreferenceApplied,
+          wait,
+          isCancelled: () => cancelled,
+          maxChecks: 10,
+          intervalMs: 40,
+      });
+
+      const repairStartupMaximisedSurface = async (): Promise<boolean> => {
+          if (!isWindowsPlatform()) {
+              return false;
+          }
+          markStartupWindowRestorePending(startupRestoreGraceMs);
+          WindowUnmaximise();
+          if (!await waitForMaximisedState(false)) {
+              return false;
+          }
+          WindowMaximise();
+          if (!await waitForMaximisedState(true)) {
+              return false;
+          }
+          await tryRefreshStartupWebViewBounds();
+          return waitForStartupPreferenceApplied();
       };
 
       const markStartupMaximised = () => {
@@ -1374,23 +1465,67 @@ function App() {
           clearStartupWindowRestorePending();
       };
 
-      /** Maximise 多次失败时：把窗口铺满工作区，避免残留 1024×768 / 84% 浮动半窗。 */
-      const applyWindowsWorkAreaFillFallback = () => {
+      /** Maximise 多次失败时：退回普通窗口并铺满工作区，避免残留默认半窗。 */
+      const applyWindowsWorkAreaFillFallback = async (): Promise<boolean> => {
           if (!isWindowsPlatform()) {
-              return;
+              return false;
           }
           try {
-              const nextBounds = resolveWorkAreaFillWindowBounds(readCurrentVisibleViewport());
+              markStartupWindowRestorePending(startupRestoreGraceMs);
+              if (await WindowIsMaximised()) {
+                  WindowUnmaximise();
+                  if (!await waitForMaximisedState(false)) {
+                      return false;
+                  }
+              }
+              const viewport = readCurrentVisibleViewport();
+              const nextBounds = resolveWorkAreaFillWindowBounds(viewport);
+              const setPosition = resolveWailsWindowSetPosition(nextBounds, viewport, {
+                  useMonitorLocalOrigin: true,
+              });
+              WindowSetPosition(setPosition.x, setPosition.y);
               WindowSetSize(nextBounds.width, nextBounds.height);
-              WindowSetPosition(nextBounds.x, nextBounds.y);
+              const boundsApplied = await waitForWindowCondition({
+                  read: async () => {
+                      const [size, position] = await Promise.all([
+                          WindowGetSize(),
+                          WindowGetPosition(),
+                      ]);
+                      return Math.abs(Math.trunc(Number(size?.w)) - nextBounds.width) <= 2
+                          && Math.abs(Math.trunc(Number(size?.h)) - nextBounds.height) <= 2
+                          && Math.abs(Math.trunc(Number(position?.x)) - nextBounds.x) <= 2
+                          && Math.abs(Math.trunc(Number(position?.y)) - nextBounds.y) <= 2;
+                  },
+                  wait,
+                  isCancelled: () => cancelled,
+                  maxChecks: 16,
+                  intervalMs: 40,
+              });
+              if (!boundsApplied) {
+                  return false;
+              }
+              await tryRefreshStartupWebViewBounds();
+              const surfaceFilled = await waitForWindowCondition({
+                  read: async () => isStartupWindowSurfaceCoveringViewport({
+                      surfaceWidth: window.innerWidth,
+                      surfaceHeight: window.innerHeight,
+                      viewport: readCurrentVisibleViewport(),
+                  }),
+                  wait,
+                  isCancelled: () => cancelled,
+                  maxChecks: 10,
+                  intervalMs: 40,
+              });
+              if (!surfaceFilled) return false;
               useStore.getState().setWindowBounds(nextBounds);
-              // 兜底结果视觉上等同最大化，保持标题栏状态与实际窗口一致。
-              useStore.getState().setWindowState('maximized');
+              useStore.getState().setWindowState('normal');
               void emitWindowDiagnostic('adjust:startup-work-area-fill-fallback', {
                   to: nextBounds,
               });
+              return true;
           } catch (e) {
               console.warn('Failed to apply Windows work-area fill fallback', e);
+              return false;
           }
       };
 
@@ -1407,29 +1542,42 @@ function App() {
               }
               void Promise.resolve()
                   .then(async () => {
+                      markStartupWindowRestorePending(startupRestoreGraceMs);
                       if (await checkStartupPreferenceApplied()) {
                           markStartupMaximised();
                           return;
                       }
                       try {
-                          await WindowMaximise();
-                          await new Promise((resolve) => window.setTimeout(resolve, settleDelayMs));
+                          WindowMaximise();
+                          if (await waitForMaximisedState(true)) {
+                              await tryRefreshStartupWebViewBounds();
+                          }
                       } catch (e) {
                           console.warn("Wails Window APIs unavailable", e);
                       }
 
-                      if (await checkStartupPreferenceApplied()) {
+                      if (await waitForStartupPreferenceApplied()) {
                           markStartupMaximised();
                           return;
                       }
                       if (attempt < maxApplyAttempts) {
                           applyStartupWindowChrome(attempt + 1);
                       } else {
+                          // WebView2 controller bounds may remain at the initial 1440x900 even
+                          // after WS_MAXIMIZE is set. Use one cold-start-only native transition
+                          // if the zero-animation bounds refresh could not settle the surface.
+                          if (await repairStartupMaximisedSurface()) {
+                              markStartupMaximised();
+                              return;
+                          }
                           // 最终仍失败：Windows 铺满工作区兜底，再结束宽限
                           void emitWindowDiagnostic('warn:startup-maximise-failed', {
                               attempts: attempt,
                           });
-                          applyWindowsWorkAreaFillFallback();
+                          const fallbackApplied = await applyWindowsWorkAreaFillFallback();
+                          if (!fallbackApplied) {
+                              void emitWindowDiagnostic('error:startup-work-area-fill-fallback-failed');
+                          }
                           clearStartupWindowRestorePending();
                       }
                   });
@@ -1455,7 +1603,8 @@ function App() {
               console.warn('Failed to restore normal window chrome', e);
           }
           const state = useStore.getState();
-          const nextBounds = resolveVisibleStartupWindowBounds(bounds, readCurrentVisibleViewport());
+          const viewport = readCurrentVisibleViewport();
+          const nextBounds = resolveVisibleStartupWindowBounds(bounds, viewport);
           if (
               nextBounds.x !== bounds.x ||
               nextBounds.y !== bounds.y ||
@@ -1468,7 +1617,10 @@ function App() {
               });
           }
           WindowSetSize(nextBounds.width, nextBounds.height);
-          WindowSetPosition(nextBounds.x, nextBounds.y);
+          const setPosition = resolveWailsWindowSetPosition(nextBounds, viewport, {
+              useMonitorLocalOrigin: isWindowsPlatform(),
+          });
+          WindowSetPosition(setPosition.x, setPosition.y);
           state.setWindowBounds(nextBounds);
           state.setWindowState('normal');
       };
@@ -1646,7 +1798,8 @@ function App() {
               if (currentBounds.width <= 0 || currentBounds.height <= 0) {
                   return;
               }
-              const nextBounds = resolveVisibleStartupWindowBounds(currentBounds, readCurrentVisibleViewport());
+              const viewport = readCurrentVisibleViewport();
+              const nextBounds = resolveVisibleStartupWindowBounds(currentBounds, viewport);
               if (
                   nextBounds.x === currentBounds.x &&
                   nextBounds.y === currentBounds.y &&
@@ -1660,7 +1813,10 @@ function App() {
                   to: nextBounds,
               });
               WindowSetSize(nextBounds.width, nextBounds.height);
-              WindowSetPosition(nextBounds.x, nextBounds.y);
+              const setPosition = resolveWailsWindowSetPosition(nextBounds, viewport, {
+                  useMonitorLocalOrigin: isWindowsPlatform(),
+              });
+              WindowSetPosition(setPosition.x, setPosition.y);
               lastSaved = `${nextBounds.width},${nextBounds.height},${nextBounds.x},${nextBounds.y}`;
               useStore.getState().setWindowBounds(nextBounds);
               window.dispatchEvent(new Event('resize'));
@@ -2295,6 +2451,16 @@ function App() {
       || (runtimePlatform === '' && /mac/i.test(detectNavigatorPlatform()));
   const useNativeMacWindowControls = isMacRuntime;
   const activeShortcutPlatform = getShortcutPlatform(isMacRuntime);
+  const titleBarNewQueryShortcut = resolveTitleBarPrimaryActionShortcut(
+      shortcutOptions,
+      'newQueryTab',
+      activeShortcutPlatform,
+  );
+  const titleBarNewConnectionShortcut = resolveTitleBarPrimaryActionShortcut(
+      shortcutOptions,
+      'newConnection',
+      activeShortcutPlatform,
+  );
   const macWindowDiagnosticsEnabled = shouldEnableMacWindowDiagnostics(
       isMacRuntime,
       import.meta.env.DEV,
@@ -2309,6 +2475,8 @@ function App() {
       close: () => void;
       isOpen: () => boolean;
   } | null>(null);
+  // 手动「检查更新」发现新版本时，由 useAppUpdateManager 触发打开更新日志弹窗
+  const openReleaseNotesOnManualCheckRef = useRef<(() => void) | null>(null);
   const {
       aboutDisplayVersion,
       aboutInfo,
@@ -2342,6 +2510,7 @@ function App() {
       runtimeBuildType,
       t,
       updateCenterBridgeRef,
+      onManualCheckHasUpdateRef: openReleaseNotesOnManualCheckRef,
   });
   const [aboutLastCheckedAt, setAboutLastCheckedAt] = useState('');
   const [releaseNotesModalOpen, setReleaseNotesModalOpen] = useState(false);
@@ -2555,33 +2724,35 @@ function App() {
   }, [emitWindowDiagnostic, macWindowDiagnosticsEnabled]);
 
   const handleNewQuery = useCallback(() => {
-      let connId = '';
-      let db = '';
-
-      // Priority: Active Tab Context (if connection still valid) > Sidebar Selection (activeContext)
-      if (activeTabId) {
-          const currentTab = tabs.find(t => t.id === activeTabId);
-          if (currentTab && currentTab.connectionId && connections.some(c => c.id === currentTab.connectionId)) {
-              connId = currentTab.connectionId;
-              db = currentTab.dbName || '';
-          }
-      }
-
-      // Fallback: Sidebar selection context (only if connection still valid)
-      if (!connId && activeContext?.connectionId && connections.some(c => c.id === activeContext.connectionId)) {
-          connId = activeContext.connectionId;
-          db = activeContext.dbName || '';
-      }
+      const currentTab = activeTabId ? tabs.find(tab => tab.id === activeTabId) : undefined;
+      const targetContext = resolveNewQueryContext({
+          sidebarContext: activeContext,
+          activeTab: currentTab,
+          validConnectionIds: new Set(connections.map(connection => connection.id)),
+      });
+      const connection = connections.find(c => c.id === targetContext.connectionId);
+      const inheritsTableContext = canInheritNewQueryTableContext({
+          activeTab: currentTab,
+          targetContext,
+      });
+      const tableName = inheritsTableContext ? String(currentTab?.tableName || '').trim() : '';
+      const contextualQuery = tableName && connection
+          ? buildContextualNewQueryTemplate({
+              dbType: resolveDataSourceType(connection.config),
+              tableName,
+              customTemplate: appearance.newQuerySqlTemplate,
+          })
+          : null;
 
       addTab({
           id: `query-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           title: t('query.new'),
           type: 'query',
-          connectionId: connId,
-          dbName: db,
-          query: ''
+          connectionId: targetContext.connectionId,
+          dbName: targetContext.dbName,
+          query: contextualQuery ?? '',
       });
-  }, [activeTabId, tabs, connections, activeContext, addTab, t]);
+  }, [activeTabId, tabs, connections, activeContext, addTab, appearance.newQuerySqlTemplate, t]);
 
   const switchActiveTabByOffset = useCallback((offset: 1 | -1) => {
       if (tabs.length < 2) return;
@@ -3490,6 +3661,14 @@ function App() {
           updateCenterBridgeRef.current = null;
       };
   }, [handleOpenSettingsCenterPane]);
+  useEffect(() => {
+      openReleaseNotesOnManualCheckRef.current = () => {
+          setReleaseNotesModalOpen(true);
+      };
+      return () => {
+          openReleaseNotesOnManualCheckRef.current = null;
+      };
+  }, []);
   useEffect(() => {
       if (!isSettingsAboutPaneOpen) {
           return;
@@ -5250,19 +5429,22 @@ function App() {
       ) : null
   );
 
-  const renderAboutUpdateActions = (closeAction?: React.ReactNode) => [
+  const renderAboutUpdateActions = (
+      surface: AboutUpdateActionsSurface,
+      closeAction?: React.ReactNode,
+  ) => [
       isBackgroundProgressForLatestUpdate && !isLatestUpdateDownloaded ? (
           <Button key="progress" icon={<DownloadOutlined />} onClick={showUpdateDownloadProgress}>{t('app.about.action.download_progress')}</Button>
       ) : null,
       lastUpdateInfo?.hasUpdate && !isLatestUpdateDownloaded && !isBackgroundProgressForLatestUpdate ? (
           <Button key="mute" onClick={muteLatestUpdate}>{t('app.about.action.mute_this_version')}</Button>
       ) : null,
-      renderReleaseNotesActionButton(),
+      shouldShowFooterReleaseNotesAction(surface) ? renderReleaseNotesActionButton() : null,
       <Button
           key="check"
           icon={<CloudDownloadOutlined />}
           loading={isCheckingForUpdates}
-          onClick={() => checkForUpdates(false)}
+          onClick={() => checkForUpdates(false, true)}
       >
           {t('app.about.action.check_updates')}
       </Button>,
@@ -5654,7 +5836,7 @@ function App() {
               </span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              {renderAboutUpdateActions()}
+              {renderAboutUpdateActions('settings-center')}
           </div>
       </>
   );
@@ -7691,6 +7873,8 @@ function App() {
                   <TitleBarPrimaryActions
                     newQueryLabel={t('query.new')}
                     newConnectionLabel={t('connection.new')}
+                    newQueryShortcut={titleBarNewQueryShortcut}
+                    newConnectionShortcut={titleBarNewConnectionShortcut}
                     onNewQuery={handleNewQuery}
                     onNewConnection={handleCreateConnection}
                   />
@@ -9044,6 +9228,7 @@ function App() {
             onCancel={() => setIsAboutOpen(false)}
             styles={{ content: utilityModalShellStyle, header: { background: 'transparent', borderBottom: 'none', paddingBottom: 8 }, body: { paddingTop: 8 }, footer: { background: 'transparent', borderTop: 'none', paddingTop: 10, display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'flex-end' } }}
             footer={renderAboutUpdateActions(
+                'legacy-modal',
                 <Button key="close" onClick={() => setIsAboutOpen(false)}>{t('common.close')}</Button>,
             )}
           >

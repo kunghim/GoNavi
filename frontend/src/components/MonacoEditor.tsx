@@ -1,9 +1,13 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Editor, { loader, type BeforeMount, type EditorProps, type OnMount } from '@monaco-editor/react';
 import { useStore } from '../store';
 import { sanitizeDataTableFontSize } from '../utils/dataGridDisplay';
 import { DEFAULT_MONO_FONT_FAMILY } from '../utils/fontFamilies';
-import { resolveSqlEditorFontSize } from '../utils/sqlEditorTypography';
+import {
+  resolveSqlEditorFontSize,
+  resolveSqlEditorSuggestionLayout,
+} from '../utils/sqlEditorTypography';
+import { installWailsMonacoClipboardPasteHandler } from '../utils/monacoClipboard';
 
 export type { BeforeMount, OnMount } from '@monaco-editor/react';
 export type GonaviMonacoTypography = 'code' | 'data' | 'sql';
@@ -805,6 +809,7 @@ const MonacoEditor: React.FC<MonacoEditorProps> = ({
   const sqlEditorFontSizeFollowGlobal = useStore((state) => state.appearance.sqlEditorFontSizeFollowGlobal);
   const monoFontFamily = useStore((state) => state.appearance.customMonoFontFamily);
   const globalFontSize = useStore((state) => state.fontSize);
+  const clipboardPasteCleanupRef = useRef<(() => void) | null>(null);
   // Monaco theme is process-global; never fall back to "light" or other editors get polluted.
   const resolvedTheme = theme
     ?? (appTheme === 'dark' ? 'transparent-dark' : 'transparent-light');
@@ -830,37 +835,26 @@ const MonacoEditor: React.FC<MonacoEditorProps> = ({
     };
   }, []);
 
+  useEffect(() => () => {
+    clipboardPasteCleanupRef.current?.();
+    clipboardPasteCleanupRef.current = null;
+  }, []);
+
   const handleBeforeMount: BeforeMount = useCallback((monaco) => {
     registerGonaviMonacoThemes(monaco);
     beforeMount?.(monaco);
   }, [beforeMount]);
 
   const handleMount: OnMount = useCallback((editor, monaco) => {
+    clipboardPasteCleanupRef.current?.();
+    clipboardPasteCleanupRef.current = gonaviTypography === 'sql'
+      ? installWailsMonacoClipboardPasteHandler(monaco, editor)
+      : null;
     installOceanBaseOracleNavigationFallback(editor);
     installPrintableInputFallback(editor, monaco);
     installWebKitImeScrollStabilizer(editor);
     onMount?.(editor, monaco);
-  }, [onMount]);
-
-  // Unified surface: all call sites inherit panel via --gn-monaco-bg (no per-page bg).
-  const surfaceStyle: React.CSSProperties = {
-    height: props.height || '100%',
-    width: props.width || '100%',
-    minHeight: 0,
-    minWidth: 0,
-    background: `var(${GONAVI_MONACO_BG_CSS_VAR}, var(--gn-bg-panel, transparent))`,
-  };
-
-  const loadingFallback = (
-    <div
-      className={GONAVI_MONACO_SURFACE_CLASS}
-      data-monaco-editor-loading="true"
-      aria-busy="true"
-      style={surfaceStyle}
-    >
-      {loading || null}
-    </div>
-  );
+  }, [gonaviTypography, onMount]);
 
   const resolvedOptions = useMemo(() => {
     if (uiVersion !== 'v2') {
@@ -891,6 +885,9 @@ const MonacoEditor: React.FC<MonacoEditorProps> = ({
       10,
       Math.round(Number(options?.fontSize) || resolvedFontSize),
     );
+    const suggestionLayout = gonaviTypography === 'sql'
+      ? resolveSqlEditorSuggestionLayout(effectiveEditorFontSize)
+      : null;
 
     return {
       ...options,
@@ -898,6 +895,7 @@ const MonacoEditor: React.FC<MonacoEditorProps> = ({
       fontFamily: options?.fontFamily ?? monoFontFamily ?? DEFAULT_MONO_FONT_FAMILY,
       fontSize: options?.fontSize ?? resolvedFontSize,
       lineHeight: options?.lineHeight ?? Math.max(18, Math.round(effectiveEditorFontSize * 1.62)),
+      ...(suggestionLayout ? { suggestLineHeight: suggestionLayout.rowHeight } : {}),
     };
   }, [
     dataTableFontSize,
@@ -910,6 +908,37 @@ const MonacoEditor: React.FC<MonacoEditorProps> = ({
     sqlEditorFontSizeFollowGlobal,
     uiVersion,
   ]);
+
+  const suggestionLayout = uiVersion === 'v2' && gonaviTypography === 'sql'
+    ? resolveSqlEditorSuggestionLayout(resolvedOptions.fontSize)
+    : null;
+
+  // Unified surface: all call sites inherit panel via --gn-monaco-bg (no per-page bg).
+  const surfaceStyle = {
+    height: props.height || '100%',
+    width: props.width || '100%',
+    minHeight: 0,
+    minWidth: 0,
+    background: `var(${GONAVI_MONACO_BG_CSS_VAR}, var(--gn-bg-panel, transparent))`,
+    ...(suggestionLayout
+      ? {
+        '--gn-query-suggest-name-row-height': `${suggestionLayout.nameLineHeight}px`,
+        '--gn-query-suggest-comment-row-height': `${suggestionLayout.commentLineHeight}px`,
+        '--gn-query-suggest-row-height': `${suggestionLayout.rowHeight}px`,
+      }
+      : {}),
+  } as React.CSSProperties;
+
+  const loadingFallback = (
+    <div
+      className={GONAVI_MONACO_SURFACE_CLASS}
+      data-monaco-editor-loading="true"
+      aria-busy="true"
+      style={surfaceStyle}
+    >
+      {loading || null}
+    </div>
+  );
 
   if (!ready) {
     return loadingFallback;

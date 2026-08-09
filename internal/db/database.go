@@ -102,6 +102,13 @@ type DatabaseForeignKeyProvider interface {
 	GetDatabaseForeignKeys(dbName string) (map[string][]connection.ForeignKeyDefinition, error)
 }
 
+// TableExistsChecker is an optional point lookup for a table's canonical
+// metadata identity. Callers must pass the exact name returned by driver
+// metadata; this interface does not parse arbitrary SQL identifiers.
+type TableExistsChecker interface {
+	TableExists(dbName, tableName string) (bool, error)
+}
+
 // TableRowCounter is an optional metadata interface for drivers that can
 // provide exact table row counts alongside a table list.
 type TableRowCounter interface {
@@ -247,6 +254,13 @@ type MultiResultQuerierContext interface {
 // 实现此接口可大幅减少批量 INSERT/UPDATE/DELETE 的网络往返次数。
 type BatchWriteExecer interface {
 	ExecBatchContext(ctx context.Context, query string) (int64, error)
+}
+
+// BatchWriteCapability lets a driver that conditionally supports the
+// multi-statement protocol opt out at runtime. MySQL uses this when the
+// connection had to fall back to multiStatements=false.
+type BatchWriteCapability interface {
+	SupportsBatchWrites() bool
 }
 
 // StatementExecer is a single-session SQL execution handle.
@@ -786,6 +800,15 @@ func (e *sqlTxStatementExecer) Close() error {
 type BatchApplier interface {
 	// ApplyChanges 将一组变更（新增、修改、删除）批量提交到指定表。
 	ApplyChanges(tableName string, changes connection.ChangeSet) error
+}
+
+// BatchApplierContext is the optional cancellation-aware form of BatchApplier.
+// Long-running import and synchronization jobs prefer it so cancellation can
+// reach an in-flight driver transaction. BatchApplier remains for backwards
+// compatibility with drivers that cannot yet expose context cancellation.
+type BatchApplierContext interface {
+	BatchApplier
+	ApplyChangesContext(ctx context.Context, tableName string, changes connection.ChangeSet) error
 }
 
 // ChangePreviewer 是可选的变更预览接口。

@@ -25,6 +25,8 @@ type PostgresDB struct {
 	forwarder   *ssh.LocalForwarder // Store SSH tunnel forwarder
 }
 
+var _ BatchApplierContext = (*PostgresDB)(nil)
+
 type postgresSessionExecer struct {
 	*sqlConnStatementExecer
 }
@@ -570,12 +572,24 @@ ORDER BY c.table_schema, c.table_name, c.ordinal_position`
 	return cols, nil
 }
 
+func postgresDSNHasExplicitSearchPath(dsn string) bool {
+	u, err := url.Parse(dsn)
+	if err != nil {
+		return false
+	}
+
+	return strings.TrimSpace(u.Query().Get("search_path")) != ""
+}
+
 // ensureSearchPath 查询当前数据库中所有用户 schema，通过重建连接池将 search_path 写入 DSN。
 // 仅使用 SET search_path 只对连接池中的单个连接生效，后续查询可能拿到未设置的连接。
 // 将 search_path 写入 DSN (lib/pq 支持任意 PostgreSQL runtime parameter)，
 // 使连接池中每个连接建立时自动携带 search_path，与金仓行为一致。
 func (p *PostgresDB) ensureSearchPath(baseDSN string) {
 	if p.conn == nil {
+		return
+	}
+	if postgresDSNHasExplicitSearchPath(baseDSN) {
 		return
 	}
 
@@ -667,15 +681,20 @@ func (p *PostgresDB) queryUserSchemas() []string {
 }
 
 func (p *PostgresDB) ApplyChanges(tableName string, changes connection.ChangeSet) error {
+	return p.ApplyChangesContext(context.Background(), tableName, changes)
+}
+
+func (p *PostgresDB) ApplyChangesContext(ctx context.Context, tableName string, changes connection.ChangeSet) (err error) {
 	if p.conn == nil {
 		return fmt.Errorf("连接未打开")
 	}
 
-	tx, err := p.conn.Begin()
+	tx, err := p.conn.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	transactionCommitted := false
+	defer func() { rollbackUnfinishedWriteTransaction(tx, transactionCommitted, &err) }()
 
 	quoteIdent := func(name string) string {
 		n := strings.TrimSpace(name)
@@ -715,7 +734,7 @@ func (p *PostgresDB) ApplyChanges(tableName string, changes connection.ChangeSet
 			continue
 		}
 		query := fmt.Sprintf("DELETE FROM %s WHERE %s", qualifiedTable, strings.Join(wheres, " AND "))
-		res, err := tx.Exec(query, args...)
+		res, err := tx.ExecContext(ctx, query, args...)
 		if err != nil {
 			return fmt.Errorf("删除失败：%v", err)
 		}
@@ -752,7 +771,7 @@ func (p *PostgresDB) ApplyChanges(tableName string, changes connection.ChangeSet
 		}
 
 		query := fmt.Sprintf("UPDATE %s SET %s WHERE %s", qualifiedTable, strings.Join(sets, ", "), strings.Join(wheres, " AND "))
-		res, err := tx.Exec(query, args...)
+		res, err := tx.ExecContext(ctx, query, args...)
 		if err != nil {
 			return fmt.Errorf("更新失败：%v", err)
 		}
@@ -769,7 +788,7 @@ func (p *PostgresDB) ApplyChanges(tableName string, changes connection.ChangeSet
 			return fmt.Sprintf("$%d", idx)
 		},
 		Exec: func(query string, args ...interface{}) (sql.Result, error) {
-			return tx.Exec(query, args...)
+			return tx.ExecContext(ctx, query, args...)
 		},
 		EmptyInsertSQL: func(table string) string {
 			return fmt.Sprintf("INSERT INTO %s DEFAULT VALUES", table)
@@ -778,5 +797,9 @@ func (p *PostgresDB) ApplyChanges(tableName string, changes connection.ChangeSet
 		return err
 	}
 
-	return tx.Commit()
+	if err := commitWriteTransaction(tx); err != nil {
+		return err
+	}
+	transactionCommitted = true
+	return nil
 }

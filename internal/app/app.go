@@ -18,6 +18,7 @@ import (
 	"GoNavi-Wails/internal/appdata"
 	"GoNavi-Wails/internal/connection"
 	"GoNavi-Wails/internal/db"
+	"GoNavi-Wails/internal/importjob"
 	"GoNavi-Wails/internal/jvm"
 	"GoNavi-Wails/internal/logger"
 	nacosbackend "GoNavi-Wails/internal/nacos"
@@ -27,6 +28,8 @@ import (
 	"GoNavi-Wails/internal/secretstore"
 	"GoNavi-Wails/internal/sqlaudit"
 	syncbackend "GoNavi-Wails/internal/sync"
+	"GoNavi-Wails/internal/synccdc"
+	"GoNavi-Wails/internal/syncjob"
 	"GoNavi-Wails/shared/i18n"
 	"github.com/google/uuid"
 	"golang.org/x/sync/singleflight"
@@ -137,6 +140,7 @@ type queryContext struct {
 	cancel          context.CancelFunc
 	started         time.Time
 	retainUntilDone bool
+	registrationID  uint64
 }
 
 type managedSQLTransaction struct {
@@ -175,6 +179,15 @@ type App struct {
 	allowApplicationQuit          bool
 	applicationQuitPromptInFlight bool
 	queryMu                       sync.RWMutex
+	nextQueryRegistrationID       uint64
+	importArtifactMu              sync.Mutex
+	importErrorArtifacts          *importErrorArtifactStore
+	importJobMu                   sync.Mutex
+	importJobStore                *importjob.Store
+	importTaskMu                  sync.Mutex
+	importTasks                   map[string]importTaskRegistration
+	importTasksWG                 sync.WaitGroup
+	importTasksClosing            bool
 	dataRootApplyMu               sync.Mutex
 	configDir                     string
 	secretStore                   secretstore.SecretStore
@@ -216,6 +229,20 @@ type App struct {
 	cloudBackupRestoreTokenMu     sync.Mutex
 	cloudBackupRestoreTokens      map[string]cloudBackupRestoreConfirmationToken
 	cloudBackupRestoreTokenTTL    time.Duration
+	dataSyncJobApprovalMu         sync.Mutex
+	dataSyncJobApprovalTokens     map[string]dataSyncJobApprovalToken
+	dataSyncJobApprovalChallenges map[string]dataSyncJobApprovalChallenge
+	dataSyncJobApprovalTokenTTL   time.Duration
+	dataSyncJobApprovalDelay      time.Duration
+	dataSyncFingerprintMu         sync.Mutex
+	dataSyncFingerprintKey        []byte
+	dataSyncJobsMu                sync.Mutex
+	dataSyncJobStore              *syncjob.Store
+	dataSyncJobManager            *syncjob.Manager
+	dataSyncJobLeaseOwner         string
+	dataSyncJobsDraining          bool
+	dataSyncCDCRegistry           *synccdc.Registry
+	dataSyncChangeEventRunner     func(context.Context, syncbackend.ChangeEventRequest) syncbackend.ChangeEventResult
 }
 
 // NewApp creates a new App application struct
@@ -237,21 +264,28 @@ func NewAppWithSecretStore(store secretstore.SecretStore) *App {
 		store = secretstore.NewUnavailableStore("secret store unavailable")
 	}
 	return &App{
-		dbCache:                      make(map[string]cachedDatabase),
-		connectFailures:              make(map[string]cachedConnectFailure),
-		dbConnectFlights:             make(map[uint64]*databaseConnectFlight),
-		runningQueries:               make(map[string]queryContext),
-		sqlTransactions:              make(map[string]*managedSQLTransaction),
-		configDir:                    resolveAppConfigDir(),
-		secretStore:                  store,
-		localizer:                    newAppLocalizer(),
-		jvmPreviewTokens:             make(map[string]jvmPreviewConfirmationToken),
-		jvmPreviewTokenTTL:           defaultJVMPreviewConfirmationTokenTTL,
-		elasticsearchConsoleTokens:   make(map[string]elasticsearchConsoleConfirmationToken),
-		elasticsearchConsoleTokenTTL: defaultElasticsearchConsoleConfirmationTokenTTL,
-		cloudBackupRestoreTokens:     make(map[string]cloudBackupRestoreConfirmationToken),
-		cloudBackupRestoreTokenTTL:   defaultCloudBackupRestoreConfirmationTokenTTL,
-		resultDiffManager:            resultdiff.NewManager(30 * time.Minute),
+		dbCache:                       make(map[string]cachedDatabase),
+		connectFailures:               make(map[string]cachedConnectFailure),
+		dbConnectFlights:              make(map[uint64]*databaseConnectFlight),
+		runningQueries:                make(map[string]queryContext),
+		importTasks:                   make(map[string]importTaskRegistration),
+		sqlTransactions:               make(map[string]*managedSQLTransaction),
+		configDir:                     resolveAppConfigDir(),
+		secretStore:                   store,
+		localizer:                     newAppLocalizer(),
+		jvmPreviewTokens:              make(map[string]jvmPreviewConfirmationToken),
+		jvmPreviewTokenTTL:            defaultJVMPreviewConfirmationTokenTTL,
+		elasticsearchConsoleTokens:    make(map[string]elasticsearchConsoleConfirmationToken),
+		elasticsearchConsoleTokenTTL:  defaultElasticsearchConsoleConfirmationTokenTTL,
+		cloudBackupRestoreTokens:      make(map[string]cloudBackupRestoreConfirmationToken),
+		cloudBackupRestoreTokenTTL:    defaultCloudBackupRestoreConfirmationTokenTTL,
+		dataSyncJobApprovalTokens:     make(map[string]dataSyncJobApprovalToken),
+		dataSyncJobApprovalChallenges: make(map[string]dataSyncJobApprovalChallenge),
+		dataSyncJobApprovalTokenTTL:   defaultDataSyncJobApprovalTokenTTL,
+		dataSyncJobApprovalDelay:      defaultDataSyncJobApprovalDelay,
+		dataSyncJobLeaseOwner:         "sync-manager-" + uuid.NewString(),
+		dataSyncCDCRegistry:           synccdc.NewRegistry(),
+		resultDiffManager:             resultdiff.NewManager(30 * time.Minute),
 	}
 }
 
@@ -379,6 +413,9 @@ func (a *App) startup(ctx context.Context) {
 	if err := migrateDailySecretsIfNeeded(a); err != nil {
 		logger.Warnf("迁移日常密文失败：%v", err)
 	}
+	if err := a.recoverImportJobsOnStartup(); err != nil {
+		logger.Warnf("恢复导入任务状态失败：%v", err)
+	}
 	a.loadPersistedGlobalProxy()
 	if err := migrateLegacyWebKitStorageIfNeeded(a); err != nil {
 		logger.Warnf("迁移旧 WebKit 连接存储失败：%v", err)
@@ -389,6 +426,7 @@ func (a *App) startup(ctx context.Context) {
 	}
 	applyMacWindowTranslucencyFix()
 	a.startConnectionKeepAliveLoop()
+	a.initializeDataSyncJobs(ctx)
 	a.initializeCloudBackup(ctx)
 	logger.Infof("应用启动完成（首次连接保护窗口=%s，最多重试=%d 次）", startupConnectRetryWindow, startupConnectRetryAttempts)
 }
@@ -425,6 +463,27 @@ func (a *App) ResetWebViewZoom() (result connection.QueryResult) {
 	return connection.QueryResult{Success: true, Message: "WebView2 zoom factor reset to 1.0"}
 }
 
+// RefreshWebViewBounds synchronises WebView2 controller bounds with the native
+// Windows client rect. It repairs a startup maximise race without toggling the window.
+func (a *App) RefreshWebViewBounds() (result connection.QueryResult) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			logger.Errorf("刷新 WebView2 窗口边界失败：%v", recovered)
+			result = connection.QueryResult{
+				Success: false,
+				Message: fmt.Sprintf("failed to refresh WebView2 bounds: %v", recovered),
+			}
+		}
+	}()
+	if a == nil || a.ctx == nil {
+		return connection.QueryResult{Success: false, Message: "application context is unavailable"}
+	}
+	if err := refreshWebViewBounds(a.ctx); err != nil {
+		return connection.QueryResult{Success: false, Message: err.Error()}
+	}
+	return connection.QueryResult{Success: true, Message: "WebView2 bounds refreshed"}
+}
+
 // LogWindowDiagnostic 记录前端采集到的窗口诊断信息，便于排查 macOS 原生全屏异常。
 func (a *App) LogWindowDiagnostic(stage string, payload string) {
 	stage = strings.TrimSpace(stage)
@@ -439,6 +498,10 @@ func (a *App) LogWindowDiagnostic(stage string, payload string) {
 func (a *App) Shutdown() {
 	logger.Infof("应用开始关闭，准备释放资源")
 	a.shutdownCloudBackup()
+	a.shutdownDataSyncJobs()
+	if !a.cancelAndWaitImportTasks(5 * time.Second) {
+		logger.Warnf("导入任务未能在关闭超时内全部退出；将继续释放数据库资源")
+	}
 	a.beginDatabaseShutdown()
 	a.stopConnectionKeepAliveLoop()
 	closeJVMMonitoringSessions()
@@ -495,8 +558,9 @@ func normalizeCacheKeyConfig(config connection.ConnectionConfig) connection.Conn
 		normalized.ConnectionParams = normalizeOceanBaseConnectionParamsForCacheWithProtocol(normalized.ConnectionParams, protocol)
 		normalized.OceanBaseProtocol = ""
 	}
-	// timeout 仅用于 Query/Ping 控制，不应作为物理连接复用键的一部分。
+	// Connection/query timeouts affect operations, not physical connection identity.
 	normalized.Timeout = 0
+	normalized.QueryTimeout = 0
 	// keepalive 仅影响后台保活策略，不应参与物理连接复用键。
 	normalized.KeepAliveEnabled = false
 	normalized.KeepAliveIntervalMinutes = 0
@@ -1729,6 +1793,68 @@ func isTransientStartupConnectError(err error) bool {
 // generateQueryID generates a unique ID for a query using UUID v4
 func generateQueryID() string {
 	return "query-" + uuid.New().String()
+}
+
+func (a *App) registerRunningQuery(queryID string, cancel context.CancelFunc, retainUntilDone bool) func() {
+	a.queryMu.Lock()
+	if a.runningQueries == nil {
+		a.runningQueries = make(map[string]queryContext)
+	}
+	a.nextQueryRegistrationID++
+	if a.nextQueryRegistrationID == 0 {
+		a.nextQueryRegistrationID++
+	}
+	registrationID := a.nextQueryRegistrationID
+	a.runningQueries[queryID] = queryContext{
+		cancel:          cancel,
+		started:         time.Now(),
+		retainUntilDone: retainUntilDone,
+		registrationID:  registrationID,
+	}
+	a.queryMu.Unlock()
+
+	return func() {
+		a.queryMu.Lock()
+		if current, exists := a.runningQueries[queryID]; exists && current.registrationID == registrationID {
+			delete(a.runningQueries, queryID)
+		}
+		a.queryMu.Unlock()
+	}
+}
+
+// registerExclusiveRunningQuery registers a long-running task only when the
+// caller-provided ID is not already owned by another task. Import jobs use this
+// stricter contract because replacing an owner would make cancellation target
+// the wrong operation and let an older cleanup remove the newer task.
+func (a *App) registerExclusiveRunningQuery(queryID string, cancel context.CancelFunc, retainUntilDone bool) (func(), bool) {
+	a.queryMu.Lock()
+	if a.runningQueries == nil {
+		a.runningQueries = make(map[string]queryContext)
+	}
+	if _, exists := a.runningQueries[queryID]; exists {
+		a.queryMu.Unlock()
+		return func() {}, false
+	}
+	a.nextQueryRegistrationID++
+	if a.nextQueryRegistrationID == 0 {
+		a.nextQueryRegistrationID++
+	}
+	registrationID := a.nextQueryRegistrationID
+	a.runningQueries[queryID] = queryContext{
+		cancel:          cancel,
+		started:         time.Now(),
+		retainUntilDone: retainUntilDone,
+		registrationID:  registrationID,
+	}
+	a.queryMu.Unlock()
+
+	return func() {
+		a.queryMu.Lock()
+		if current, exists := a.runningQueries[queryID]; exists && current.registrationID == registrationID {
+			delete(a.runningQueries, queryID)
+		}
+		a.queryMu.Unlock()
+	}, true
 }
 
 // CancelQuery cancels a running query by its ID

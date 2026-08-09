@@ -2,12 +2,40 @@ package app
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"GoNavi-Wails/internal/connection"
+	"GoNavi-Wails/internal/db"
 )
+
+type blockingConnectCancelDB struct {
+	db.Database
+	connectStarted  chan struct{}
+	connectRelease  chan struct{}
+	queryContextErr chan error
+}
+
+func (f *blockingConnectCancelDB) Connect(connection.ConnectionConfig) error {
+	close(f.connectStarted)
+	<-f.connectRelease
+	return nil
+}
+
+func (f *blockingConnectCancelDB) Close() error { return nil }
+
+func (f *blockingConnectCancelDB) Ping() error { return nil }
+
+func (f *blockingConnectCancelDB) QueryContext(ctx context.Context, _ string) ([]map[string]interface{}, []string, error) {
+	err := ctx.Err()
+	f.queryContextErr <- err
+	if err != nil {
+		return nil, nil, err
+	}
+	return []map[string]interface{}{{"value": 1}}, []string{"value"}, nil
+}
 
 func TestGenerateQueryID(t *testing.T) {
 	app := NewApp()
@@ -74,6 +102,120 @@ func TestCancelQuery_ValidQuery(t *testing.T) {
 	app.queryMu.Unlock()
 	if exists {
 		t.Fatal("Query should be removed from runningQueries after cancellation")
+	}
+}
+
+func TestDBQueryMulti_CanBeCancelledWhileConnecting(t *testing.T) {
+	originalNewDatabaseFunc := newDatabaseFunc
+	t.Cleanup(func() { newDatabaseFunc = originalNewDatabaseFunc })
+
+	database := &blockingConnectCancelDB{
+		connectStarted:  make(chan struct{}),
+		connectRelease:  make(chan struct{}),
+		queryContextErr: make(chan error, 1),
+	}
+	newDatabaseFunc = func(string) (db.Database, error) { return database, nil }
+
+	app := NewApp()
+	queryID := "cancel-while-connecting"
+	resultCh := make(chan connection.QueryResult, 1)
+	go func() {
+		resultCh <- app.DBQueryMulti(connection.ConnectionConfig{
+			Type:    "mysql",
+			Host:    "cancel-connect.test",
+			Port:    3306,
+			User:    "tester",
+			Timeout: 5,
+		}, "test", "SELECT 1", queryID)
+	}()
+
+	released := false
+	defer func() {
+		if !released {
+			close(database.connectRelease)
+		}
+	}()
+	select {
+	case <-database.connectStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for database connection attempt")
+	}
+
+	firstCancel := app.CancelQuery(queryID)
+	secondCancel := app.CancelQuery(queryID)
+	close(database.connectRelease)
+	released = true
+
+	var result connection.QueryResult
+	select {
+	case result = <-resultCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for cancelled query to return")
+	}
+	var observedContextErr error
+	select {
+	case observedContextErr = <-database.queryContextErr:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for query context observation")
+	}
+
+	if !firstCancel.Success {
+		t.Errorf("first cancellation while connecting should succeed, got: %s", firstCancel.Message)
+	}
+	if !secondCancel.Success {
+		t.Errorf("repeated cancellation should succeed until the query owner exits, got: %s", secondCancel.Message)
+	}
+	if observedContextErr != context.Canceled {
+		t.Errorf("query should receive the cancellation requested during connect, got context error: %v", observedContextErr)
+	}
+	if result.Success {
+		t.Fatalf("query should not execute successfully after cancellation, got: %+v", result)
+	}
+
+	app.queryMu.RLock()
+	_, stillRegistered := app.runningQueries[queryID]
+	app.queryMu.RUnlock()
+	if stillRegistered {
+		t.Fatal("query should be removed from runningQueries after its owner exits")
+	}
+	if thirdCancel := app.CancelQuery(queryID); thirdCancel.Success {
+		t.Fatal("cancellation should fail after the query owner exits")
+	}
+}
+
+func TestRegisterRunningQuery_OldCleanupDoesNotDeleteReplacement(t *testing.T) {
+	app := NewApp()
+	queryID := "reused-query-id"
+
+	firstCtx, firstCancel := context.WithCancel(context.Background())
+	defer firstCancel()
+	cleanupFirst := app.registerRunningQuery(queryID, firstCancel, true)
+
+	secondCtx, secondCancel := context.WithCancel(context.Background())
+	defer secondCancel()
+	cleanupSecond := app.registerRunningQuery(queryID, secondCancel, true)
+	cleanupFirst()
+
+	if result := app.CancelQuery(queryID); !result.Success {
+		t.Fatalf("old cleanup removed the replacement registration: %s", result.Message)
+	}
+	select {
+	case <-secondCtx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("replacement cancel function was not called")
+	}
+	select {
+	case <-firstCtx.Done():
+		t.Fatal("cancelling the replacement should not cancel the old registration")
+	default:
+	}
+
+	cleanupSecond()
+	app.queryMu.RLock()
+	_, exists := app.runningQueries[queryID]
+	app.queryMu.RUnlock()
+	if exists {
+		t.Fatal("replacement cleanup should remove its own registration")
 	}
 }
 
@@ -151,17 +293,51 @@ func TestDBQueryWithCancel_QueryIDPropagation(t *testing.T) {
 	}
 }
 
-func TestNewQueryExecutionContext_UsesTimeoutForNetworkDatabases(t *testing.T) {
-	ctx, cancel := newQueryExecutionContext(connection.ConnectionConfig{Type: "mysql", Timeout: 7})
+func TestNewQueryExecutionContext_UsesExplicitQueryTimeout(t *testing.T) {
+	ctx, cancel := newQueryExecutionContext(connection.ConnectionConfig{
+		Type:         "mysql",
+		Timeout:      1,
+		QueryTimeout: 7,
+	})
 	defer cancel()
 
 	deadline, ok := ctx.Deadline()
 	if !ok {
-		t.Fatal("expected network database query context to carry a deadline")
+		t.Fatal("expected explicit query timeout to carry a deadline")
 	}
 	remaining := time.Until(deadline)
 	if remaining <= 0 || remaining > 8*time.Second {
 		t.Fatalf("expected deadline around 7s, got remaining=%s", remaining)
+	}
+}
+
+func TestNewQueryExecutionContext_AllDataSourcesDoNotApplyConnectTimeout(t *testing.T) {
+	tests := []struct {
+		name   string
+		config connection.ConnectionConfig
+	}{
+		{name: "mysql", config: connection.ConnectionConfig{Type: "mysql", Timeout: 7}},
+		{name: "goldendb", config: connection.ConnectionConfig{Type: "goldendb", Timeout: 7}},
+		{name: "custom gdb", config: connection.ConnectionConfig{Type: "custom", Driver: "gdb", Timeout: 7}},
+		{name: "postgres", config: connection.ConnectionConfig{Type: "postgres", Timeout: 7}},
+		{name: "oracle", config: connection.ConnectionConfig{Type: "oracle", Timeout: 7}},
+		{name: "sqlserver", config: connection.ConnectionConfig{Type: "sqlserver", Timeout: 7}},
+		{name: "elasticsearch", config: connection.ConnectionConfig{Type: "elasticsearch", Timeout: 7}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := newQueryExecutionContext(tt.config)
+
+			if _, ok := ctx.Deadline(); ok {
+				cancel()
+				t.Fatal("expected query context to avoid inheriting the connection-timeout deadline")
+			}
+			cancel()
+			if !errors.Is(ctx.Err(), context.Canceled) {
+				t.Fatalf("expected manual cancellation to remain effective, got %v", ctx.Err())
+			}
+		})
 	}
 }
 
