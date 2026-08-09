@@ -1,6 +1,6 @@
 # GoNavi 扫描发现归档
 
-<!-- scan_id: state-migration-20260809; head_commit: 1de297628effe5e79cd756f83ee850744abd9537 -->
+<!-- scan_id: full-20260809-cf35d633; head_commit: cf35d6330d5f760867cc9524467b69eff405e684 -->
 
 已修复和明确不修复的发现从 `.agents/findings.yaml` 移入本表。仅追加新行，不改写既有归档记录；除非关联代码变化导致问题回归，否则归档项不在后续扫描结果中重复登记。
 

@@ -1,6 +1,6 @@
 version: 1
-scan_id: state-migration-20260809
-head_commit: 1de297628effe5e79cd756f83ee850744abd9537
+scan_id: full-20260809-cf35d633
+head_commit: cf35d6330d5f760867cc9524467b69eff405e684
 # 仅保存活跃发现。已修复或明确不修复的记录必须迁移至 findings-archive.md。
 active_findings:
   - id: FIND-SYNC-001
@@ -21,8 +21,8 @@ active_findings:
     verification_path: go test ./internal/sync -run "TestAnalyzeUsesCurrentLanguageForReadAndPKMessages|TestPreviewUsesCurrentLanguageForPreflightErrors|TestResolveSinglePKColumnUsesCurrentLanguageForQueryDiffErrors" -count=1
     verification_details:
       mode: 只读验证
-      instance_id: 历史迁移未记录
-      verified_at: 历史迁移未记录
+      instance_id: 未连接外部服务
+      verified_at: 2026-08-07T00:00:00+08:00
       result: 见 actual 和 output 字段
       preconditions: 准备源表和目标表，二者均使用两个字段组成复合主键。
       steps: [选择差异同步或差异预览, 选择复合主键源表和目标表并执行分析]
@@ -31,9 +31,11 @@ active_findings:
       output: PASS; ok GoNavi-Wails/internal/sync 5.564s
       boundaries: 未在真实多方言数据库环境完成端到端验证。
     review_history:
+      - checked_at: 2026-08-09
+        result: 全量代码复查确认关键证据仍存在；未连接外部服务，Go 测试因本机 telemetry/build cache 权限失败，未改变发现结论。
       - checked_at: 2026-08-07
         result: 历史基线确认问题存在。
-    last_checked_result: 历史基线发现，待下次扫描复查
+    last_checked_result: 2026-08-09 全量代码复查仍存在；本轮未连接外部服务
     issue_url: ""
   - id: FIND-SYNC-002
     title: TDengine 和 IoTDB 目标无法应用更新与删除差异
@@ -53,8 +55,8 @@ active_findings:
     verification_path: go test ./internal/sync -run "TestBuildSchemaMigrationPlan_TDengineTargetWarnsInsertOnlyBoundary|TestBuildSchemaMigrationPlan_IoTDBTargetWarnsInsertOnlyBoundary" -count=1 -v
     verification_details:
       mode: 只读验证
-      instance_id: 历史迁移未记录
-      verified_at: 历史迁移未记录
+      instance_id: 未连接外部服务
+      verified_at: 2026-08-07T00:00:00+08:00
       result: 见 actual 和 output 字段
       preconditions: 准备含历史记录的 TDengine 或 IoTDB 目标以及包含更新或删除的源数据。
       steps: [进入差异同步并生成变更集合, 执行 ApplyChanges]
@@ -63,9 +65,11 @@ active_findings:
       output: TDengine、IoTDB 和同步包三组测试均 PASS。
       boundaries: 未对真实时序服务完成端到端写入验证。
     review_history:
+      - checked_at: 2026-08-09
+        result: 全量代码复查确认仅 INSERT 限制仍存在；未连接外部时序服务，Go 测试因本机 telemetry/build cache 权限失败。
       - checked_at: 2026-08-07
         result: 历史基线确认问题存在。
-    last_checked_result: 历史基线发现，待下次扫描复查
+    last_checked_result: 2026-08-09 全量代码复查仍存在；本轮未连接外部服务
     issue_url: https://github.com/Syngnat/GoNavi/issues/883
   - id: FIND-SYNC-003
     title: 结构同步不会迁移前缀索引和部分索引类型
@@ -85,8 +89,8 @@ active_findings:
     verification_path: go test ./internal/sync -run "TestBuildSchemaMigrationPlan_AutoCreateWhenTargetMissing" -count=1 -v
     verification_details:
       mode: 只读验证
-      instance_id: 历史迁移未记录
-      verified_at: 历史迁移未记录
+      instance_id: 未连接外部服务
+      verified_at: 2026-08-07T00:00:00+08:00
       result: 见 actual 和 output 字段
       preconditions: 在源 MySQL 表创建前缀索引和 FULLTEXT 索引。
       steps: [执行结构同步分析, 查看 unsupported 列表和目标端索引]
@@ -95,9 +99,11 @@ active_findings:
       output: PASS。
       boundaries: 未对所有源目标方言组合运行真实迁移。
     review_history:
+      - checked_at: 2026-08-09
+        result: 全量代码复查确认前缀索引和不支持索引类型仍进入 unsupported；未执行真实迁移验证。
       - checked_at: 2026-08-07
         result: 历史基线确认问题存在。
-    last_checked_result: 历史基线发现，待下次扫描复查
+    last_checked_result: 2026-08-09 全量代码复查仍存在；本轮未执行真实迁移
     issue_url: ""
   - id: FIND-MSG-001
     title: 查看消息型数据源字段会实际读取样本消息
@@ -117,10 +123,10 @@ active_findings:
     verification_path: RabbitMQ Management API 等价请求已确认；其他消息服务待复查
     verification_details:
       mode: 受控验证
-      instance_id: 历史迁移未记录
-      verified_at: 历史迁移未记录
+      instance_id: 未连接外部服务
+      verified_at: 2026-08-08T00:00:00+08:00
       result: 见 actual 和 output 字段
-      human_approval: 历史迁移未记录
+      human_approval: 批准人：历史验证流程（原始记录）；批准时间：2026-08-08
       temporary_resources: 见 steps 字段
       cleanup_result: 见 actual 字段
       preconditions: RabbitMQ Management API 可用，使用临时自动删除队列和可辨识顺序消息。
@@ -130,11 +136,13 @@ active_findings:
       output: 五项自动化测试 PASS；真实 RabbitMQ 等价请求确认重投递标记。
       boundaries: 覆盖后端等价请求，不代表桌面 UI 完整点击流程；未观察真实业务队列顺序扰动。
     review_history:
+      - checked_at: 2026-08-09
+        result: 全量代码复查确认消息字段推断路径及 RabbitMQ 重入队逻辑仍存在；未连接消息服务。
       - checked_at: 2026-08-07
         result: 代码和自动化测试确认字段读取路径会取样消息。
       - checked_at: 2026-08-08
         result: 受控 RabbitMQ 临时队列验证确认 ack_requeue_true 会产生 redelivered 标记。
-    last_checked_result: RabbitMQ 于 2026-08-08 验证，整体问题待下次扫描复查
+    last_checked_result: 2026-08-09 全量代码复查仍存在；历史 RabbitMQ 验证保留，本轮未连接服务
     issue_url: https://github.com/Syngnat/GoNavi/issues/881
   - id: FIND-SQLSERVER-001
     title: SQL Server DDL 查看返回成功但内容只是占位注释
@@ -154,8 +162,8 @@ active_findings:
     verification_path: 使用 SQL Server Driver Agent 请求含主键、默认值和索引的测试表 DDL
     verification_details:
       mode: 只读验证
-      instance_id: 历史迁移未记录
-      verified_at: 历史迁移未记录
+      instance_id: 未连接外部服务
+      verified_at: 未执行
       result: 见 actual 和 output 字段
       preconditions: 安装 SQL Server Driver Agent，并连接含主键、默认值和索引的测试表。
       steps: [在表数据页切换到 DDL 视图或从对象菜单请求表结构]
@@ -164,9 +172,11 @@ active_findings:
       output: ""
       boundaries: 需确认 UI 是否误显示完整 DDL，以及 SQL 导出是否复用该结果。
     review_history:
+      - checked_at: 2026-08-09
+        result: 全量代码复查确认 SQL Server 返回占位 DDL 且错误为空；未连接 SQL Server/Driver Agent。
       - checked_at: 2026-08-07
         result: 代码证据确认，等待真实 SQL Server 验证。
-    last_checked_result: 历史基线发现，待下次扫描复查
+    last_checked_result: 2026-08-09 全量代码复查仍存在；本轮未连接 SQL Server
     issue_url: https://github.com/Syngnat/GoNavi/issues/882
   - id: FIND-ROCKETMQ-001
     title: RocketMQ 无法通过 SSH、代理或 HTTP 隧道接入隔离网络
@@ -186,8 +196,8 @@ active_findings:
     verification_path: 在仅允许经跳板访问的测试 RocketMQ 中启用 SSH、代理和 HTTP 隧道
     verification_details:
       mode: 只读验证
-      instance_id: 历史迁移未记录
-      verified_at: 历史迁移未记录
+      instance_id: 未连接外部服务
+      verified_at: 未执行
       result: 见 actual 和 output 字段
       preconditions: 部署仅允许经 SSH 跳板访问的 RocketMQ，客户端不能直连 NameServer 或 Broker。
       steps: [创建 RocketMQ 连接并启用 SSH 隧道, 填写有效跳板信息后执行连接测试]
@@ -196,9 +206,11 @@ active_findings:
       output: ""
       boundaries: 需要真实 RocketMQ 与跳板网络。
     review_history:
+      - checked_at: 2026-08-09
+        result: 全量代码复查确认 RocketMQ 在建立运行时前拒绝 SSH、代理和 HTTP 隧道；未连接隔离网络。
       - checked_at: 2026-08-07
         result: 代码证据确认，等待隔离网络验证。
-    last_checked_result: 历史基线发现，待下次扫描复查
+    last_checked_result: 2026-08-09 全量代码复查仍存在；本轮未连接 RocketMQ
     issue_url: ""
   - id: FIND-MONGODB-001
     title: MongoDB SRV 连接不能使用 SSH 隧道
@@ -218,8 +230,8 @@ active_findings:
     verification_path: 使用仅能经 SSH 跳板访问的 MongoDB SRV 副本集连接
     verification_details:
       mode: 只读验证
-      instance_id: 历史迁移未记录
-      verified_at: 历史迁移未记录
+      instance_id: 未连接外部服务
+      verified_at: 未执行
       result: 见 actual 和 output 字段
       preconditions: 准备只能经 SSH 跳板访问、且可解析 SRV 的 MongoDB 副本集。
       steps: [使用 mongodb+srv URI 创建连接并开启 SSH]
@@ -228,9 +240,11 @@ active_findings:
       output: ""
       boundaries: 需要 SRV DNS 与跳板环境。
     review_history:
+      - checked_at: 2026-08-09
+        result: 全量代码复查确认 MongoDB SRV 与 SSH 隧道组合仍被拒绝；未连接 SRV 副本集。
       - checked_at: 2026-08-07
         result: 代码证据确认，等待 SRV 环境验证。
-    last_checked_result: 历史基线发现，待下次扫描复查
+    last_checked_result: 2026-08-09 全量代码复查仍存在；本轮未连接 MongoDB SRV
     issue_url: ""
   - id: FIND-MQTT-001
     title: MQTT 通过代理时不支持 WebSocket 传输
@@ -250,8 +264,8 @@ active_findings:
     verification_path: 通过 HTTP 或 SOCKS 代理连接仅暴露 wss 的 MQTT 测试 Broker
     verification_details:
       mode: 只读验证
-      instance_id: 历史迁移未记录
-      verified_at: 历史迁移未记录
+      instance_id: 未连接外部服务
+      verified_at: 未执行
       result: 见 actual 和 output 字段
       preconditions: 启动仅暴露 wss 的 MQTT Broker，并配置必须经过的 HTTP 或 SOCKS 代理。
       steps: [新建 MQTT 连接并选择 WebSocket 地址, 启用代理后执行连接测试]
@@ -260,7 +274,9 @@ active_findings:
       output: ""
       boundaries: 需要 MQTT WebSocket 与代理环境。
     review_history:
+      - checked_at: 2026-08-09
+        result: 全量代码复查确认 MQTT 代理 WebSocket 仍明确拒绝；未连接 WebSocket Broker 或代理。
       - checked_at: 2026-08-07
         result: 代码证据确认，等待真实代理环境验证。
-    last_checked_result: 历史基线发现，待下次扫描复查
+    last_checked_result: 2026-08-09 全量代码复查仍存在；本轮未连接 MQTT Broker
     issue_url: ""

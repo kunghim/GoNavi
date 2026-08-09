@@ -1,6 +1,6 @@
 version: 1
-scan_id: state-migration-20260809
-head_commit: 1de297628effe5e79cd756f83ee850744abd9537
+scan_id: full-20260809-cf35d633
+head_commit: cf35d6330d5f760867cc9524467b69eff405e684
 baseline_status: unavailable
 baseline_commit:
 # 首次全量扫描的入口账本。后续扫描按受影响入口增量维护。

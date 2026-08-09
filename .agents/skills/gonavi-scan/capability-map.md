@@ -1,7 +1,7 @@
 # GoNavi 功能地图索引
 
-> scan_id: `state-migration-20260809`
-> head_commit: `1de297628effe5e79cd756f83ee850744abd9537`
+> scan_id: `full-20260809-cf35d633`
+> head_commit: `cf35d6330d5f760867cc9524467b69eff405e684`
 
 > 增量基线状态：不可用（本轮为状态迁移，未建立可用于增量比较的上次成功扫描基线）。本索引由 `gonavi-scan` 维护；“本次范围内未找到实现证据”不代表功能不存在。
 
