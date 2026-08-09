@@ -1,0 +1,266 @@
+version: 1
+scan_id: state-migration-20260809
+head_commit: 1de297628effe5e79cd756f83ee850744abd9537
+# 仅保存活跃发现。已修复或明确不修复的记录必须迁移至 findings-archive.md。
+active_findings:
+  - id: FIND-SYNC-001
+    title: 差异同步不支持复合主键表
+    status: 待修复
+    type: 产品缺口
+    severity: P2
+    confidence: 高
+    affected_capabilities: [CAP-SYNC-001]
+    conclusion: 差异同步和差异预览只支持单列主键，复合主键表会被拒绝或跳过，无法完成新增、更新、删除差异闭环。
+    evidence: [internal/sync/analyze.go:191, internal/sync/preview.go:103, internal/sync/source_query_sync.go:82, internal/sync/sync_engine.go:326, internal/sync/analyze_i18n_test.go:294, internal/sync/preview_i18n_test.go:188, internal/sync/source_query_sync_test.go:262]
+    impact: 使用联合业务键建模的用户不能使用差异同步，只能改用直接导入、调整表结构或其他同步方式。
+    recommendation: 将复合主键建模为有序元组，统一扩展分页、反查、差异集合和行选择逻辑。
+    acceptance_criteria: [复合主键表不再被差异分析或预览拒绝, 使用全部主键列唯一定位行并生成新增更新删除差异, 表到表和 SQL 结果到表路径均支持复合主键, 覆盖 MySQL-like 和 PostgreSQL-like 回归测试, 单列主键和无主键限制保持兼容]
+    first_seen_commit: 0acc9bdbd0300679ccb632f8a649b62095136f56
+    affected_paths: [internal/sync/analyze.go, internal/sync/preview.go, internal/sync/source_query_sync.go, internal/sync/sync_engine.go]
+    verification_status: 自动化测试确认
+    verification_path: go test ./internal/sync -run "TestAnalyzeUsesCurrentLanguageForReadAndPKMessages|TestPreviewUsesCurrentLanguageForPreflightErrors|TestResolveSinglePKColumnUsesCurrentLanguageForQueryDiffErrors" -count=1
+    verification_details:
+      mode: 只读验证
+      instance_id: 历史迁移未记录
+      verified_at: 历史迁移未记录
+      result: 见 actual 和 output 字段
+      preconditions: 准备源表和目标表，二者均使用两个字段组成复合主键。
+      steps: [选择差异同步或差异预览, 选择复合主键源表和目标表并执行分析]
+      expected: 系统使用两个主键字段唯一定位行并生成新增、更新和删除差异。
+      actual: 后端返回复合主键暂不支持的错误或跳过该表。
+      output: PASS; ok GoNavi-Wails/internal/sync 5.564s
+      boundaries: 未在真实多方言数据库环境完成端到端验证。
+    review_history:
+      - checked_at: 2026-08-07
+        result: 历史基线确认问题存在。
+    last_checked_result: 历史基线发现，待下次扫描复查
+    issue_url: ""
+  - id: FIND-SYNC-002
+    title: TDengine 和 IoTDB 目标无法应用更新与删除差异
+    status: 待修复
+    type: 产品能力缺口
+    severity: P2
+    confidence: 高
+    affected_capabilities: [CAP-SYNC-A03, CAP-DS-TDENGINE, CAP-DS-IOTDB]
+    conclusion: TDengine 和 IoTDB 目标只接受 INSERT；变更集合含 UPDATE 或 DELETE 时会被拒绝，无法完成通用差异同步。
+    evidence: [internal/db/tdengine_impl.go:432, internal/db/iotdb_impl.go:420, internal/sync/schema_migration_test.go:886, internal/sync/schema_migration_test.go:923]
+    impact: 目标端历史记录的更新和删除无法落地，用户可能误以为差异同步能使源目标一致。
+    recommendation: 在选择目标和同步模式时提前展示仅追加能力边界；若支持变更语义，分别设计时序数据更新和删除策略。
+    acceptance_criteria: [仅追加目标在分析阶段明确禁用更新删除并说明原因, 若支持差异同步则更新删除不再被拒绝, 任何拒绝不得造成部分写入, TDengine 和 IoTDB 路径均有回归测试]
+    first_seen_commit: 0acc9bdbd0300679ccb632f8a649b62095136f56
+    affected_paths: [internal/db/tdengine_impl.go, internal/db/iotdb_impl.go, internal/sync/schema_migration.go]
+    verification_status: 自动化测试确认
+    verification_path: go test ./internal/sync -run "TestBuildSchemaMigrationPlan_TDengineTargetWarnsInsertOnlyBoundary|TestBuildSchemaMigrationPlan_IoTDBTargetWarnsInsertOnlyBoundary" -count=1 -v
+    verification_details:
+      mode: 只读验证
+      instance_id: 历史迁移未记录
+      verified_at: 历史迁移未记录
+      result: 见 actual 和 output 字段
+      preconditions: 准备含历史记录的 TDengine 或 IoTDB 目标以及包含更新或删除的源数据。
+      steps: [进入差异同步并生成变更集合, 执行 ApplyChanges]
+      expected: 若承诺差异同步则能落地更新删除；若仅追加则应在分析阶段禁用并解释。
+      actual: 迁移计划给出仅 INSERT 警告，ApplyChanges 拒绝包含更新或删除的集合且不会部分写入。
+      output: TDengine、IoTDB 和同步包三组测试均 PASS。
+      boundaries: 未对真实时序服务完成端到端写入验证。
+    review_history:
+      - checked_at: 2026-08-07
+        result: 历史基线确认问题存在。
+    last_checked_result: 历史基线发现，待下次扫描复查
+    issue_url: https://github.com/Syngnat/GoNavi/issues/883
+  - id: FIND-SYNC-003
+    title: 结构同步不会迁移前缀索引和部分索引类型
+    status: 待修复
+    type: 产品能力缺口 / 性能风险
+    severity: P2
+    confidence: 高
+    affected_capabilities: [CAP-SYNC-A07]
+    conclusion: MySQL 前缀索引和 FULLTEXT 等未支持索引类型会进入 unsupported 列表，不会在目标端创建等价索引。
+    evidence: [internal/sync/schema_migration.go:339, internal/sync/schema_migration.go:344, internal/sync/schema_migration_test.go:142]
+    impact: 数据可迁移，但查询性能和检索行为可能变化，用户容易忽略后续人工补建索引。
+    recommendation: 将未迁移对象提升为独立验收清单，支持导出补救 DDL；可等价映射时生成方言化索引。
+    acceptance_criteria: [任务完成前明确列出未迁移索引, 支持复制或导出补救 DDL, 可等价映射的索引自动创建, 前缀和 FULLTEXT 行为有回归测试]
+    first_seen_commit: 0acc9bdbd0300679ccb632f8a649b62095136f56
+    affected_paths: [internal/sync/schema_migration.go]
+    verification_status: 自动化测试确认
+    verification_path: go test ./internal/sync -run "TestBuildSchemaMigrationPlan_AutoCreateWhenTargetMissing" -count=1 -v
+    verification_details:
+      mode: 只读验证
+      instance_id: 历史迁移未记录
+      verified_at: 历史迁移未记录
+      result: 见 actual 和 output 字段
+      preconditions: 在源 MySQL 表创建前缀索引和 FULLTEXT 索引。
+      steps: [执行结构同步分析, 查看 unsupported 列表和目标端索引]
+      expected: 等价索引被创建，或在任务完成前要求用户明确处理。
+      actual: 两类索引进入 unsupported 警告，不生成迁移 SQL。
+      output: PASS。
+      boundaries: 未对所有源目标方言组合运行真实迁移。
+    review_history:
+      - checked_at: 2026-08-07
+        result: 历史基线确认问题存在。
+    last_checked_result: 历史基线发现，待下次扫描复查
+    issue_url: ""
+  - id: FIND-MSG-001
+    title: 查看消息型数据源字段会实际读取样本消息
+    status: 待修复
+    type: 运维风险 / 产品交互缺口
+    severity: P2
+    confidence: 高
+    affected_capabilities: [CAP-ROCKET-A06, CAP-MQTT-A05, CAP-KAFKA-A06, CAP-RABBIT-A05]
+    conclusion: Kafka、MQTT、RocketMQ 和 RabbitMQ 的 GetColumns 会读取实际消息推断 Payload 字段；RabbitMQ 重入队后会产生 redelivered 标记。
+    evidence: [internal/db/kafka_impl.go:330, internal/db/mqtt_impl.go:332, internal/db/rocketmq_impl.go:377, internal/db/rabbitmq_impl.go:383, internal/db/rabbitmq_impl.go:821-837]
+    impact: 打开字段元数据也可能产生等待、Broker 读取或订阅活动、额外权限要求，以及消息重投递或顺序扰动风险。
+    recommendation: 默认显示静态消息元字段；将 Payload 推断改为显式读取样本操作，并提供副作用说明、禁用、限时、样本量和缓存策略。
+    acceptance_criteria: [纯元数据操作不读取实际消息, 读取样本需用户显式确认并说明副作用, 可配置样本量和超时, RabbitMQ 取样行为及 redelivered 影响可观测, 四类消息服务有回归覆盖]
+    first_seen_commit: 0acc9bdbd0300679ccb632f8a649b62095136f56
+    affected_paths: [internal/db/kafka_impl.go, internal/db/mqtt_impl.go, internal/db/rocketmq_impl.go, internal/db/rabbitmq_impl.go]
+    verification_status: 受控验证确认
+    verification_path: RabbitMQ Management API 等价请求已确认；其他消息服务待复查
+    verification_details:
+      mode: 受控验证
+      instance_id: 历史迁移未记录
+      verified_at: 历史迁移未记录
+      result: 见 actual 和 output 字段
+      human_approval: 历史迁移未记录
+      temporary_resources: 见 steps 字段
+      cleanup_result: 见 actual 字段
+      preconditions: RabbitMQ Management API 可用，使用临时自动删除队列和可辨识顺序消息。
+      steps: [创建临时队列并发布三条测试消息, 连续发送 ack_requeue_true 取样请求, 观察 redelivered 字段, 删除临时队列]
+      expected: 第二次取样返回同一批消息且 redelivered 为 true。
+      actual: RabbitMQ 3.13.7 第一次三条均为 false，第二次三条均为 true；临时队列已删除。
+      output: 五项自动化测试 PASS；真实 RabbitMQ 等价请求确认重投递标记。
+      boundaries: 覆盖后端等价请求，不代表桌面 UI 完整点击流程；未观察真实业务队列顺序扰动。
+    review_history:
+      - checked_at: 2026-08-07
+        result: 代码和自动化测试确认字段读取路径会取样消息。
+      - checked_at: 2026-08-08
+        result: 受控 RabbitMQ 临时队列验证确认 ack_requeue_true 会产生 redelivered 标记。
+    last_checked_result: RabbitMQ 于 2026-08-08 验证，整体问题待下次扫描复查
+    issue_url: https://github.com/Syngnat/GoNavi/issues/881
+  - id: FIND-SQLSERVER-001
+    title: SQL Server DDL 查看返回成功但内容只是占位注释
+    status: 待修复
+    type: 功能 Bug
+    severity: P2
+    confidence: 高
+    affected_capabilities: [CAP-DATA-A09, CAP-DS-SQLSERVER]
+    conclusion: SqlServerDB.GetCreateStatement 返回 SHOW CREATE TABLE 不支持的占位注释且 error 为 nil，上层可能将其显示为成功 DDL。
+    evidence: [internal/db/sqlserver_impl.go:532-533, DBShowCreateTable, DataGridV2DdlWorkspace.tsx]
+    impact: SQL Server 用户无法获得可复建的表定义，DDL 视图或结构导出可能展示或产出不可执行内容。
+    recommendation: 使用 sys.tables、sys.columns、sys.indexes 和 sys.foreign_keys 组装定义；未实现前返回结构化 unsupported 错误并在 UI 禁用相关动作。
+    acceptance_criteria: [含主键默认值索引的 SQL Server 表返回可执行 DDL, 未支持对象返回明确 unsupported 而非成功占位内容, DDL 视图和导出路径一致处理, 补充 Driver Agent 回归测试]
+    first_seen_commit: 0acc9bdbd0300679ccb632f8a649b62095136f56
+    affected_paths: [internal/db/sqlserver_impl.go]
+    verification_status: 待验证
+    verification_path: 使用 SQL Server Driver Agent 请求含主键、默认值和索引的测试表 DDL
+    verification_details:
+      mode: 只读验证
+      instance_id: 历史迁移未记录
+      verified_at: 历史迁移未记录
+      result: 见 actual 和 output 字段
+      preconditions: 安装 SQL Server Driver Agent，并连接含主键、默认值和索引的测试表。
+      steps: [在表数据页切换到 DDL 视图或从对象菜单请求表结构]
+      expected: 显示可执行 CREATE TABLE 及必要约束和索引。
+      actual: 尚未在真实 SQL Server/Driver Agent 环境执行；代码预计返回两行占位注释且被视为成功。
+      output: ""
+      boundaries: 需确认 UI 是否误显示完整 DDL，以及 SQL 导出是否复用该结果。
+    review_history:
+      - checked_at: 2026-08-07
+        result: 代码证据确认，等待真实 SQL Server 验证。
+    last_checked_result: 历史基线发现，待下次扫描复查
+    issue_url: https://github.com/Syngnat/GoNavi/issues/882
+  - id: FIND-ROCKETMQ-001
+    title: RocketMQ 无法通过 SSH、代理或 HTTP 隧道接入隔离网络
+    status: 待修复
+    type: 产品能力缺口
+    severity: P2
+    confidence: 高
+    affected_capabilities: [CAP-CONN-A08, CAP-CONN-A10, CAP-DS-ROCKETMQ]
+    conclusion: RocketMQ 在建立运行时前直接拒绝 SSH、代理和 HTTP 隧道，只支持客户端直连 NameServer 与 Broker。
+    evidence: [internal/db/rocketmq_impl.go:136-145]
+    impact: 企业内网、堡垒机和跨网段场景无法复用已有网络安全能力，Broker 返回地址也可能不可达。
+    recommendation: 支持 NameServer 和 Broker 地址的统一隧道或代理解析，并提供 Broker 地址重写或映射配置。
+    acceptance_criteria: [只允许经跳板访问的测试集群可通过 SSH 发现 Topic 和访问 Broker, 代理和 HTTP 隧道路径有明确支持或提前禁用说明, Broker 返回地址可通过映射访问]
+    first_seen_commit: 0acc9bdbd0300679ccb632f8a649b62095136f56
+    affected_paths: [internal/db/rocketmq_impl.go]
+    verification_status: 待验证
+    verification_path: 在仅允许经跳板访问的测试 RocketMQ 中启用 SSH、代理和 HTTP 隧道
+    verification_details:
+      mode: 只读验证
+      instance_id: 历史迁移未记录
+      verified_at: 历史迁移未记录
+      result: 见 actual 和 output 字段
+      preconditions: 部署仅允许经 SSH 跳板访问的 RocketMQ，客户端不能直连 NameServer 或 Broker。
+      steps: [创建 RocketMQ 连接并启用 SSH 隧道, 填写有效跳板信息后执行连接测试]
+      expected: 隧道建立后可发现 Topic 并访问 Broker。
+      actual: 尚未运行；代码预计在拨号前返回暂不支持 SSH 隧道，代理和 HTTP 隧道也被拒绝。
+      output: ""
+      boundaries: 需要真实 RocketMQ 与跳板网络。
+    review_history:
+      - checked_at: 2026-08-07
+        result: 代码证据确认，等待隔离网络验证。
+    last_checked_result: 历史基线发现，待下次扫描复查
+    issue_url: ""
+  - id: FIND-MONGODB-001
+    title: MongoDB SRV 连接不能使用 SSH 隧道
+    status: 待修复
+    type: 产品能力缺口
+    severity: P3
+    confidence: 高
+    affected_capabilities: [CAP-CONN-A08, CAP-DS-MONGODB]
+    conclusion: mongodb+srv 模式明确拒绝 SSH 隧道，普通种子地址和 SRV 模式的网络能力不一致。
+    evidence: [internal/db/mongodb_impl.go:340, internal/db/mongodb_impl_v1.go:341]
+    impact: 使用 Atlas 风格 SRV 记录且必须经堡垒机访问的用户需手工解析并维护成员地址，连接体验和容灾能力下降。
+    recommendation: 解析 SRV/TXT 后为每个成员建立可复用转发，并处理副本集返回地址映射。
+    acceptance_criteria: [SRV 记录在 SSH 跳板环境可解析并连接副本集, 成员发现后的地址可经转发访问, 普通 mongodb URI 与 SRV URI 的隧道能力一致]
+    first_seen_commit: 0acc9bdbd0300679ccb632f8a649b62095136f56
+    affected_paths: [internal/db/mongodb_impl.go, internal/db/mongodb_impl_v1.go]
+    verification_status: 待验证
+    verification_path: 使用仅能经 SSH 跳板访问的 MongoDB SRV 副本集连接
+    verification_details:
+      mode: 只读验证
+      instance_id: 历史迁移未记录
+      verified_at: 历史迁移未记录
+      result: 见 actual 和 output 字段
+      preconditions: 准备只能经 SSH 跳板访问、且可解析 SRV 的 MongoDB 副本集。
+      steps: [使用 mongodb+srv URI 创建连接并开启 SSH]
+      expected: 解析 SRV 后通过隧道连接并发现副本集成员。
+      actual: 尚未运行；代码预计在连接前返回 SRV 记录模式暂不支持 SSH 隧道。
+      output: ""
+      boundaries: 需要 SRV DNS 与跳板环境。
+    review_history:
+      - checked_at: 2026-08-07
+        result: 代码证据确认，等待 SRV 环境验证。
+    last_checked_result: 历史基线发现，待下次扫描复查
+    issue_url: ""
+  - id: FIND-MQTT-001
+    title: MQTT 通过代理时不支持 WebSocket 传输
+    status: 待修复
+    type: 产品能力缺口
+    severity: P3
+    confidence: 高
+    affected_capabilities: [CAP-CONN-A10, CAP-DS-MQTT]
+    conclusion: MQTT 启用代理时只支持 tcp/ssl，WebSocket 连接会被明确拒绝。
+    evidence: [internal/db/mqtt_impl.go:748]
+    impact: 仅开放 WebSocket 入口且要求经企业代理访问的 Broker 无法接入。
+    recommendation: 为 ws/wss 接入代理拨号器，并覆盖 HTTP CONNECT、TLS SNI 和认证。
+    acceptance_criteria: [仅暴露 wss 的测试 Broker 可经 HTTP 或 SOCKS 代理连接, 代理完成 WebSocket 握手后可订阅和发布, tcp ssl 现有代理能力不回归]
+    first_seen_commit: 0acc9bdbd0300679ccb632f8a649b62095136f56
+    affected_paths: [internal/db/mqtt_impl.go]
+    verification_status: 待验证
+    verification_path: 通过 HTTP 或 SOCKS 代理连接仅暴露 wss 的 MQTT 测试 Broker
+    verification_details:
+      mode: 只读验证
+      instance_id: 历史迁移未记录
+      verified_at: 历史迁移未记录
+      result: 见 actual 和 output 字段
+      preconditions: 启动仅暴露 wss 的 MQTT Broker，并配置必须经过的 HTTP 或 SOCKS 代理。
+      steps: [新建 MQTT 连接并选择 WebSocket 地址, 启用代理后执行连接测试]
+      expected: 代理完成 WebSocket 握手后可订阅和发布。
+      actual: 尚未运行；代码预计返回不支持通过代理建立 WebSocket 连接。
+      output: ""
+      boundaries: 需要 MQTT WebSocket 与代理环境。
+    review_history:
+      - checked_at: 2026-08-07
+        result: 代码证据确认，等待真实代理环境验证。
+    last_checked_result: 历史基线发现，待下次扫描复查
+    issue_url: ""

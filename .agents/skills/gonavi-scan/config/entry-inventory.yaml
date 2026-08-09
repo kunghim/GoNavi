@@ -1,0 +1,63 @@
+version: 1
+scan_id: state-migration-20260809
+head_commit: 1de297628effe5e79cd756f83ee850744abd9537
+baseline_status: unavailable
+baseline_commit:
+# 首次全量扫描的入口账本。后续扫描按受影响入口增量维护。
+entries:
+  - id: ENTRY-WORKBENCH
+    category: 工作台与标签
+    code_locations: [frontend/src, internal/app]
+    capability_ids: [CAP-QUERY-001, CAP-DATA-001, CAP-REDIS-001, CAP-JVM-001]
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 真实工作台流程待按模块验证
+  - id: ENTRY-MENU
+    category: 菜单、右键动作与工具入口
+    code_locations: [frontend/src/components]
+    capability_ids: [CAP-EXP-001, CAP-DATA-002, CAP-DESIGN-001]
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 高风险写操作待受控验证
+  - id: ENTRY-SETTINGS
+    category: 设置页
+    code_locations: [frontend/src/components, internal/app]
+    capability_ids: [CAP-CONN-001, CAP-AI-001, CAP-OPS-001]
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 外部 Provider 与系统能力待分环境验证
+  - id: ENTRY-WAILS
+    category: Wails 对外方法族
+    code_locations: [internal/app, frontend/wailsjs]
+    capability_ids: [CAP-CONN-001, CAP-QUERY-002, CAP-DATA-001]
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 绑定变更需随增量扫描复核
+  - id: ENTRY-RUNTIME
+    category: Web、MCP、CLI 与桌面运行入口
+    code_locations: [main.go, internal/webserver, internal/mcpserver]
+    capability_ids: [CAP-WEB-001, CAP-MCP-001, CAP-OPS-001]
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 远端部署与认证待测试环境只读验证
+  - id: ENTRY-DATASOURCE
+    category: 内置、可选和自定义数据源
+    code_locations: [internal/db, internal/connection]
+    capability_ids: [CAP-CONN-003, CAP-DS-MYSQL, CAP-DS-POSTGRES, CAP-DS-ROCKETMQ]
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 各数据源版本与权限矩阵待验证
+  - id: ENTRY-SPECIALIZED
+    category: 专用工作台
+    code_locations: [frontend/src/components, internal/redis, internal/nacos, internal/jvm]
+    capability_ids: [CAP-REDIS-001, CAP-NACOS-001, CAP-JVM-001]
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 外部服务流程待验证
+  - id: ENTRY-PLATFORM
+    category: 桌面能力、发布与更新
+    code_locations: [internal/nativewindow, internal/app, tools, .github/workflows]
+    capability_ids: [CAP-OPS-A09, CAP-OPS-A12, CAP-OPS-A13]
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 多平台安装和更新待验证
