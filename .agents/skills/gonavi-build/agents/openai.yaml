@@ -1,0 +1,4 @@
+interface:
+  display_name: "GoNavi Build"
+  short_description: "Build and launch local GoNavi for manual verification"
+  default_prompt: "Use $gonavi-build to run the local GoNavi build script, produce a fresh executable, and launch it for manual verification."
