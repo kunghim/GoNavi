@@ -1,7 +1,7 @@
 # AI、MCP 与 Web
 
-> scan_id: `full-20260809-cf35d633`
-> head_commit: `cf35d6330d5f760867cc9524467b69eff405e684`
+> scan_id: `incremental-20260809-5c96d4a4`
+> head_commit: `5c96d4a4661daf072e77a51c240db709d4791030`
 
 > 本文件是 gonavi-scan 功能地图的领域分册。能力 ID 保持稳定；扫描时只更新受影响领域。
 
@@ -33,7 +33,7 @@
 
 | ID | 具体能力 | 用户入口与操作 | 边界/异常 | 状态 | 证据 |
 |---|---|---|---|---|---|
-| CAP-AI-A01 | 配置和测试多模型 Provider | AI 设置 → Provider → 模型/API/密钥 → 测试 | OpenAI、Gemini、Claude、兼容 API 与 CLI | 已实现 | `AISettingsModal.tsx`；`internal/ai/provider` |
+| CAP-AI-A01 | 配置和测试多模型 Provider | AI 设置 → Provider → 模型/API/密钥 → 测试 | Windows CodeBuddy 会误选 WSL bash，当前为部分可用 | 部分实现 | `AISettingsModal.tsx`；`internal/ai/provider/codebuddy_cli.go`；`codebuddy_cli_test.go` |
 | CAP-AI-A02 | 多会话流式对话 | AI 面板 → 新建会话 → 提问 → 流式输出/取消 | 会话边界、思考强度和错误恢复 | 已实现 | `AIChatPanel.tsx`；`service_stream_cancel_test.go` |
 | CAP-AI-A03 | 注入连接、Schema 和 SQL 上下文 | AI 对话 → 选择上下文 → 预览 → 发送 | 上下文大小和敏感信息边界 | 已实现 | `AIChatContextPreview.tsx`；`internal/ai/context` |
 | CAP-AI-A04 | 添加附件 | AI 输入 → 添加附件 → 查看条带 → 发送/移除 | 运行环境决定本地文件读取能力 | 已实现 | `AIChatAttachmentStrip.tsx` |

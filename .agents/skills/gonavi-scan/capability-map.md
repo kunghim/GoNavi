@@ -1,9 +1,9 @@
 # GoNavi 功能地图索引
 
-> scan_id: `full-20260809-cf35d633`
-> head_commit: `cf35d6330d5f760867cc9524467b69eff405e684`
+> scan_id: `incremental-20260809-5c96d4a4`
+> head_commit: `5c96d4a4661daf072e77a51c240db709d4791030`
 
-> 增量基线状态：不可用（本轮为状态迁移，未建立可用于增量比较的上次成功扫描基线）。本索引由 `gonavi-scan` 维护；“本次范围内未找到实现证据”不代表功能不存在。
+> 增量基线状态：有效（从 `02da747e287ffb2fe442731517c00343bc2bd8f6` 复查至 `upstream/dev@5c96d4a4661daf072e77a51c240db709d4791030`）。本索引由 `gonavi-scan` 维护；“本次范围内未找到实现证据”不代表功能不存在。
 
 ## 使用规则
 
@@ -30,7 +30,7 @@
 | CAP-EXP-001 | 对象浏览 | [对象浏览](capabilities/对象浏览.md) | 已实现 |
 | CAP-QUERY-001..002、CAP-ANALYZE-001 | SQL 查询与治理 | [SQL查询与治理](capabilities/SQL查询与治理.md) | 已实现 |
 | CAP-DATA-001..002、CAP-DESIGN-001 | 数据操作与结构设计 | [数据操作与结构设计](capabilities/数据操作与结构设计.md) | 已实现 |
-| CAP-SYNC-001 | 数据同步与结果差异 | [数据同步与结果差异](capabilities/数据同步与结果差异.md) | 部分实现 |
+| CAP-SYNC-001、CAP-SYNC-A09 | 数据同步与结果差异 | [数据同步与结果差异](capabilities/数据同步与结果差异.md) | 部分实现 |
 | CAP-DS-*（关系型、分析型） | 关系型与分析型数据源 | [关系型数据源](capabilities/关系型数据源.md) | 依数据源而异 |
 | CAP-DS-*（消息、搜索）及 CAP-MSG-* | 消息与搜索数据源 | [消息与搜索数据源](capabilities/消息与搜索数据源.md) | 依数据源而异 |
 | CAP-DS-*（向量、缓存）及 CAP-VECTOR-* | 向量与缓存数据源 | [向量与缓存数据源](capabilities/向量与缓存数据源.md) | 依数据源而异 |
@@ -43,4 +43,6 @@
 - 34 类数据源均已建立独立能力条目，但未对每个版本、权限组合和真实大数据量逐项联调。
 - Web Server、MCP 远端模式、Driver Agent 流式回退和容器部署只完成静态与测试证据核验，未在本轮做端到端运行。
 - Windows、macOS、Linux 的安装、更新、原生窗口和系统密钥环未在三平台同时实测。
+- Windows CodeBuddy 的 Bash 选择目前会误命中 WSL launcher；JVM fixture 在多 JDK PATH 下会混用工具链，相关发现已进入共享清单。
+- 同步任务终态事件一致性已通过重复测试复现；外部 SQL 缺失目录恢复仅完成代码证据核验，尚未做桌面 UI 流程验证。
 - 功能地图只记录有实现证据的 GoNavi 现有能力，不把路线图内容混入能力状态。

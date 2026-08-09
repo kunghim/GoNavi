@@ -1,11 +1,11 @@
-scan_id: full-20260809-cf35d633
-head_commit: cf35d6330d5f760867cc9524467b69eff405e684
-baseline_status: unavailable
-last_successful_commit:
-scan_mode: 全量扫描
-started_at: 2026-08-09T09:00:00+08:00
-completed_at: 2026-08-09T09:15:07+08:00
-start_commit: cf35d6330d5f760867cc9524467b69eff405e684
+scan_id: incremental-20260809-5c96d4a4
+head_commit: 5c96d4a4661daf072e77a51c240db709d4791030
+baseline_status: ok
+last_successful_commit: 5c96d4a4661daf072e77a51c240db709d4791030
+scan_mode: 增量扫描
+started_at: 2026-08-09T21:03:03+08:00
+completed_at: 2026-08-09T21:13:00+08:00
+start_commit: 02da747e287ffb2fe442731517c00343bc2bd8f6
 workspace_status: 有未提交改动
-included_scope: [业务代码, 测试, 文档, 入口账本, 能力地图, 活跃发现复查]
-excluded_scope: [外部数据库和消息服务连接, 受控验证, .agents/skills/gonavi-scan]
+included_scope: [PR #892 合并提交, FIND-SYNC-001 修复复查, internal/sync 自动化测试, 同步能力地图]
+excluded_scope: [其他活跃发现复查, 外部数据库连接, 受控验证, 桌面 UI 人工流程, .agents/skills/gonavi-scan 产品变化]

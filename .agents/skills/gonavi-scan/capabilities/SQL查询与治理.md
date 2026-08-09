@@ -1,7 +1,7 @@
 # SQL 查询与治理
 
-> scan_id: `full-20260809-cf35d633`
-> head_commit: `cf35d6330d5f760867cc9524467b69eff405e684`
+> scan_id: `incremental-20260809-5c96d4a4`
+> head_commit: `5c96d4a4661daf072e77a51c240db709d4791030`
 
 > 本文件是 gonavi-scan 功能地图的领域分册。能力 ID 保持稳定；扫描时只更新受影响领域。
 
@@ -35,7 +35,7 @@
 | CAP-QUERY-A06 | 拖入表或结果列生成 SQL | 从侧栏/列头拖入编辑器 → 落点预览 → 插入 | 覆盖 SELECT、INSERT、UPDATE 和重复字段 | 已实现 | `sqlFieldDrop.ts`；`QueryEditor.results-and-drop.test.tsx` |
 | CAP-QUERY-A07 | 保存查询和分组 | 查询菜单 → 保存 → 新建/移动分组 | 支持嵌套分组 | 已实现 | `methods_saved_queries.go` |
 | CAP-QUERY-A08 | 查询重绑定和未绑定恢复 | 保存查询 → 更换/缺失连接 → 重绑定 | 连接删除后仍可找回 SQL | 已实现 | `RebindSavedQuery`；`GetUnboundSavedQueries` |
-| CAP-QUERY-A09 | 外部 SQL 文件和目录 CRUD | SQL 文件树 → 新建/读写/改名/删除 | Web/桌面文件系统能力不同 | 已实现 | `methods_file.go`；`QueryEditor.external-sql-save.test.tsx` |
+| CAP-QUERY-A09 | 外部 SQL 文件和目录 CRUD | SQL 文件树 → 新建/读写/改名/删除/解除绑定 | 目录在应用外删除后缺少明确失效状态和幂等清理闭环 | 部分实现 | `methods_file.go`；`SidebarExternalSqlWorkflow.tsx`；`QueryEditor.external-sql-save.test.tsx` |
 | CAP-QUERY-A10 | 执行选区、当前语句或全部 SQL | 工具栏/快捷键 → 选择范围 → 执行 | SQL 拆句和方言差异 | 已实现 | `QueryEditorToolbar.tsx` |
 | CAP-QUERY-A11 | 多结果集与批次消息 | 执行多语句 → 切换结果/查看消息 | Driver Agent 不支持时回退 | 已实现 | `DBQueryMulti`；`optional_driver_agent_impl.go` |
 | CAP-QUERY-A12 | 取消和超时 | 查询运行中 → 取消；设置超时 → 自动终止 | 处理取消竞争和连接释放 | 已实现 | `methods_db_cancel_test.go`；`methods_db_timeout_test.go` |

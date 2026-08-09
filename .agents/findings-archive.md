@@ -1,8 +1,15 @@
 # GoNavi 扫描发现归档
 
-<!-- scan_id: full-20260809-cf35d633; head_commit: cf35d6330d5f760867cc9524467b69eff405e684 -->
+<!-- scan_id: incremental-20260809-5c96d4a4; head_commit: 5c96d4a4661daf072e77a51c240db709d4791030 -->
 
 已修复和明确不修复的发现从 `.agents/findings.yaml` 移入本表。仅追加新行，不改写既有归档记录；除非关联代码变化导致问题回归，否则归档项不在后续扫描结果中重复登记。
 
 | ID | 问题 | 归档原因 | 首次发现提交 | 最后确认提交 | 验证方式 | 证据 | 归档日期 |
 |---|---|---|---|---|---|---|---|
+| FIND-SYNC-002 | TDengine 和 IoTDB 目标无法应用更新与删除差异 | 已修复：能力契约和执行前预检明确将两类目标限制为仅追加，并阻断更新与删除，满足原发现允许的边界方案 | 0acc9bdbd0300679ccb632f8a649b62095136f56 | 02da747e287ffb2fe442731517c00343bc2bd8f6 | 自动化测试确认 | `TestResolveMigrationCapability_TimeSeriesTargetsAreAppendOnly`、`TestAppendOnlyTargetPreflightIssuesBlockMutations` PASS；`migration_capability.go`、`data_sync_job_preflight.go` | 2026-08-09 |
+| FIND-SYNC-003 | 结构同步不会迁移前缀索引和部分索引类型 | 已修复：预检会列出每个未迁移索引并在前端提供补救 DDL 查看和复制，满足原发现的补救闭环 | 0acc9bdbd0300679ccb632f8a649b62095136f56 | 02da747e287ffb2fe442731517c00343bc2bd8f6 | 自动化测试与代码证据确认 | 前缀、FULLTEXT、MongoDB 未迁移索引测试 PASS；`schema_migration.go`、`DataSyncPreflightPanel.tsx` | 2026-08-09 |
+| FIND-SQLSERVER-001 | SQL Server DDL 查看返回成功但内容只是占位注释 | 已修复：GetCreateStatement 返回明确 unsupported 错误，不再以成功状态返回占位 DDL | 0acc9bdbd0300679ccb632f8a649b62095136f56 | 02da747e287ffb2fe442731517c00343bc2bd8f6 | 自动化测试确认 | `TestSQLServerMetadataErrorsUseCurrentLanguage` PASS；`sqlserver_impl.go:532-533` | 2026-08-09 |
+| FIND-ROCKETMQ-001 | RocketMQ 无法通过 SSH、代理或 HTTP 隧道接入隔离网络 | 已修复：NameServer 与动态 Broker 地址均通过统一隧道路由和地址重写，覆盖 SSH 与代理路径 | 0acc9bdbd0300679ccb632f8a649b62095136f56 | 02da747e287ffb2fe442731517c00343bc2bd8f6 | 自动化测试确认 | RocketMQ 隧道、动态目标与路由重写指定测试 PASS；`rocketmq_tunnel.go`、`rocketmq_impl.go` | 2026-08-09 |
+| FIND-MONGODB-001 | MongoDB SRV 连接不能使用 SSH 隧道 | 已修复：移除 SRV 提前拒绝，v1/v2 驱动发现的每个成员地址均经 SSH dialer 路由 | 0acc9bdbd0300679ccb632f8a649b62095136f56 | 02da747e287ffb2fe442731517c00343bc2bd8f6 | 自动化测试确认 | v1/v2 `TestMongoSSHDialer*RoutesAllMembersThroughSSH` 的 standard 和 srv 子测试 PASS | 2026-08-09 |
+| FIND-MSG-001 | RabbitMQ 查看字段会读取样本消息（Issue #881 实际范围） | 已修复：RabbitMQ GetColumns 已改为返回静态字段且不再读取队列；原扫描误将另外三类消息源合并绑定到仅描述 RabbitMQ 的 Issue，剩余范围已拆为 FIND-MSG-METADATA-001 | 0acc9bdbd0300679ccb632f8a649b62095136f56 | 02da747e287ffb2fe442731517c00343bc2bd8f6 | 自动化测试确认 | `TestRabbitMQQueryExecAndColumns` PASS 并断言元数据请求数为 0；Issue https://github.com/Syngnat/GoNavi/issues/881 | 2026-08-09 |
+| FIND-SYNC-001 | 差异同步不支持复合主键表 | 已修复：差异分析、预览、分页差异同步和 SQL 结果同步均使用有序复合键，PR #892 已合入 upstream/dev | 0acc9bdbd0300679ccb632f8a649b62095136f56 | 5c96d4a4661daf072e77a51c240db709d4791030 | 自动化测试确认 | `go test ./internal/sync -count=1 -timeout=10m` PASS；`composite_key_sync_test.go` 覆盖 MySQL-like、PostgreSQL-like、映射和行选择 | 2026-08-09 |
