@@ -36,7 +36,7 @@ active_findings:
       - checked_at: 2026-08-07
         result: 历史基线确认问题存在。
     last_checked_result: 2026-08-09 全量代码复查仍存在；本轮未连接外部服务
-    issue_url: ""
+    issue_url: https://github.com/Syngnat/GoNavi/issues/884
   - id: FIND-SYNC-002
     title: TDengine 和 IoTDB 目标无法应用更新与删除差异
     status: 待修复
@@ -104,7 +104,7 @@ active_findings:
       - checked_at: 2026-08-07
         result: 历史基线确认问题存在。
     last_checked_result: 2026-08-09 全量代码复查仍存在；本轮未执行真实迁移
-    issue_url: ""
+    issue_url: https://github.com/Syngnat/GoNavi/issues/885
   - id: FIND-MSG-001
     title: 查看消息型数据源字段会实际读取样本消息
     status: 待修复
@@ -211,7 +211,7 @@ active_findings:
       - checked_at: 2026-08-07
         result: 代码证据确认，等待隔离网络验证。
     last_checked_result: 2026-08-09 全量代码复查仍存在；本轮未连接 RocketMQ
-    issue_url: ""
+    issue_url: https://github.com/Syngnat/GoNavi/issues/886
   - id: FIND-MONGODB-001
     title: MongoDB SRV 连接不能使用 SSH 隧道
     status: 待修复
@@ -245,7 +245,7 @@ active_findings:
       - checked_at: 2026-08-07
         result: 代码证据确认，等待 SRV 环境验证。
     last_checked_result: 2026-08-09 全量代码复查仍存在；本轮未连接 MongoDB SRV
-    issue_url: ""
+    issue_url: https://github.com/Syngnat/GoNavi/issues/887
   - id: FIND-MQTT-001
     title: MQTT 通过代理时不支持 WebSocket 传输
     status: 待修复
