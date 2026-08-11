@@ -7,6 +7,7 @@ import { noAutoCapInputProps } from '../../utils/inputAutoCap';
 import {
   buildExternalSQLDirectoryId,
   buildExternalSQLTabId,
+  findExternalSQLDirectoriesByPath,
   moveExternalSQLFileBindings,
   normalizeExternalSQLPath,
   removeExternalSQLFileBindings,
@@ -14,6 +15,7 @@ import {
   setExternalSQLFileBinding,
 } from '../../utils/externalSqlTree';
 import { buildSQLFileExecutionWorkbenchTab } from '../../utils/sqlFileExecutionTab';
+import type { BuildDataImportWorkbenchTabInput } from '../../utils/dataImportTab';
 import { buildRpcConnectionConfig } from '../../utils/connectionRpcConfig';
 import { filterVisibleDatabaseNames } from '../../utils/databaseVisibility';
 import { getDataSourceCapabilities } from '../../utils/dataSourceCapabilities';
@@ -75,6 +77,7 @@ type UseSidebarExternalSqlWorkflowOptions = {
   connectionIds: string[];
   selectedNodesRef: React.MutableRefObject<any[]>;
   addTab: (tab: any) => void;
+  openDataImportWorkbench: (input: BuildDataImportWorkbenchTabInput) => void;
   saveExternalSQLDirectory: (directory: ExternalSQLDirectory) => void;
   deleteExternalSQLDirectory: (directoryId: string) => void;
   updateRecentSQLFilePath: (previousPath: string, nextPath: string) => void;
@@ -85,6 +88,23 @@ type UseSidebarExternalSqlWorkflowOptions = {
   setExpandedKeys: React.Dispatch<React.SetStateAction<React.Key[]>>;
   setAutoExpandParent: React.Dispatch<React.SetStateAction<boolean>>;
   getActiveContext: () => ActiveExecutionContext;
+};
+
+export const launchDatabaseSQLImportWorkbench = (
+  node: any,
+  openDataImportWorkbench: (input: BuildDataImportWorkbenchTabInput) => void,
+): boolean => {
+  const connectionId = node?.type === 'connection'
+    ? String(node?.key || '').trim()
+    : String(node?.dataRef?.id || '').trim();
+  if (!connectionId) return false;
+
+  openDataImportWorkbench({
+    connectionId,
+    dbName: String(node?.dataRef?.dbName || '').trim(),
+    mode: 'database',
+  });
+  return true;
 };
 
 type ExternalSQLFileModalProps = {
@@ -418,6 +438,7 @@ export const useSidebarExternalSqlWorkflow = ({
   connectionIds,
   selectedNodesRef,
   addTab,
+  openDataImportWorkbench,
   saveExternalSQLDirectory,
   deleteExternalSQLDirectory,
   updateRecentSQLFilePath,
@@ -528,32 +549,9 @@ export const useSidebarExternalSqlWorkflow = ({
     return true;
   }, [addTab, connections]);
 
-  const handleRunSQLFile = async (node: any) => {
-    const connectionId = node.type === 'connection'
-      ? String(node.key || '').trim()
-      : String(node?.dataRef?.id || '').trim();
-    const dbName = String(node?.dataRef?.dbName || '').trim();
-    if (!connectionId) {
+  const handleRunSQLFile = (node: any) => {
+    if (!launchDatabaseSQLImportWorkbench(node, openDataImportWorkbench)) {
       message.warning(t('sidebar.message.select_connection_or_database_first'));
-      return;
-    }
-
-    const res = await selectSQLFileForExecution();
-    if (res.success) {
-      const data = normalizeSQLFileDialogData(res.data);
-      if (!data.filePath) {
-        message.error(t('sidebar.message.sql_file_path_incomplete'));
-        return;
-      }
-      openSQLFileExecutionWorkbench({
-        connectionId,
-        dbName: dbName,
-        filePath: data.filePath,
-        fileName: data.fileName,
-        fileSizeMB: data.fileSizeMB,
-      });
-    } else if (res.message !== '已取消') {
-      message.error(t('sidebar.message.read_file_failed', { error: res.message }));
     }
   };
 
@@ -913,9 +911,9 @@ export const useSidebarExternalSqlWorkflow = ({
         }
         if (externalSQLFileTarget?.type === 'external-sql-directory') {
           const nextName = String(payload.name || name).trim();
-          const previousDirectoryPath = normalizeExternalSQLPath(directoryPath);
-          const matchingDirectories = externalSQLDirectories.filter(
-            (directory) => normalizeExternalSQLPath(directory.path) === previousDirectoryPath,
+          const matchingDirectories = findExternalSQLDirectoriesByPath(
+            externalSQLDirectories,
+            directoryPath,
           );
           if (!nextPath || matchingDirectories.length === 0) {
             message.error(t('sidebar.message.external_sql_directory_rename_sync_failed'));
@@ -1020,9 +1018,9 @@ export const useSidebarExternalSqlWorkflow = ({
         removeRecentSQLFilesByDirectory(directoryPath);
 
         if (node?.type === 'external-sql-directory') {
-          const normalizedDirectoryPath = normalizeExternalSQLPath(directoryPath);
-          const matchingDirectories = externalSQLDirectories.filter(
-            (directory) => normalizeExternalSQLPath(directory.path) === normalizedDirectoryPath,
+          const matchingDirectories = findExternalSQLDirectoriesByPath(
+            externalSQLDirectories,
+            directoryPath,
           );
           if (matchingDirectories.length > 0) {
             const matchingDirectoryIds = new Set(matchingDirectories.map((directory) => directory.id));
@@ -1087,13 +1085,18 @@ export const useSidebarExternalSqlWorkflow = ({
   };
 
   const handleRemoveExternalSQLDirectory = async (node: any) => {
-    const directoryId = String(node?.dataRef?.id || '').trim();
-    if (!directoryId) {
+    const directoryPath = String(node?.dataRef?.path || '').trim();
+    if (!directoryPath) {
       message.error(t('sidebar.message.external_sql_directory_not_found'));
       return;
     }
-    deleteExternalSQLDirectory(directoryId);
-    const nextDirectories = externalSQLDirectories.filter((item) => item.id !== directoryId);
+    const matchingDirectories = findExternalSQLDirectoriesByPath(
+      externalSQLDirectories,
+      directoryPath,
+    );
+    matchingDirectories.forEach((directory) => deleteExternalSQLDirectory(directory.id));
+    const matchingDirectoryIds = new Set(matchingDirectories.map((directory) => directory.id));
+    const nextDirectories = externalSQLDirectories.filter((item) => !matchingDirectoryIds.has(item.id));
     await refreshGlobalExternalSQLRootNode(false, nextDirectories);
     message.success(t('sidebar.message.external_sql_directory_removed'));
   };

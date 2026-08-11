@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -37,6 +38,7 @@ const (
 	updateReleaseCacheTTL       = 10 * time.Minute
 	updateGitHubAPIVersion      = "2022-11-28"
 	updateHTTPBodySnippetLimit  = 240
+	updateDownloadParallelism   = 8
 )
 
 type cachedGitHubRelease struct {
@@ -63,6 +65,7 @@ var (
 )
 
 var errUpdateChecksumMismatch = errors.New("update package checksum mismatch")
+var errUpdateRangeUnsupported = errors.New("update server does not support byte ranges")
 
 type updateState struct {
 	lastCheck   *UpdateInfo
@@ -115,11 +118,12 @@ type updateDownloadResult struct {
 }
 
 type updateDownloadProgressPayload struct {
-	Status     string  `json:"status"`
-	Percent    float64 `json:"percent"`
-	Downloaded int64   `json:"downloaded"`
-	Total      int64   `json:"total"`
-	Message    string  `json:"message,omitempty"`
+	Status     string      `json:"status"`
+	Percent    float64     `json:"percent"`
+	Downloaded int64       `json:"downloaded"`
+	Total      int64       `json:"total"`
+	Message    string      `json:"message,omitempty"`
+	Info       *UpdateInfo `json:"info,omitempty"`
 }
 
 type stagedUpdate struct {
@@ -183,8 +187,9 @@ type githubAsset struct {
 }
 
 type localizedUpdateError struct {
-	key    string
-	params map[string]any
+	key        string
+	params     map[string]any
+	httpStatus int
 }
 
 func (e localizedUpdateError) Error() string {
@@ -258,7 +263,7 @@ func (a *App) checkForUpdates(logFailure bool, forceNetwork bool) connection.Que
 func (a *App) publishUpdateCheckSnapshot(expectedRevision uint64, info UpdateInfo, staged *stagedUpdate) bool {
 	a.updateMu.Lock()
 	defer a.updateMu.Unlock()
-	if a.updateState.revision != expectedRevision {
+	if a.updateState.downloading || a.updateState.revision != expectedRevision {
 		return false
 	}
 	a.updateState.lastCheck = snapshotUpdateInfo(&info)
@@ -281,6 +286,7 @@ func (a *App) GetAppInfo() connection.QueryResult {
 }
 
 func (a *App) DownloadUpdate() connection.QueryResult {
+	a.ensurePersistedGlobalProxyRuntime()
 	a.updateMu.Lock()
 	if a.updateState.downloading {
 		a.updateMu.Unlock()
@@ -295,9 +301,87 @@ func (a *App) DownloadUpdate() connection.QueryResult {
 		a.updateMu.Unlock()
 		return connection.QueryResult{Success: false, Message: a.appText("app.update.backend.message.latest", nil)}
 	}
-	if info.AssetURL == "" || info.AssetName == "" {
+	channel, err := normalizeUpdateChannel(info.Channel)
+	if err != nil {
 		a.updateMu.Unlock()
-		return connection.QueryResult{Success: false, Message: a.appText("app.update.backend.message.no_update_package", nil)}
+		return connection.QueryResult{Success: false, Message: a.localizedUpdateError(err)}
+	}
+	if channel != updateChannelDev {
+		if invalid := a.validateUpdateInfoForDownload(info); invalid != nil {
+			a.updateMu.Unlock()
+			return *invalid
+		}
+		staged := resolveReusableStagedUpdate(*info, snapshotStagedUpdate(a.updateState.staged))
+		if staged != nil {
+			a.updateState.staged = staged
+			a.updateState.revision++
+			a.updateMu.Unlock()
+			return connection.QueryResult{Success: true, Message: a.appText("app.update.backend.message.package_already_downloaded", nil), Data: buildUpdateDownloadResult(*info, staged)}
+		}
+	}
+	// Once the lease is visible, install APIs must not be able to reuse the old
+	// package while the dev channel resolves a newer release.
+	a.updateState.staged = nil
+	a.updateState.downloading = true
+	a.updateState.revision++
+	downloadRevision := a.updateState.revision
+	a.updateMu.Unlock()
+	defer a.finishUpdateDownload()
+
+	if channel == updateChannelDev {
+		refreshed, staged, revision, refreshErr := a.refreshDevUpdateInfoForDownload(downloadRevision)
+		if refreshErr != nil {
+			return connection.QueryResult{Success: false, Message: a.localizedUpdateError(refreshErr)}
+		}
+		info = refreshed
+		downloadRevision = revision
+		if invalid := a.validateUpdateInfoForDownload(info); invalid != nil {
+			return *invalid
+		}
+		if staged != nil {
+			return connection.QueryResult{Success: true, Message: a.appText("app.update.backend.message.package_already_downloaded", nil), Data: buildUpdateDownloadResult(*info, staged)}
+		}
+	}
+
+	a.emitUpdateDownloadProgress(info, "start", 0, info.AssetSize, "")
+	result, downloadErr := a.downloadAndStageUpdate(*info, downloadRevision)
+	if channel == updateChannelDev && isExpiredUpdateAssetError(downloadErr) {
+		refreshed, staged, revision, refreshErr := a.refreshDevUpdateInfoForDownload(downloadRevision)
+		if refreshErr != nil {
+			logger.Warnf("dev 更新包失效后刷新清单失败：%v", refreshErr)
+		} else if updateAssetIdentityChanged(*info, *refreshed) {
+			info = refreshed
+			downloadRevision = revision
+			if invalid := a.validateUpdateInfoForDownload(info); invalid != nil {
+				result = *invalid
+				downloadErr = nil
+			} else if staged != nil {
+				return connection.QueryResult{Success: true, Message: a.appText("app.update.backend.message.package_already_downloaded", nil), Data: buildUpdateDownloadResult(*info, staged)}
+			} else {
+				a.emitUpdateDownloadProgress(info, "start", 0, info.AssetSize, "")
+				result, downloadErr = a.downloadAndStageUpdate(*info, downloadRevision)
+			}
+		}
+	}
+	if !result.Success {
+		a.emitUpdateDownloadProgress(info, "error", 0, info.AssetSize, result.Message)
+	}
+	return result
+}
+
+func (a *App) finishUpdateDownload() {
+	a.updateMu.Lock()
+	a.updateState.downloading = false
+	a.updateState.revision++
+	a.updateMu.Unlock()
+}
+
+func (a *App) validateUpdateInfoForDownload(info *UpdateInfo) *connection.QueryResult {
+	if info == nil || !info.HasUpdate {
+		return &connection.QueryResult{Success: false, Message: a.appText("app.update.backend.message.latest", nil)}
+	}
+	if info.AssetURL == "" || info.AssetName == "" {
+		return &connection.QueryResult{Success: false, Message: a.appText("app.update.backend.message.no_update_package", nil)}
 	}
 	if err := validateUpdatePackageForCurrentInstallMode(
 		stdRuntime.GOOS,
@@ -305,29 +389,52 @@ func (a *App) DownloadUpdate() connection.QueryResult {
 		updatePackageType(info.PackageType),
 		info.AssetName,
 	); err != nil {
-		a.updateMu.Unlock()
-		return connection.QueryResult{Success: false, Message: a.localizedUpdateError(err)}
+		return &connection.QueryResult{Success: false, Message: a.localizedUpdateError(err)}
 	}
-	staged := resolveReusableStagedUpdate(*info, snapshotStagedUpdate(a.updateState.staged))
-	if staged != nil {
-		a.updateState.staged = staged
-		a.updateState.revision++
-		a.updateMu.Unlock()
-		return connection.QueryResult{Success: true, Message: a.appText("app.update.backend.message.package_already_downloaded", nil), Data: buildUpdateDownloadResult(*info, staged)}
-	}
-	a.updateState.staged = nil
-	a.updateState.downloading = true
-	a.updateState.revision++
-	a.updateMu.Unlock()
+	return nil
+}
 
-	a.emitUpdateDownloadProgress("start", 0, info.AssetSize, "")
-	result := a.downloadAndStageUpdate(*info)
+func (a *App) refreshDevUpdateInfoForDownload(expectedRevision uint64) (*UpdateInfo, *stagedUpdate, uint64, error) {
+	info, err := fetchLatestUpdateInfoWithOptions(updateChannelDev, true)
+	if err != nil {
+		return nil, nil, expectedRevision, err
+	}
 
 	a.updateMu.Lock()
-	a.updateState.downloading = false
-	a.updateMu.Unlock()
+	defer a.updateMu.Unlock()
+	if !a.updateState.downloading || a.updateState.revision != expectedRevision {
+		return nil, nil, expectedRevision, localizedUpdateError{key: "app.update.backend.message.check_stale"}
+	}
 
-	return result
+	var staged *stagedUpdate
+	if info.HasUpdate {
+		staged = resolveReusableStagedUpdate(info, snapshotStagedUpdate(a.updateState.staged))
+		if staged != nil {
+			info.Downloaded = true
+			info.DownloadPath = staged.FilePath
+		}
+	}
+	a.updateState.lastCheck = snapshotUpdateInfo(&info)
+	a.updateState.staged = snapshotStagedUpdate(staged)
+	a.updateState.revision++
+	return snapshotUpdateInfo(&info), snapshotStagedUpdate(staged), a.updateState.revision, nil
+}
+
+func updateAssetIdentityChanged(previous, current UpdateInfo) bool {
+	return previous.Channel != current.Channel ||
+		previous.LatestVersion != current.LatestVersion ||
+		previous.AssetName != current.AssetName ||
+		previous.AssetURL != current.AssetURL ||
+		previous.AssetAPIURL != current.AssetAPIURL ||
+		!strings.EqualFold(previous.SHA256, current.SHA256)
+}
+
+func isExpiredUpdateAssetError(err error) bool {
+	var localized localizedUpdateError
+	if !errors.As(err, &localized) {
+		return false
+	}
+	return localized.httpStatus == http.StatusNotFound || localized.httpStatus == http.StatusGone
 }
 
 func (a *App) InstallUpdateAndRestart(closeAllWindowsInstancesConfirmed bool) connection.QueryResult {
@@ -539,7 +646,7 @@ func (a *App) OpenDownloadedUpdateDirectory() connection.QueryResult {
 	}
 }
 
-func (a *App) downloadAndStageUpdate(info UpdateInfo) connection.QueryResult {
+func (a *App) downloadAndStageUpdate(info UpdateInfo, expectedRevision uint64) (connection.QueryResult, error) {
 	workspaceCandidates := resolveUpdateWorkspaceDirCandidatesForInstallMode(info.LatestVersion, updateInstallMode(info.InstallMode))
 	workspaceDir, stagedDir, prepareErr := prepareUpdateWorkspaceAndStagingDirs(workspaceCandidates, info.Channel, info.LatestVersion)
 	if prepareErr != nil {
@@ -549,8 +656,7 @@ func (a *App) downloadAndStageUpdate(info UpdateInfo) connection.QueryResult {
 		}
 		logger.Error(prepareErr, "创建更新工作区失败")
 		errMsg := a.appText("app.update.backend.message.create_workspace_failed", map[string]any{"path": preferredDir})
-		a.emitUpdateDownloadProgress("error", 0, info.AssetSize, errMsg)
-		return connection.QueryResult{Success: false, Message: errMsg}
+		return connection.QueryResult{Success: false, Message: errMsg}, prepareErr
 	}
 
 	// 安装包本体放在工作区根级，staging 目录只保留更新脚本和临时展开物。
@@ -560,14 +666,13 @@ func (a *App) downloadAndStageUpdate(info UpdateInfo) connection.QueryResult {
 		if reportTotal <= 0 {
 			reportTotal = info.AssetSize
 		}
-		a.emitUpdateDownloadProgress("downloading", downloaded, reportTotal, "")
+		a.emitUpdateDownloadProgress(&info, "downloading", downloaded, reportTotal, "")
 	}
 	if info.SHA256 == "" {
 		_ = os.Remove(assetPath)
 		_ = os.RemoveAll(stagedDir)
 		message := a.appText("app.update.backend.message.checksum_missing", nil)
-		a.emitUpdateDownloadProgress("error", 0, info.AssetSize, message)
-		return connection.QueryResult{Success: false, Message: message}
+		return connection.QueryResult{Success: false, Message: message}, localizedUpdateError{key: "app.update.backend.message.checksum_missing"}
 	}
 
 	_, err := downloadUpdateAssetWithFallback(
@@ -581,12 +686,10 @@ func (a *App) downloadAndStageUpdate(info UpdateInfo) connection.QueryResult {
 		_ = os.RemoveAll(stagedDir)
 		if errors.Is(err, errUpdateChecksumMismatch) {
 			message := a.appText("app.update.backend.message.checksum_failed", nil)
-			a.emitUpdateDownloadProgress("error", 0, info.AssetSize, message)
-			return connection.QueryResult{Success: false, Message: message}
+			return connection.QueryResult{Success: false, Message: message}, err
 		}
 		message := a.localizedUpdateError(err)
-		a.emitUpdateDownloadProgress("error", 0, info.AssetSize, message)
-		return connection.QueryResult{Success: false, Message: message}
+		return connection.QueryResult{Success: false, Message: message}, err
 	}
 
 	staged := &stagedUpdate{
@@ -604,12 +707,20 @@ func (a *App) downloadAndStageUpdate(info UpdateInfo) connection.QueryResult {
 	info.Downloaded = true
 	info.DownloadPath = assetPath
 	a.updateMu.Lock()
+	if !a.updateState.downloading || a.updateState.revision != expectedRevision {
+		a.updateMu.Unlock()
+		_ = os.Remove(assetPath)
+		_ = os.RemoveAll(stagedDir)
+		err := localizedUpdateError{key: "app.update.backend.message.check_stale"}
+		return connection.QueryResult{Success: false, Message: a.localizedUpdateError(err)}, err
+	}
+	a.updateState.lastCheck = snapshotUpdateInfo(&info)
 	a.updateState.staged = staged
 	a.updateState.revision++
 	a.updateMu.Unlock()
 
-	a.emitUpdateDownloadProgress("done", info.AssetSize, info.AssetSize, "")
-	return connection.QueryResult{Success: true, Message: a.appText("app.update.backend.message.package_downloaded", nil), Data: buildUpdateDownloadResult(info, staged)}
+	a.emitUpdateDownloadProgress(&info, "done", info.AssetSize, info.AssetSize, "")
+	return connection.QueryResult{Success: true, Message: a.appText("app.update.backend.message.package_downloaded", nil), Data: buildUpdateDownloadResult(info, staged)}, nil
 }
 
 func downloadUpdateAssetWithFallback(
@@ -968,31 +1079,36 @@ func classifyGitHubUpdateHTTPError(status int, body []byte, headers http.Header,
 
 	if rateLimited {
 		return localizedUpdateError{
-			key:    "app.update.backend.error.check_http_rate_limited",
-			params: map[string]any{"detail": detail},
+			key:        "app.update.backend.error.check_http_rate_limited",
+			params:     map[string]any{"detail": detail},
+			httpStatus: status,
 		}
 	}
 	if status == http.StatusForbidden {
 		if isCheck {
 			return localizedUpdateError{
-				key:    "app.update.backend.error.check_http_forbidden",
-				params: map[string]any{"detail": detail},
+				key:        "app.update.backend.error.check_http_forbidden",
+				params:     map[string]any{"detail": detail},
+				httpStatus: status,
 			}
 		}
 		return localizedUpdateError{
-			key:    "app.update.backend.error.package_download_forbidden",
-			params: map[string]any{"detail": detail},
+			key:        "app.update.backend.error.package_download_forbidden",
+			params:     map[string]any{"detail": detail},
+			httpStatus: status,
 		}
 	}
 	if isCheck {
 		return localizedUpdateError{
-			key:    "app.update.backend.error.check_http_status",
-			params: map[string]any{"status": status},
+			key:        "app.update.backend.error.check_http_status",
+			params:     map[string]any{"status": status},
+			httpStatus: status,
 		}
 	}
 	return localizedUpdateError{
-		key:    "app.update.backend.error.package_download_http_failed",
-		params: map[string]any{"status": status},
+		key:        "app.update.backend.error.package_download_http_failed",
+		params:     map[string]any{"status": status},
+		httpStatus: status,
 	}
 }
 
@@ -1196,6 +1312,7 @@ func parseSHA256Sums(content string) map[string]string {
 }
 
 type downloadProgressWriter struct {
+	mu         sync.Mutex
 	total      int64
 	written    int64
 	lastEmit   time.Time
@@ -1208,6 +1325,8 @@ func (w *downloadProgressWriter) Write(p []byte) (int, error) {
 	if n == 0 {
 		return 0, nil
 	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	w.written += int64(n)
 	if w.onProgress == nil {
 		return n, nil
@@ -1220,6 +1339,16 @@ func (w *downloadProgressWriter) Write(p []byte) (int, error) {
 	return n, nil
 }
 
+func (w *downloadProgressWriter) finish() int64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.onProgress != nil {
+		w.lastEmit = time.Now()
+		w.onProgress(w.written, w.total)
+	}
+	return w.written
+}
+
 func downloadFileWithHash(url, filePath string, onProgress func(downloaded, total int64)) (string, error) {
 	return downloadFileWithHashWithTimeout(url, filePath, onProgress, 10*time.Minute)
 }
@@ -1229,34 +1358,55 @@ func downloadFileWithHashWithTimeout(url, filePath string, onProgress func(downl
 		timeout = 10 * time.Minute
 	}
 	client := newHTTPClientWithGlobalProxy(timeout)
+	probeResp, err := doGitHubDownloadRange(client, url, "bytes=0-0", context.Background())
+	if err != nil {
+		return "", err
+	}
+
+	if probeResp.StatusCode == http.StatusPartialContent {
+		start, end, total, valid := parseDownloadContentRange(probeResp.Header.Get("Content-Range"))
+		_, _ = io.Copy(io.Discard, probeResp.Body)
+		_ = probeResp.Body.Close()
+		if valid && start == 0 && end == 0 && total >= updateDownloadParallelism {
+			hash, parallelErr := downloadFileWithParallelRanges(client, url, filePath, total, onProgress)
+			if parallelErr == nil {
+				return hash, nil
+			}
+			if !errors.Is(parallelErr, errUpdateRangeUnsupported) {
+				return "", parallelErr
+			}
+		} else {
+			return downloadFileWithSingleRequest(client, url, filePath, onProgress)
+		}
+	} else if probeResp.StatusCode == http.StatusOK {
+		defer probeResp.Body.Close()
+		return downloadResponseWithHash(probeResp, filePath, onProgress)
+	} else {
+		body, _ := io.ReadAll(io.LimitReader(probeResp.Body, 64<<10))
+		_ = probeResp.Body.Close()
+		return "", classifyGitHubUpdateHTTPError(probeResp.StatusCode, body, probeResp.Header, false)
+	}
+
+	return downloadFileWithSingleRequest(client, url, filePath, onProgress)
+}
+
+func downloadFileWithSingleRequest(client *http.Client, url, filePath string, onProgress func(downloaded, total int64)) (string, error) {
 	resp, err := doGitHubDownload(client, url)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 		return "", classifyGitHubUpdateHTTPError(resp.StatusCode, body, resp.Header, false)
 	}
+	return downloadResponseWithHash(resp, filePath, onProgress)
+}
 
-	// Windows 上旧文件可能被杀毒软件/索引服务占用，先尝试删除并重试
-	_ = os.Remove(filePath)
-	var out *os.File
-	for retry := 0; retry < 5; retry++ {
-		out, err = os.Create(filePath)
-		if err == nil {
-			break
-		}
-		if retry < 4 {
-			time.Sleep(time.Duration(retry+1) * 500 * time.Millisecond)
-		}
-	}
+func downloadResponseWithHash(resp *http.Response, filePath string, onProgress func(downloaded, total int64)) (string, error) {
+	out, err := createUpdateDownloadFile(filePath)
 	if err != nil {
-		return "", localizedUpdateError{
-			key:    "app.update.backend.error.package_file_busy",
-			params: map[string]any{"detail": err.Error()},
-		}
+		return "", err
 	}
 
 	hasher := sha256.New()
@@ -1271,22 +1421,210 @@ func downloadFileWithHashWithTimeout(url, filePath string, onProgress func(downl
 		onProgress(0, total)
 	}
 	if _, err := io.Copy(io.MultiWriter(writers...), resp.Body); err != nil {
-		out.Close()
+		_ = out.Close()
 		return "", wrapUpdateNetworkError(err)
 	}
-	if onProgress != nil {
-		onProgress(progressWriter.written, total)
-	}
+	progressWriter.finish()
 
 	// 显式 Sync + Close，确保数据落盘且文件句柄释放
 	if err := out.Sync(); err != nil {
-		out.Close()
+		_ = out.Close()
 		return "", err
 	}
 	if err := out.Close(); err != nil {
 		return "", err
 	}
 
+	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+func downloadFileWithParallelRanges(
+	client *http.Client,
+	url string,
+	filePath string,
+	total int64,
+	onProgress func(downloaded, total int64),
+) (string, error) {
+	out, err := createUpdateDownloadFile(filePath)
+	if err != nil {
+		return "", err
+	}
+	if err := out.Truncate(total); err != nil {
+		_ = out.Close()
+		return "", err
+	}
+
+	progressWriter := &downloadProgressWriter{
+		total:      total,
+		emitEvery:  120 * time.Millisecond,
+		onProgress: onProgress,
+	}
+	if onProgress != nil {
+		onProgress(0, total)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error, updateDownloadParallelism)
+	for index := 0; index < updateDownloadParallelism; index++ {
+		start := total * int64(index) / updateDownloadParallelism
+		end := total*int64(index+1)/updateDownloadParallelism - 1
+		go func() {
+			errCh <- downloadUpdateRange(ctx, client, url, out, progressWriter, start, end, total)
+		}()
+	}
+
+	var firstErr error
+	rangeUnsupported := false
+	for range updateDownloadParallelism {
+		rangeErr := <-errCh
+		if rangeErr == nil {
+			continue
+		}
+		if errors.Is(rangeErr, errUpdateRangeUnsupported) {
+			rangeUnsupported = true
+		}
+		if firstErr == nil {
+			firstErr = rangeErr
+			cancel()
+		}
+	}
+	close(errCh)
+
+	if firstErr != nil {
+		_ = out.Close()
+		if rangeUnsupported {
+			return "", errUpdateRangeUnsupported
+		}
+		return "", firstErr
+	}
+	progressWriter.finish()
+	if err := out.Sync(); err != nil {
+		_ = out.Close()
+		return "", err
+	}
+	if err := out.Close(); err != nil {
+		return "", err
+	}
+	return hashDownloadedFile(filePath)
+}
+
+func downloadUpdateRange(
+	ctx context.Context,
+	client *http.Client,
+	url string,
+	out *os.File,
+	progressWriter *downloadProgressWriter,
+	start, end, total int64,
+) error {
+	resp, err := doGitHubDownloadRange(client, url, fmt.Sprintf("bytes=%d-%d", start, end), ctx)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusPartialContent {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
+			return errUpdateRangeUnsupported
+		}
+		return classifyGitHubUpdateHTTPError(resp.StatusCode, nil, resp.Header, false)
+	}
+
+	actualStart, actualEnd, actualTotal, valid := parseDownloadContentRange(resp.Header.Get("Content-Range"))
+	if !valid || actualStart != start || actualEnd != end || actualTotal != total {
+		return errUpdateRangeUnsupported
+	}
+
+	expected := end - start + 1
+	writer := io.NewOffsetWriter(out, start)
+	written, err := io.Copy(io.MultiWriter(writer, progressWriter), io.LimitReader(resp.Body, expected+1))
+	if err != nil {
+		return wrapUpdateNetworkError(err)
+	}
+	if written != expected {
+		return wrapUpdateNetworkError(io.ErrUnexpectedEOF)
+	}
+	return nil
+}
+
+func doGitHubDownloadRange(client *http.Client, rawURL, byteRange string, ctx context.Context) (*http.Response, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return nil, localizedUpdateError{
+			key:    "app.update.backend.error.package_download_http_failed",
+			params: map[string]any{"status": 0},
+		}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	applyGitHubDownloadRequestHeaders(req, isGitHubReleaseAssetAPIURL(rawURL))
+	req.Header.Set("Range", byteRange)
+	req.Header.Set("Accept-Encoding", "identity")
+	return doUpdateRequest(client, req)
+}
+
+func parseDownloadContentRange(value string) (start, end, total int64, valid bool) {
+	fields := strings.Fields(strings.TrimSpace(value))
+	if len(fields) != 2 || !strings.EqualFold(fields[0], "bytes") {
+		return 0, 0, 0, false
+	}
+	rangePart, totalPart, ok := strings.Cut(fields[1], "/")
+	if !ok || totalPart == "*" {
+		return 0, 0, 0, false
+	}
+	startPart, endPart, ok := strings.Cut(rangePart, "-")
+	if !ok {
+		return 0, 0, 0, false
+	}
+	start, err := strconv.ParseInt(startPart, 10, 64)
+	if err != nil {
+		return 0, 0, 0, false
+	}
+	end, err = strconv.ParseInt(endPart, 10, 64)
+	if err != nil {
+		return 0, 0, 0, false
+	}
+	total, err = strconv.ParseInt(totalPart, 10, 64)
+	if err != nil || start < 0 || end < start || total <= end {
+		return 0, 0, 0, false
+	}
+	return start, end, total, true
+}
+
+func createUpdateDownloadFile(filePath string) (*os.File, error) {
+	// Windows 上旧文件可能被杀毒软件/索引服务占用，先尝试删除并重试。
+	_ = os.Remove(filePath)
+	var (
+		out *os.File
+		err error
+	)
+	for retry := 0; retry < 5; retry++ {
+		out, err = os.Create(filePath)
+		if err == nil {
+			return out, nil
+		}
+		if retry < 4 {
+			time.Sleep(time.Duration(retry+1) * 500 * time.Millisecond)
+		}
+	}
+	return nil, localizedUpdateError{
+		key:    "app.update.backend.error.package_file_busy",
+		params: map[string]any{"detail": err.Error()},
+	}
+}
+
+func hashDownloadedFile(filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		return "", err
+	}
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
@@ -1963,7 +2301,7 @@ func ensureWindowsUpdateTargetWritable(targetExe string) error {
 	return nil
 }
 
-func (a *App) emitUpdateDownloadProgress(status string, downloaded, total int64, message string) {
+func (a *App) emitUpdateDownloadProgress(info *UpdateInfo, status string, downloaded, total int64, message string) {
 	if a.ctx == nil {
 		return
 	}
@@ -1973,6 +2311,9 @@ func (a *App) emitUpdateDownloadProgress(status string, downloaded, total int64,
 		Downloaded: downloaded,
 		Total:      total,
 		Message:    strings.TrimSpace(message),
+	}
+	if status != "downloading" {
+		payload.Info = snapshotUpdateInfo(info)
 	}
 	if total > 0 {
 		payload.Percent = math.Min(100, (float64(downloaded)/float64(total))*100)
@@ -2218,11 +2559,9 @@ on run argv
     "rm -rf " & quoted form of tmpPath & " " & quoted form of bakPath & "; " & ¬
     "/usr/bin/ditto " & quoted form of srcPath & " " & quoted form of tmpPath & "; " & ¬
     "if [ ! -x " & quoted form of (tmpPath & "/" & binRel) & " ]; then echo 'tmp app binary missing' >> " & quoted form of logPath & "; exit 1; fi; " & ¬
-    "xattr -rd com.apple.quarantine " & quoted form of tmpPath & " >> " & quoted form of logPath & " 2>&1 || true; " & ¬
     "if [ -d " & quoted form of dstPath & " ]; then mv " & quoted form of dstPath & " " & quoted form of bakPath & "; fi; " & ¬
     "mv " & quoted form of tmpPath & " " & quoted form of dstPath & "; " & ¬
-    "rm -rf " & quoted form of bakPath & "; " & ¬
-    "xattr -rd com.apple.quarantine " & quoted form of dstPath & " >> " & quoted form of logPath & " 2>&1 || true"
+    "rm -rf " & quoted form of bakPath
   do shell script cmd with administrator privileges
 end run
 APPLESCRIPT
@@ -2235,7 +2574,6 @@ replace_app_direct() {
     log "tmp app binary missing: $TMP_APP/$APP_BIN_REL"
     return 1
   fi
-  /usr/bin/xattr -rd com.apple.quarantine "$TMP_APP" >>"$LOG_FILE" 2>&1 || true
   if [ -d "$TARGET_APP" ]; then
     /bin/mv "$TARGET_APP" "$BACKUP_APP" >>"$LOG_FILE" 2>&1
   fi
@@ -2248,7 +2586,6 @@ replace_app_direct() {
     return 1
   fi
   /bin/rm -rf "$BACKUP_APP" >>"$LOG_FILE" 2>&1 || true
-  /usr/bin/xattr -rd com.apple.quarantine "$TARGET_APP" >>"$LOG_FILE" 2>&1 || true
   return 0
 }
 
