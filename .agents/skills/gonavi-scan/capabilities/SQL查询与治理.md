@@ -1,18 +1,19 @@
 # SQL 查询与治理
 
-> scan_id: `incremental-20260809-5c96d4a4`
-> head_commit: `5c96d4a4661daf072e77a51c240db709d4791030`
+> scan_id: `incremental-20260811-46d3afb3`
+> head_commit: `46d3afb36e8b04c1931ccad03880d5f5d9390d5f`
 
 > 本文件是 gonavi-scan 功能地图的领域分册。能力 ID 保持稳定；扫描时只更新受影响领域。
 
 ### CAP-QUERY-001 上下文 SQL 编辑器
 
 - 用户任务：在多标签工作台编写、保存和复用 SQL。
-- 功能入口：查询标签、对象右键查询模板、保存查询分组。
-- 主流程：新建查询 -> 获得库表字段补全 -> 编辑/选择语句 -> 保存或执行。
+- 功能入口：标题栏、查询标签、对象右键查询模板、保存查询分组和外部 SQL 文件。
+- 主流程：选择支持查询的数据源 -> 新建查询 -> 获得库表字段补全 -> 编辑/选择语句 -> 保存或执行。
 - 子功能：Monaco 编辑器、字段拖拽插入、库表字段上下文、外部 SQL 文件、标签重命名、保存查询分组、AI 生成/解释/优化。
-- 异常流程：连接切换、SQL 文件保存失败、上下文加载失败。
-- 证据：`frontend/src/components/QueryEditor.tsx`、`QueryEditor.results-and-drop.test.tsx`、`QueryEditor.external-sql-save.test.tsx`、`frontend/src/utils/savedQueryPersistence.ts`。
+- 异常流程：连接切换、SQL 文件保存失败、上下文加载失败、数据源不支持 SQL。
+- 已知限制：查询能力门控只排除 Redis，Nacos/JVM 仍会进入部分 SQL 入口并在后端失败。
+- 证据：`frontend/src/components/QueryEditor.tsx`、`frontend/src/utils/dataSourceCapabilities.ts`、`frontend/src/components/sidebar/sidebarLegacyNodeMenu.tsx`、`QueryEditor.external-sql-save.test.tsx`。
 
 ### CAP-QUERY-002 查询执行、取消与事务控制
 
@@ -22,12 +23,11 @@
 - 异常流程：超时、取消竞争、连接断开、事务提交/回滚失败、危险写操作。
 - 证据：`frontend/src/components/QueryEditorToolbar.tsx`、`QueryEditorTransactionToolbar.tsx`、`internal/app/methods_db_cancel_test.go`、`methods_db_timeout_test.go`、`methods_db_transaction.go`。
 
-
 ### SQL 查询与治理
 
 | ID | 具体能力 | 用户入口与操作 | 边界/异常 | 状态 | 证据 |
 |---|---|---|---|---|---|
-| CAP-QUERY-A01 | 新建、重命名和关闭查询标签 | 标题栏/快捷键/对象菜单 → 查询标签 | 背景任务关闭保护 | 已实现 | `TabManager.tsx` |
+| CAP-QUERY-A01 | 新建、重命名和关闭查询标签 | 标题栏/快捷键/对象菜单 → 查询标签 | Nacos/JVM 仍可能被继承为查询上下文；背景任务关闭保护 | 部分实现 | `TabManager.tsx`；`dataSourceCapabilities.ts`；`sidebarLegacyNodeMenu.tsx` |
 | CAP-QUERY-A02 | 标签最近记录、排序和批量关闭 | 标签栏 → 拖动/菜单 | 自适应宽度和悬停详情 | 已实现 | `TabManager.recent.test.ts`；`TabManager.adaptive-width.test.ts` |
 | CAP-QUERY-A03 | 分离查询或工作台窗口 | 拖出标签/分离动作 → 独立窗口 | 父子窗口生命周期与重新停靠 | 已实现 | `FloatingQueryResultWindows.tsx`；`internal/nativewindow` |
 | CAP-QUERY-A04 | Monaco SQL 编辑 | 查询标签 → 输入 SQL | IME、滚动、Worker、主题和字体 | 已实现 | `QueryEditor.tsx`；`MonacoEditor.tsx` |
@@ -35,7 +35,7 @@
 | CAP-QUERY-A06 | 拖入表或结果列生成 SQL | 从侧栏/列头拖入编辑器 → 落点预览 → 插入 | 覆盖 SELECT、INSERT、UPDATE 和重复字段 | 已实现 | `sqlFieldDrop.ts`；`QueryEditor.results-and-drop.test.tsx` |
 | CAP-QUERY-A07 | 保存查询和分组 | 查询菜单 → 保存 → 新建/移动分组 | 支持嵌套分组 | 已实现 | `methods_saved_queries.go` |
 | CAP-QUERY-A08 | 查询重绑定和未绑定恢复 | 保存查询 → 更换/缺失连接 → 重绑定 | 连接删除后仍可找回 SQL | 已实现 | `RebindSavedQuery`；`GetUnboundSavedQueries` |
-| CAP-QUERY-A09 | 外部 SQL 文件和目录 CRUD | SQL 文件树 → 新建/读写/改名/删除/解除绑定 | 目录在应用外删除后缺少明确失效状态和幂等清理闭环 | 部分实现 | `methods_file.go`；`SidebarExternalSqlWorkflow.tsx`；`QueryEditor.external-sql-save.test.tsx` |
+| CAP-QUERY-A09 | 外部 SQL 文件和目录 CRUD | SQL 文件树 → 新建/读写/改名/删除/解除绑定 | 缺失目录会显示失效状态，删除按幂等成功并清理同路径绑定 | 已实现 | `methods_file.go:750-775`；`SidebarExternalSqlWorkflow.tsx`；`externalSqlTree.test.ts` |
 | CAP-QUERY-A10 | 执行选区、当前语句或全部 SQL | 工具栏/快捷键 → 选择范围 → 执行 | SQL 拆句和方言差异 | 已实现 | `QueryEditorToolbar.tsx` |
 | CAP-QUERY-A11 | 多结果集与批次消息 | 执行多语句 → 切换结果/查看消息 | Driver Agent 不支持时回退 | 已实现 | `DBQueryMulti`；`optional_driver_agent_impl.go` |
 | CAP-QUERY-A12 | 取消和超时 | 查询运行中 → 取消；设置超时 → 自动终止 | 处理取消竞争和连接释放 | 已实现 | `methods_db_cancel_test.go`；`methods_db_timeout_test.go` |

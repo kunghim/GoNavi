@@ -1,6 +1,6 @@
 # GoNavi 扫描发现归档
 
-<!-- scan_id: incremental-20260809-5c96d4a4; head_commit: 5c96d4a4661daf072e77a51c240db709d4791030 -->
+<!-- scan_id: incremental-20260811-46d3afb3; head_commit: 46d3afb36e8b04c1931ccad03880d5f5d9390d5f -->
 
 已修复和明确不修复的发现从 `.agents/findings.yaml` 移入本表。仅追加新行，不改写既有归档记录；除非关联代码变化导致问题回归，否则归档项不在后续扫描结果中重复登记。
 
@@ -13,3 +13,9 @@
 | FIND-MONGODB-001 | MongoDB SRV 连接不能使用 SSH 隧道 | 已修复：移除 SRV 提前拒绝，v1/v2 驱动发现的每个成员地址均经 SSH dialer 路由 | 0acc9bdbd0300679ccb632f8a649b62095136f56 | 02da747e287ffb2fe442731517c00343bc2bd8f6 | 自动化测试确认 | v1/v2 `TestMongoSSHDialer*RoutesAllMembersThroughSSH` 的 standard 和 srv 子测试 PASS | 2026-08-09 |
 | FIND-MSG-001 | RabbitMQ 查看字段会读取样本消息（Issue #881 实际范围） | 已修复：RabbitMQ GetColumns 已改为返回静态字段且不再读取队列；原扫描误将另外三类消息源合并绑定到仅描述 RabbitMQ 的 Issue，剩余范围已拆为 FIND-MSG-METADATA-001 | 0acc9bdbd0300679ccb632f8a649b62095136f56 | 02da747e287ffb2fe442731517c00343bc2bd8f6 | 自动化测试确认 | `TestRabbitMQQueryExecAndColumns` PASS 并断言元数据请求数为 0；Issue https://github.com/Syngnat/GoNavi/issues/881 | 2026-08-09 |
 | FIND-SYNC-001 | 差异同步不支持复合主键表 | 已修复：差异分析、预览、分页差异同步和 SQL 结果同步均使用有序复合键，PR #892 已合入 upstream/dev | 0acc9bdbd0300679ccb632f8a649b62095136f56 | 5c96d4a4661daf072e77a51c240db709d4791030 | 自动化测试确认 | `go test ./internal/sync -count=1 -timeout=10m` PASS；`composite_key_sync_test.go` 覆盖 MySQL-like、PostgreSQL-like、映射和行选择 | 2026-08-09 |
+| FIND-MSG-METADATA-001 | Kafka、MQTT 和 RocketMQ 查看字段会读取样本消息 | 已修复：三类 GetColumns 均改为只返回静态消息字段，不再读取、订阅或拉取样本消息 | 0acc9bdbd0300679ccb632f8a649b62095136f56 | 8c111ab02764c453fc95362a2a4004c326cff447 | 自动化测试确认 | 修复提交 `3adedff0`；Kafka、MQTT、RocketMQ 字段元数据定向测试 PASS，并断言不调用 FetchMessages | 2026-08-11 |
+| FIND-AI-CODEBUDDY-001 | Windows 会把 WSL bash 误当作 CodeBuddy 所需的 Git Bash | 已修复：解析器拒绝 WSL launcher，优先 Git for Windows，并保留执行失败的 stdout、stderr 与底层错误 | 02da747e287ffb2fe442731517c00343bc2bd8f6 | 8c111ab02764c453fc95362a2a4004c326cff447 | 自动化测试确认 | 修复提交 `7a3f20ad`；Git Bash/WSL launcher 解析与 CodeBuddy Provider 代表测试 PASS | 2026-08-11 |
+| FIND-JVM-FIXTURE-001 | JVM 集成测试会混用不兼容的 java 与 javac | 已修复：HTTP/JMX fixture 共用工具链解析，优先 JAVA_HOME 或 javac 同目录 java，并校验版本和输出启动诊断 | 02da747e287ffb2fe442731517c00343bc2bd8f6 | 8c111ab02764c453fc95362a2a4004c326cff447 | 自动化测试确认 | 修复提交 `3c77ad0b`；工具链测试和 HTTP/JMX 真实 round-trip PASS | 2026-08-11 |
+| FIND-EXTSQL-001 | 已绑定的外部 SQL 目录被系统删除后无法顺畅恢复 | 已修复：缺失目录有结构化状态，删除按 ENOENT 幂等成功，并清理同路径全部绑定与最近记录 | 02da747e287ffb2fe442731517c00343bc2bd8f6 | 8c111ab02764c453fc95362a2a4004c326cff447 | 自动化测试确认 | 修复提交 `3243082c`；后端缺失目录与幂等删除测试 PASS，`externalSqlTree.test.ts` 12 项 PASS | 2026-08-11 |
+| FIND-MQTT-001 | MQTT 通过代理时不支持 WebSocket 传输 | 已修复：MQTT 的 WS/WSS 已接入 HTTP CONNECT 与 SOCKS5 代理拨号链路，代理下可完成订阅和发布 | 0acc9bdbd0300679ccb632f8a649b62095136f56 | 46d3afb36e8b04c1931ccad03880d5f5d9390d5f | 自动化测试确认 | 修复提交 `169ec358`；MQTT WebSocket HTTP/SOCKS 代理聚焦测试及 `go test ./internal/db -count=1 -timeout=15m` PASS | 2026-08-11 |
+| FIND-SYNCJOB-001 | 同步任务终态与终态事件非原子写入 | 已修复：运行终态与对应终态事件在同一事务内持久化，事件写入失败会回滚，提交后才触发 hook | 02da747e287ffb2fe442731517c00343bc2bd8f6 | 46d3afb36e8b04c1931ccad03880d5f5d9390d5f | 自动化测试确认 | 修复提交 `9ed5ed2d`；所有终态与回滚测试 PASS，原并发场景连续 100 次及 `go test ./internal/syncjob -count=1 -timeout=10m` PASS | 2026-08-11 |
