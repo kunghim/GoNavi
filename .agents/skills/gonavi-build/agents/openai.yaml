@@ -1,4 +1,4 @@
 interface:
-  display_name: "GoNavi Build"
-  short_description: "Build and launch local GoNavi for manual verification"
-  default_prompt: "Use $gonavi-build to run the local GoNavi build script, produce a fresh executable, and launch it for manual verification."
+  display_name: "GoNavi 构建"
+  short_description: "执行完整 Wails 构建并启动本地 GoNavi，供人工运行验证"
+  default_prompt: "使用 $gonavi-build 执行 GoNavi 完整构建，启动最新生成的应用并报告验证结果。"

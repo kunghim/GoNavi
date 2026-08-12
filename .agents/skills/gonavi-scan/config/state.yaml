@@ -1,11 +1,11 @@
-scan_id: incremental-20260809-5c96d4a4
-head_commit: 5c96d4a4661daf072e77a51c240db709d4791030
+scan_id: incremental-20260811-46d3afb3
+head_commit: 46d3afb36e8b04c1931ccad03880d5f5d9390d5f
 baseline_status: ok
-last_successful_commit: 5c96d4a4661daf072e77a51c240db709d4791030
+last_successful_commit: 46d3afb36e8b04c1931ccad03880d5f5d9390d5f
 scan_mode: 增量扫描
-started_at: 2026-08-09T21:03:03+08:00
-completed_at: 2026-08-09T21:13:00+08:00
-start_commit: 02da747e287ffb2fe442731517c00343bc2bd8f6
+started_at: 2026-08-11T23:43:44+08:00
+completed_at: 2026-08-11T23:56:21+08:00
+start_commit: 8c111ab02764c453fc95362a2a4004c326cff447
 workspace_status: 有未提交改动
-included_scope: [PR #892 合并提交, FIND-SYNC-001 修复复查, internal/sync 自动化测试, 同步能力地图]
-excluded_scope: [其他活跃发现复查, 外部数据库连接, 受控验证, 桌面 UI 人工流程, .agents/skills/gonavi-scan 产品变化]
+included_scope: [dev 从 8c111ab0 到 46d3afb3 的两个修复分支合并变更, MQTT HTTP 与 SOCKS 代理下的 WS/WSS 连接发布订阅及 internal/db 全包测试, syncjob 所有终态与回滚测试原并发场景连续 100 次及完整包测试, FIND-MQTT-001 与 FIND-SYNCJOB-001 修复复查和归档, 受影响能力地图与入口账本一致性]
+excluded_scope: [gonavi-scan 自身说明与本轮状态变化的产品扫描, 真实外部 MQTT Broker 与代理实例, 受控写验证, 桌面 UI 与 Web 浏览器人工流程, 未受两个合并分支影响的全库重新扫描]

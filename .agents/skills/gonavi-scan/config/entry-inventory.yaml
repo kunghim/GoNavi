@@ -1,63 +1,101 @@
 version: 1
-scan_id: incremental-20260809-5c96d4a4
-head_commit: 5c96d4a4661daf072e77a51c240db709d4791030
+scan_id: incremental-20260811-46d3afb3
+head_commit: 46d3afb36e8b04c1931ccad03880d5f5d9390d5f
 baseline_status: ok
-baseline_commit: 02da747e287ffb2fe442731517c00343bc2bd8f6
-# 首次全量扫描的入口账本。后续扫描按受影响入口增量维护。
+baseline_commit: 8c111ab02764c453fc95362a2a4004c326cff447
+# 全量入口账本。聚合入口必须用 enumerated_items 明确列出本轮实际枚举范围。
+summary:
+  entry_groups: 11
+  workbench_tab_types: 26
+  builtin_data_sources: 12
+  optional_data_sources: 22
+  total_data_sources: 34
 entries:
-  - id: ENTRY-WORKBENCH
-    category: 工作台与标签
-    code_locations: [frontend/src, internal/app]
-    capability_ids: [CAP-QUERY-001, CAP-DATA-001, CAP-REDIS-001, CAP-JVM-001, CAP-SYNC-A09]
+  - id: ENTRY-WORKBENCH-TABS
+    category: 工作台与标签类型
+    code_locations: [frontend/src/types.ts, frontend/src/components/TabManager.tsx, frontend/src/App.tsx]
+    capability_ids: [CAP-QUERY-001, CAP-DATA-001, CAP-DESIGN-001, CAP-SYNC-001, CAP-REDIS-001, CAP-NACOS-001, CAP-JVM-001, CAP-AUDIT-A01]
+    enumerated_items: [query, table, design, data-sync, sql-file-execution, sql-analysis, sql-audit, redis-keys, redis-command, redis-monitor, nacos-config, nacos-services, trigger, view-def, event-def, routine-def, sequence-def, package-def, table-overview, table-export, data-import, jvm-overview, jvm-resource, jvm-audit, jvm-diagnostic, jvm-monitoring]
     coverage_status: 已映射
     uncovered_reason: ""
-    next_validation: 同步任务终态事件原子性修复后重复运行并发时序测试
-  - id: ENTRY-MENU
-    category: 菜单、右键动作与工具入口
-    code_locations: [frontend/src/components]
-    capability_ids: [CAP-EXP-001, CAP-DATA-002, CAP-DESIGN-001, CAP-QUERY-A09]
+    next_validation: 每次 TabData 联合类型变化时同步检查渲染、关闭保护、分离窗口与能力 ID。
+  - id: ENTRY-MENUS-ACTIONS
+    category: 标题栏、侧栏、右键菜单与快捷动作
+    code_locations: [frontend/src/App.tsx, frontend/src/components/Sidebar.tsx, frontend/src/components/sidebar/sidebarLegacyNodeMenu.tsx, frontend/src/components/sidebar/useSidebarV2ContextMenu.tsx, frontend/src/components/QueryEditorToolbar.tsx]
+    capability_ids: [CAP-CONN-A01, CAP-EXP-001, CAP-QUERY-A01, CAP-QUERY-A10, CAP-DATA-002, CAP-DESIGN-001, CAP-MSG-A01]
+    enumerated_items: [新建连接, 新建查询, 打开与运行SQL文件, 连接编辑复制删除分组, 库Schema表视图例程触发器序列包菜单, 表数据设计导入导出同步, 消息发布与预览, Redis命令与监控, Nacos与JVM专用入口, 查询执行分析保存与AI动作]
     coverage_status: 已映射
     uncovered_reason: ""
-    next_validation: 外部 SQL 失效目录恢复链路需桌面流程验证；高风险写操作待受控验证
-  - id: ENTRY-SETTINGS
-    category: 设置页
-    code_locations: [frontend/src/components, internal/app]
-    capability_ids: [CAP-CONN-001, CAP-AI-001, CAP-AI-A01, CAP-OPS-001]
+    next_validation: 修复 FIND-SPECIAL-SQL-001 后核对 Legacy/V2、标题栏、文件绑定和连接切换四类入口使用同一能力门控。
+  - id: ENTRY-SETTINGS-TOOLS
+    category: 设置中心与工具中心
+    code_locations: [frontend/src/App.tsx, frontend/src/components]
+    capability_ids: [CAP-OPS-001, CAP-CONN-002, CAP-CONN-A13, CAP-CONN-A15, CAP-AI-001, CAP-MCP-001, CAP-WEB-A02, CAP-SYNC-001, CAP-AUDIT-A02]
+    enumerated_items: [语言, 主题与外观, 品牌图标, 侧栏元数据, 侧栏对象, 全局代理, Web认证, 云备份, AI与MCP, 关于与更新, 连接导入, 连接导出, 数据根目录, 安全更新, Schema比较, 数据比较, 数据同步, 驱动管理, SQL片段, 快捷键, SQL审计]
     coverage_status: 已映射
     uncovered_reason: ""
-    next_validation: Windows CodeBuddy Bash 解析修复后验证 WSL 与 Git Bash 两类环境
-  - id: ENTRY-WAILS
+    next_validation: 涉及远端服务和写操作的设置继续按只读或受控验证边界执行。
+  - id: ENTRY-WAILS-METHODS
     category: Wails 对外方法族
-    code_locations: [internal/app, frontend/wailsjs]
-    capability_ids: [CAP-CONN-001, CAP-QUERY-002, CAP-DATA-001]
+    code_locations: [internal/app/methods_db.go, internal/app/methods_file.go, internal/app/methods_saved_connections.go, internal/app/methods_sync.go, internal/app/methods_redis.go, internal/app/methods_nacos.go, internal/app/methods_jvm.go, frontend/wailsjs]
+    capability_ids: [CAP-CONN-001, CAP-EXP-001, CAP-QUERY-002, CAP-DATA-001, CAP-SYNC-001, CAP-REDIS-001, CAP-NACOS-001, CAP-JVM-001]
+    enumerated_items: [数据库连接查询事务与元数据, 文件与外部SQL, 保存连接与查询, DriverAgent, 导入导出, 同步任务, 结果差异, Redis, Nacos, JVM, Elasticsearch控制台, AI与MCP, 设置更新与本地目录]
     coverage_status: 已映射
     uncovered_reason: ""
-    next_validation: 绑定变更需随增量扫描复核
-  - id: ENTRY-RUNTIME
-    category: Web、MCP、CLI 与桌面运行入口
-    code_locations: [main.go, internal/webserver, internal/mcpserver]
-    capability_ids: [CAP-WEB-001, CAP-MCP-001, CAP-OPS-001]
+    next_validation: Wails 方法或生成绑定变化时交叉检查前端调用、错误反馈与能力地图。
+  - id: ENTRY-DESKTOP-RUNTIME
+    category: 桌面主程序与原生窗口入口
+    code_locations: [main.go, internal/app, internal/nativewindow, frontend/src]
+    capability_ids: [CAP-OPS-A09, CAP-OPS-A10, CAP-OPS-A11, CAP-QUERY-A03]
+    enumerated_items: [Wails桌面主窗口, MSI单实例, 浮动结果与AI窗口, 原生分离窗口, 退出任务保护, Windows更新维护模式]
     coverage_status: 已映射
     uncovered_reason: ""
-    next_validation: 远端部署与认证待测试环境只读验证
-  - id: ENTRY-DATASOURCE
-    category: 内置、可选和自定义数据源
-    code_locations: [internal/db, internal/connection]
-    capability_ids: [CAP-CONN-003, CAP-DS-MYSQL, CAP-DS-POSTGRES, CAP-DS-ROCKETMQ]
+    next_validation: Windows、macOS、Linux 的窗口和退出行为仍需三平台实机验证。
+  - id: ENTRY-WEB-MCP-RUNTIME
+    category: Web、MCP 与容器运行入口
+    code_locations: [main.go, cmd/gonavi-mcp-server, internal/webserver, internal/mcpserver, Dockerfile.web-server, Dockerfile.mcp-server]
+    capability_ids: [CAP-WEB-001, CAP-WEB-A01, CAP-WEB-A03, CAP-MCP-001, CAP-MCP-A04]
+    enumerated_items: [gonavi web-server, gonavi mcp-server, 独立gonavi-mcp-server stdio, 独立gonavi-mcp-server http, MCP remote-config, Web容器, MCP容器]
     coverage_status: 已映射
     uncovered_reason: ""
-    next_validation: 各数据源版本与权限矩阵待验证
-  - id: ENTRY-SPECIALIZED
-    category: 专用工作台
-    code_locations: [frontend/src/components, internal/redis, internal/nacos, internal/jvm]
-    capability_ids: [CAP-REDIS-001, CAP-NACOS-001, CAP-JVM-001, CAP-JVM-A01]
+    next_validation: 修复 FIND-RUNTIME-SIGNAL-001 后验证 SIGTERM、端口占用、非法参数和关闭钩子。
+  - id: ENTRY-CLI
+    category: 无头 CLI 与自动化入口
+    code_locations: [cmd/gonavi/main.go, internal/cli, npm/gonavi-cli, Dockerfile.cli, .github/workflows/publish-release.yml]
+    capability_ids: [CAP-CLI-001, CAP-CLI-A01, CAP-CLI-A02, CAP-CLI-A03, CAP-CLI-A04, CAP-CLI-A05, CAP-CLI-A06, CAP-CLI-A07]
+    enumerated_items: [连接列表新增导入, 临时connection-file, query与显式allow-write, query export, batch SQL, audit export, mcp stdio http remote-config, npm包装器, CLI容器, 发布资产与WinGet生成]
     coverage_status: 已映射
     uncovered_reason: ""
-    next_validation: JVM fixture 统一 JDK 工具链后复跑 HTTP/JMX round-trip；外部服务流程待验证
-  - id: ENTRY-PLATFORM
-    category: 桌面能力、发布与更新
-    code_locations: [internal/nativewindow, internal/app, tools, .github/workflows]
-    capability_ids: [CAP-OPS-A09, CAP-OPS-A12, CAP-OPS-A13]
+    next_validation: 在非沙箱 Windows 终端验证 connection-file ACL；稳定 GitHub、npm 与 WinGet 首发后再标记为已发布。
+  - id: ENTRY-DATASOURCE-BUILTIN
+    category: 内置数据源
+    code_locations: [internal/db/driver_support.go, internal/db, frontend/src/components/ConnectionModal.tsx]
+    capability_ids: [CAP-DS-MYSQL, CAP-DS-GOLDENDB, CAP-DS-POSTGRES, CAP-DS-ORACLE, CAP-DS-REDIS, CAP-DS-CHROMA, CAP-DS-QDRANT, CAP-DS-MILVUS, CAP-DS-ROCKETMQ, CAP-DS-MQTT, CAP-DS-KAFKA, CAP-DS-RABBITMQ]
+    enumerated_items: [mysql, goldendb, postgres, oracle, redis, chroma, qdrant, milvus, rocketmq, mqtt, kafka, rabbitmq]
     coverage_status: 已映射
     uncovered_reason: ""
-    next_validation: 多平台安装和更新待验证
+    next_validation: 真实版本、权限、TLS、代理与大数据量矩阵仍按连接清单逐项验证。
+  - id: ENTRY-DATASOURCE-OPTIONAL
+    category: 可选 Driver Agent 数据源
+    code_locations: [internal/db/driver_support.go, internal/db/optional_driver_agent_impl.go, cmd/optional-driver-agent]
+    capability_ids: [CAP-DS-MARIADB, CAP-DS-OCEANBASE, CAP-DS-DORIS, CAP-DS-STARROCKS, CAP-DS-SPHINX, CAP-DS-SQLSERVER, CAP-DS-SQLITE, CAP-DS-DUCKDB, CAP-DS-DAMENG, CAP-DS-KINGBASE, CAP-DS-HIGHGO, CAP-DS-VASTBASE, CAP-DS-OPENGAUSS, CAP-DS-GAUSSDB, CAP-DS-IRIS, CAP-DS-MONGODB, CAP-DS-TDENGINE, CAP-DS-IOTDB, CAP-DS-CLICKHOUSE, CAP-DS-ELASTICSEARCH, CAP-DS-TRINO, CAP-DS-CUSTOM]
+    enumerated_items: [mariadb, oceanbase, diros, starrocks, sphinx, sqlserver, sqlite, duckdb, dameng, kingbase, highgo, vastbase, opengauss, gaussdb, iris, mongodb, tdengine, iotdb, clickhouse, elasticsearch, trino, custom]
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 按 lite/full 构建、代理修订和真实服务版本继续验证；Custom 以 DSN 和驱动契约为边界。
+  - id: ENTRY-SPECIALIZED-WORKBENCH
+    category: 专用数据源与运维工作台
+    code_locations: [frontend/src/components/RedisViewer.tsx, frontend/src/components/NacosViewer.tsx, frontend/src/components/NacosServiceViewer.tsx, frontend/src/components/JVMOverview.tsx, frontend/src/components/QueryEditor.tsx, internal/redis, internal/nacos, internal/jvm, internal/esconsole]
+    capability_ids: [CAP-REDIS-001, CAP-ES-001, CAP-NACOS-001, CAP-JVM-001, CAP-MSG-A02, CAP-VECTOR-A01, CAP-VECTOR-A02]
+    enumerated_items: [RedisKey命令监控, Elasticsearch受控控制台, Nacos配置与服务, JVM概览资源审计诊断监控, KafkaMQTTRabbitMQRocketMQ消息工作流, ChromaQdrantMilvus向量查询]
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 向量字段取样与 WHERE、Redis 高可用 SSH、专用数据源 SQL 门控修复后补回归测试。
+  - id: ENTRY-DELIVERY
+    category: 发布、安装、更新与部署
+    code_locations: [.github/workflows, tools, npm/gonavi-cli, deploy, Dockerfile, Dockerfile.cli, Dockerfile.web-server, Dockerfile.mcp-server, internal/app/methods_update.go]
+    capability_ids: [CAP-OPS-A12, CAP-OPS-A13, CAP-OPS-A14, CAP-WEB-A03, CAP-CLI-A07]
+    enumerated_items: [桌面安装包, latest与dev更新通道, 安全更新与回滚, DriverAgent资产, WebMCPCLI容器, HelmK8s部署, CLI GitHub资产, npm包装器, WinGet manifest]
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 多平台安装升级与 CLI 稳定渠道首发尚未端到端验证。

@@ -1,201 +1,197 @@
 version: 1
-scan_id: incremental-20260809-5c96d4a4
-head_commit: 5c96d4a4661daf072e77a51c240db709d4791030
+scan_id: incremental-20260811-46d3afb3
+head_commit: 46d3afb36e8b04c1931ccad03880d5f5d9390d5f
 # 仅保存活跃发现。已修复或明确不修复的记录必须迁移至 findings-archive.md。
 active_findings:
-  - id: FIND-MSG-METADATA-001
-    title: Kafka、MQTT 和 RocketMQ 查看字段会读取样本消息
+  - id: FIND-SSH-HOSTKEY-001
+    title: SSH 隧道无条件信任服务端主机密钥
     status: 待修复
-    type: 功能 Bug / 运维风险
-    severity: P2
+    type: 安全缺陷
+    severity: P1
     confidence: 高
-    affected_capabilities: [CAP-ROCKET-A06, CAP-MQTT-A05, CAP-KAFKA-A06]
-    conclusion: Kafka、MQTT 和 RocketMQ 的 GetColumns 会读取最多 20 条实际消息推断动态字段，字段元数据操作并非纯元数据读取。
-    evidence: [internal/db/kafka_impl.go:330-380, internal/db/mqtt_impl.go:332-382, internal/db/rocketmq_impl.go:377-433]
-    impact: 用户打开字段元数据时可能产生等待、Broker 读取或订阅活动和额外权限要求；该副作用没有作为显式样本读取操作呈现。
-    recommendation: 默认返回静态消息字段，将 Payload 动态推断改为显式读取样本操作，并统一副作用说明、限时、样本量和缓存策略。
-    acceptance_criteria: [Kafka MQTT 和 RocketMQ 的纯元数据操作不读取实际消息, 读取样本需用户显式确认并说明副作用, 可配置样本量和超时, 三类消息服务均有静态字段回归覆盖]
-    first_seen_commit: 0acc9bdbd0300679ccb632f8a649b62095136f56
-    affected_paths: [internal/db/kafka_impl.go, internal/db/mqtt_impl.go, internal/db/rocketmq_impl.go]
+    affected_capabilities: [CAP-CONN-002, CAP-CONN-A08]
+    conclusion: 所有数据库 SSH 隧道均使用 ssh.InsecureIgnoreHostKey，没有 known_hosts 校验、指纹固定或首次连接确认，认证只验证客户端凭据而不验证跳板机身份。
+    evidence: [internal/ssh/ssh.go:90-98]
+    impact: 在 DNS、路由、代理或网络被劫持时，攻击者可冒充 SSH 跳板机并承接数据库流量；用户界面也没有呈现该风险或提供可信指纹配置。
+    recommendation: 支持 known_hosts 和显式 SHA256 指纹固定；首次连接显示可核对指纹并经用户确认后持久化，密钥变化必须阻断且给出清晰恢复流程。
+    acceptance_criteria: [未知主机密钥默认阻断或要求明确首次确认, 已固定指纹匹配时连接成功, 指纹变化时连接失败且不自动覆盖, 支持 known_hosts 哈希主机与非默认端口, 所有复用 SSH 隧道的数据源走同一校验路径]
+    first_seen_commit: 8c111ab02764c453fc95362a2a4004c326cff447
+    affected_paths: [internal/ssh/ssh.go, frontend/src/components/connectionModal/ConnectionModalNetworkSecuritySection.tsx]
     verification_status: 代码证据确认
-    verification_path: 检查三类 GetColumns 实现，并运行 Kafka、MQTT、RocketMQ 字段推断回归测试
+    verification_path: 使用测试 SSH 服务轮换主机密钥，分别验证首次连接、固定指纹匹配与指纹变化阻断
     verification_details:
       mode: 只读验证
-      instance_id: upstream-dev-02da747e-temp-snapshot
-      verified_at: 2026-08-09T20:12:00+08:00
-      result: Kafka、MQTT、RocketMQ 的字段推断回归测试通过，代码和测试均确认 GetColumns 会调用 FetchMessages。
-      preconditions: 使用当前 upstream/dev 源码与 Go 测试环境。
-      steps: [检查三类 GetColumns 调用链, 运行三类字段推断回归测试]
-      expected: GetColumns 只返回静态字段，不触发消息读取或订阅。
-      actual: 三类实现均读取最多 20 条样本消息并合并动态字段。
-      output: internal/db 指定 Kafka、MQTT、RocketMQ 测试 PASS，确认当前取样行为。
-      boundaries: 未连接真实消息服务，本轮未执行会读取或发布消息的受控验证。
+      instance_id: current-dev-8c111ab0-code-review
+      verified_at: 2026-08-11T23:02:00+08:00
+      result: 唯一 HostKeyCallback 无条件返回 InsecureIgnoreHostKey，仓库内未找到 known_hosts、指纹固定或首次确认实现。
+      preconditions: 当前 dev 源码；真实轮换密钥验证需要隔离 SSH 测试服务。
+      steps: [检查 SSH ClientConfig 构建链路, 搜索主机密钥配置与校验实现, 核对连接弹窗可配置项]
+      expected: 客户端验证服务端主机密钥并阻断异常变化。
+      actual: 服务端主机密钥不参与信任决策。
+      output: internal/ssh/ssh.go:93 使用 ssh.InsecureIgnoreHostKey。
+      boundaries: 本轮未连接真实跳板机，未执行中间人网络实验。
     review_history:
-      - checked_at: 2026-08-09
-        result: 从错误绑定到 RabbitMQ Issue #881 的旧发现中拆分；当前上游三类 GetColumns 仍存在取样行为。
-    last_checked_result: 2026-08-09 代码与自动化测试确认 Kafka、MQTT、RocketMQ 仍读取样本消息
-    issue_url: https://github.com/Syngnat/GoNavi/issues/898
-  - id: FIND-MQTT-001
-    title: MQTT 通过代理时不支持 WebSocket 传输
+      - checked_at: 2026-08-11
+        result: 产品、DB 与开发视角全库复查确认统一 SSH 链路缺少服务端身份校验。
+    last_checked_result: 2026-08-11 代码证据确认所有 SSH 隧道无条件忽略主机密钥
+    issue_url: https://github.com/Syngnat/GoNavi/issues/925
+  - id: FIND-VECTOR-METADATA-001
+    title: Chroma 和 Qdrant 查看字段会读取文档、Payload 与向量
     status: 待修复
-    type: 产品能力缺口
+    type: 功能 Bug / 数据暴露与资源风险
+    severity: P2
+    confidence: 高
+    affected_capabilities: [CAP-VECTOR-A01, CAP-DS-CHROMA, CAP-DS-QDRANT]
+    conclusion: Chroma 与 Qdrant 的 GetColumns 会读取最多 20 条真实记录，并请求 documents、metadatas、embeddings 或 payload、vector 来推断动态字段，字段元数据操作不是纯元数据读取。
+    evidence: [internal/db/chroma_impl.go:254-280, internal/db/qdrant_impl.go:244-269]
+    impact: 仅展开字段节点就可能读取敏感文档、Payload 和高维向量，增加网络、内存和权限成本；副作用没有作为显式数据预览呈现。
+    recommendation: 默认只返回稳定字段与服务端 Schema；动态 Payload/Metadata 推断改为显式样本分析操作，并默认不请求向量正文，提供样本量、超时和敏感字段提示。
+    acceptance_criteria: [普通字段元数据操作不读取真实 points 或 documents, 动态字段推断必须由用户显式触发, 默认样本请求不包含 embedding 或 vector, 样本量与超时受限, Chroma 和 Qdrant 均有无数据读取回归测试]
+    first_seen_commit: 8c111ab02764c453fc95362a2a4004c326cff447
+    affected_paths: [internal/db/chroma_impl.go, internal/db/qdrant_impl.go]
+    verification_status: 代码证据确认
+    verification_path: 在 Chroma/Qdrant HTTP 测试服务记录请求，调用 GetColumns 并断言不会访问 collection get/points scroll 数据接口
+    verification_details:
+      mode: 只读验证
+      instance_id: current-dev-8c111ab0-code-review
+      verified_at: 2026-08-11T23:03:00+08:00
+      result: 两类 GetColumns 均直接调用数据读取 API；Chroma 包含 embeddings，Qdrant 同时打开 with_payload 与 with_vector。
+      preconditions: 当前 dev 源码；真实向量服务不在本轮连接清单中。
+      steps: [检查 GetColumns 调用链, 检查数据请求 include 参数, 核对字段动态推断循环]
+      expected: 字段元数据读取不访问真实业务记录。
+      actual: 最多读取 20 条真实记录并展开动态字段。
+      output: Chroma getCollectionRows 与 Qdrant scrollPoints 在 GetColumns 中被直接调用。
+      boundaries: 未连接真实 Chroma/Qdrant；未测量高维向量的实际内存峰值。
+    review_history:
+      - checked_at: 2026-08-11
+        result: DB 与开发视角调用链复查确认元数据入口包含真实数据读取。
+    last_checked_result: 2026-08-11 代码证据确认 Chroma/Qdrant 字段元数据读取业务记录
+    issue_url: https://github.com/Syngnat/GoNavi/issues/926
+  - id: FIND-VECTOR-SQL-WHERE-001
+    title: Chroma 和 Qdrant 简化 SQL 会静默忽略 WHERE 条件
+    status: 待修复
+    type: 查询正确性缺陷
+    severity: P2
+    confidence: 高
+    affected_capabilities: [CAP-VECTOR-A02, CAP-DS-CHROMA, CAP-DS-QDRANT]
+    conclusion: 两类向量数据源的简化 SQL 解析器会接受带 WHERE 的 SELECT，但只解析 FROM、LIMIT、OFFSET 等字段；Chroma 的 Where 保持 nil，Qdrant 直接向 scroll/count 传 nil filter，最终返回未过滤结果而不报错。
+    evidence: [internal/db/chroma_impl.go:145-157, internal/db/chroma_impl.go:848-884, internal/db/qdrant_impl.go:160-168, internal/db/qdrant_impl.go:815-850]
+    impact: 用户以为筛选条件已生效，实际可能读取、展示或导出更大范围的数据；COUNT 也可能给出错误总数，属于静默结果错误而非显式能力限制。
+    recommendation: 要么完整解析受支持的 WHERE 子集并映射到 Chroma where/Qdrant filter，要么检测任何未支持子句并拒绝执行，引导用户使用 JSON 命令。
+    acceptance_criteria: [所有被接受的 WHERE 条件实际下推并影响结果, 不支持的操作符或子句返回明确错误, COUNT 与 SELECT 使用相同过滤语义, 覆盖大小写引号LIMIT OFFSET和复合条件, 不得静默删除任何非空子句]
+    first_seen_commit: 8c111ab02764c453fc95362a2a4004c326cff447
+    affected_paths: [internal/db/chroma_impl.go, internal/db/qdrant_impl.go]
+    verification_status: 代码证据确认
+    verification_path: 对带 WHERE 的 Chroma/Qdrant SELECT 使用记录请求体的 HTTP 测试服务，断言过滤条件被下推或命令被拒绝
+    verification_details:
+      mode: 只读验证
+      instance_id: current-dev-8c111ab0-code-review
+      verified_at: 2026-08-11T23:04:00+08:00
+      result: 两个解析器识别 SELECT 与 FROM 后直接返回成功，不解析 WHERE；执行链路向服务端传递空过滤条件。
+      preconditions: 当前 dev 源码；无需外部写操作。
+      steps: [检查两类简化 SQL parser, 追踪 QueryContext 到 get/scroll/count 参数, 核对未支持语句错误分支]
+      expected: WHERE 生效或查询被明确拒绝。
+      actual: 查询被接受但 WHERE 被静默丢弃。
+      output: parseChromaSQL 与 parseQdrantSQL 均没有 WHERE 解析逻辑。
+      boundaries: 本轮未连接真实向量服务，结论基于确定的参数传递链路。
+    review_history:
+      - checked_at: 2026-08-11
+        result: DB 与开发视角反证确认 JSON 过滤路径存在，但简化 SQL WHERE 不会进入该路径。
+    last_checked_result: 2026-08-11 代码证据确认简化 SQL 静默忽略 WHERE
+    issue_url: https://github.com/Syngnat/GoNavi/issues/927
+  - id: FIND-SPECIAL-SQL-001
+    title: Nacos 和 JVM 连接被错误标记为支持 SQL 查询
+    status: 待修复
+    type: 产品入口与后端契约不一致
+    severity: P2
+    confidence: 高
+    affected_capabilities: [CAP-QUERY-A01, CAP-NACOS-001, CAP-JVM-001]
+    conclusion: 查询能力门控只禁用 Redis，因此 Nacos/JVM 会进入可查询连接列表；旧版侧栏的连接根菜单还无条件提供新建查询与运行 SQL 文件，最终只能在通用数据库后端收到 unsupported。
+    evidence: [frontend/src/utils/dataSourceCapabilities.ts:174-174, frontend/src/utils/dataSourceCapabilities.ts:276-283, frontend/src/components/sidebar/sidebarLegacyNodeMenu.tsx:794-814, internal/db/database.go:961-966]
+    impact: 用户能进入必然失败的 SQL 工作流，保存错误绑定或启动 SQL 文件任务后才发现数据源不支持，界面能力承诺与专用工作台不一致。
+    recommendation: 将查询能力改为明确支持集合或数据源能力注册表，Nacos/JVM 只展示各自专用工作台；所有标题栏、侧栏、文件绑定和连接切换入口统一复用同一能力判定。
+    acceptance_criteria: [Nacos/JVM 不出现在查询编辑器连接列表, 连接根菜单不显示新建查询和运行 SQL 文件, 标题栏新建查询不会继承不支持的活动连接, 外部 SQL 文件不能绑定到不支持的数据源, 当前可查询数据源的现有入口不回归]
+    first_seen_commit: 8c111ab02764c453fc95362a2a4004c326cff447
+    affected_paths: [frontend/src/utils/dataSourceCapabilities.ts, frontend/src/components/sidebar/sidebarLegacyNodeMenu.tsx, frontend/src/components/QueryEditor.tsx, frontend/src/components/sidebar/SidebarExternalSqlWorkflow.tsx]
+    verification_status: 代码证据确认
+    verification_path: 分别创建 Nacos/JVM 连接，检查标题栏新建查询、连接右键菜单、查询连接下拉和 SQL 文件绑定入口
+    verification_details:
+      mode: 只读验证
+      instance_id: current-dev-8c111ab0-code-review
+      verified_at: 2026-08-11T23:05:00+08:00
+      result: supportsQueryEditor 对除 Redis 外的类型均返回 true；多个入口依赖该值或完全没有能力门控。
+      preconditions: 当前 dev 源码；桌面界面流程未在本轮启动。
+      steps: [检查数据源能力表, 检查查询连接过滤, 检查旧版侧栏连接根菜单, 检查后端数据库工厂]
+      expected: 专用数据源不暴露 SQL 查询入口。
+      actual: Nacos/JVM 被当作可查询连接，后端不支持对应数据库类型。
+      output: QUERY_EDITOR_DISABLED_TYPES 仅包含 redis。
+      boundaries: 通过代码链路确认；未执行桌面点击流程。
+    review_history:
+      - checked_at: 2026-08-11
+        result: 产品与开发视角交叉检查确认查询能力门控和菜单入口不一致。
+    last_checked_result: 2026-08-11 代码证据确认 Nacos/JVM 暴露不可用 SQL 工作流
+    issue_url: https://github.com/Syngnat/GoNavi/issues/928
+  - id: FIND-REDIS-SSH-UI-001
+    title: Redis Cluster 和 Sentinel 可保存后端必然拒绝的 SSH 配置
+    status: 待修复
+    type: 产品配置契约不一致
     severity: P3
     confidence: 高
-    affected_capabilities: [CAP-CONN-A10, CAP-DS-MQTT]
-    conclusion: MQTT 启用代理时仍只支持 tcp/ssl，WebSocket 连接会被明确拒绝。
-    evidence: [internal/db/mqtt_impl.go:812-813]
-    impact: 仅开放 WebSocket 入口且要求经企业代理访问的 Broker 无法接入。
-    recommendation: 为 ws/wss 接入代理拨号器，并覆盖 HTTP CONNECT、TLS SNI 和认证。
-    acceptance_criteria: [仅暴露 wss 的测试 Broker 可经 HTTP 或 SOCKS 代理连接, 代理完成 WebSocket 握手后可订阅和发布, tcp ssl 现有代理能力不回归]
-    first_seen_commit: 0acc9bdbd0300679ccb632f8a649b62095136f56
-    affected_paths: [internal/db/mqtt_impl.go]
-    verification_status: 待验证
-    verification_path: 通过 HTTP 或 SOCKS 代理连接仅暴露 wss 的 MQTT 测试 Broker
-    verification_details:
-      mode: 只读验证
-      instance_id: 未连接外部服务
-      verified_at: 未执行
-      result: 当前 upstream/dev 代码仍在代理加 WebSocket 组合上提前返回不支持错误。
-      preconditions: 启动仅暴露 wss 的 MQTT Broker，并配置必须经过的 HTTP 或 SOCKS 代理。
-      steps: [新建 MQTT 连接并选择 WebSocket 地址, 启用代理后执行连接测试]
-      expected: 代理完成 WebSocket 握手后可订阅和发布。
-      actual: 本轮未连接 Broker；代码仍明确拒绝该组合。
-      output: ""
-      boundaries: 需要 MQTT WebSocket 与代理测试环境。
-    review_history:
-      - checked_at: 2026-08-09
-        result: upstream/dev@02da747e 仍在 mqtt_impl.go:812-813 明确拒绝代理 WebSocket。
-      - checked_at: 2026-08-09
-        result: 全量代码复查确认限制存在。
-      - checked_at: 2026-08-07
-        result: 代码证据确认，等待真实代理环境验证。
-    last_checked_result: 2026-08-09 增量代码复查仍存在；本轮未连接 MQTT Broker
-    issue_url: https://github.com/Syngnat/GoNavi/issues/897
-  - id: FIND-AI-CODEBUDDY-001
-    title: Windows 会把 WSL bash 误当作 CodeBuddy 所需的 Git Bash
-    status: 待修复
-    type: 跨平台功能 Bug / 测试基础设施缺陷
-    severity: P2
-    confidence: 高
-    affected_capabilities: [CAP-AI-A01]
-    conclusion: Windows 的 CodeBuddy 环境解析会优先接受 PATH 中的 bash.exe；当命中 System32 的 WSL launcher 时，生产 Provider 会把错误的 Bash 路径写入 CODEBUDDY_CODE_GIT_BASH_PATH，测试夹具还会把 Windows 临时脚本路径直接交给 WSL，导致 No such file or directory。
-    evidence: [internal/ai/provider/codebuddy_cli.go:411-457, internal/ai/provider/claude_cli.go:740, internal/ai/provider/codebuddy_cli_test.go:268-286]
-    impact: Windows 用户的 CodeBuddy CLI 配置可能引用错误 Bash；自动化测试也无法可靠覆盖真实 Provider 调用，且当前失败信息可能为空。
-    recommendation: 优先从 git.exe 和 Git for Windows 标准安装位置解析 Git Bash，并拒绝 System32/WindowsApps 的 WSL launcher；若支持 WSL，必须识别 shell 类型并转换 Windows 路径，同时保留 stderr、stdout 和底层错误。
-    acceptance_criteria: [默认存在 WSL bash 的 Windows 环境能选择真实 Git Bash 或正确转换 WSL 路径, CodeBuddy Provider 全组测试通过, 覆盖空格和中文临时目录, 执行失败返回非空且可定位的错误信息]
-    first_seen_commit: 02da747e287ffb2fe442731517c00343bc2bd8f6
-    affected_paths: [internal/ai/provider/codebuddy_cli.go, internal/ai/provider/claude_cli.go, internal/ai/provider/codebuddy_cli_test.go]
-    verification_status: 自动化测试确认
-    verification_path: go test ./internal/ai/provider -run "^TestCodeBuddyCLIProvider_ChatParsesJSONEventArray$" -count=1 -v
-    verification_details:
-      mode: 只读验证
-      instance_id: windows-local-upstream-dev-02da747e
-      verified_at: 2026-08-09T20:08:00+08:00
-      result: 测试退出码 1；本机优先解析到 System32 的 WSL bash，Windows 临时脚本路径在 WSL 内不可访问。
-      preconditions: Windows PATH 同时存在 WSL bash launcher 和 Git for Windows。
-      steps: [运行 CodeBuddy CLI Provider 代表测试, 检查 Bash 解析结果与脚本参数]
-      expected: 选择与脚本路径格式兼容的 Bash 并完成 JSON 响应解析。
-      actual: 选择 WSL bash 后直接传入 Windows 路径，进程失败。
-      output: CodeBuddy CLI execution failed；已知底层输出为 No such file or directory。
-      boundaries: 代表测试已失败；本轮未使用真实 CodeBuddy 账号发送请求。
-    review_history:
-      - checked_at: 2026-08-09
-        result: upstream/dev@02da747e 在 Windows 自动化测试中复现，生产环境解析链路存在同一误选风险。
-    last_checked_result: 2026-08-09 自动化测试确认 Windows Bash 选择与路径契约错误
-    issue_url: https://github.com/Syngnat/GoNavi/issues/893
-  - id: FIND-JVM-FIXTURE-001
-    title: JVM 集成测试会混用不兼容的 java 与 javac
-    status: 待修复
-    type: 测试基础设施 / 环境兼容缺陷
-    severity: P2
-    confidence: 高
-    affected_capabilities: [CAP-JVM-A01]
-    conclusion: HTTP 和 JMX 真实 fixture 分别从 PATH 独立查找 java 与 javac；本机组合为 Java 8 和 javac 17 时，编译产物无法启动，readiness 只报告 EOF 并吞掉实际 JVM 错误。
-    evidence: [internal/jvm/http_provider_test.go:512-565, internal/jvm/jmx_provider_test.go:766-829]
-    impact: JVM Provider 的真实 round-trip 回归测试在常见多 JDK 环境中稳定失败，掩盖实际产品回归并增加故障定位成本。
-    recommendation: 用共享 helper 解析同一 JDK 的 java/javac，优先 JAVA_HOME 或 javac 同目录 sibling java；启动前校验 major version，并在 readiness 失败时回显 stderr 和退出状态。
-    acceptance_criteria: [PATH 中 java8 在前且 javac17 在后时选择一致工具链或给出明确前置条件错误, HTTP 和 JMX round-trip 均通过, fixture 启动失败包含 stderr 与版本信息, HTTP JMX Agent 共用工具链解析逻辑]
-    first_seen_commit: 02da747e287ffb2fe442731517c00343bc2bd8f6
-    affected_paths: [internal/jvm/http_provider_test.go, internal/jvm/jmx_provider_test.go]
-    verification_status: 自动化测试确认
-    verification_path: go test ./internal/jvm -run "^(TestHTTPProviderRealEndpointRoundTrip|TestJMXProviderRealJMXRoundTrip)$" -count=1 -v -timeout=2m
-    verification_details:
-      mode: 只读验证
-      instance_id: windows-java8-javac17-upstream-dev-02da747e
-      verified_at: 2026-08-09T20:09:00+08:00
-      result: 混合工具链时两项测试均以 readiness EOF 失败；把 JDK 17 bin 置于 PATH 首位后两项均通过。
-      preconditions: Windows PATH 中 java 8 先于 JDK 17，javac 来自 JDK 17。
-      steps: [在混合 PATH 运行两项测试, 将 JDK 17 bin 置于 PATH 首位后重跑]
-      expected: fixture 选择一致工具链或明确拒绝不兼容组合。
-      actual: 混合时 EOF；统一 JDK 17 后 HTTP PASS 2.44s、JMX PASS 16.49s。
-      output: 初次退出码 1；统一 JDK 17 后退出码 0。
-      boundaries: Provider round-trip 在统一 JDK 17 下正常，未发现 JVM 产品运行逻辑缺陷。
-    review_history:
-      - checked_at: 2026-08-09
-        result: upstream/dev@02da747e 自动化复现并通过统一 JDK 17 对照实验确认根因。
-    last_checked_result: 2026-08-09 自动化测试确认 fixture 工具链选择错误
-    issue_url: https://github.com/Syngnat/GoNavi/issues/894
-  - id: FIND-SYNCJOB-001
-    title: 同步任务终态与终态事件非原子写入
-    status: 待修复
-    type: 可靠性 / 可观测性缺陷
-    severity: P2
-    confidence: 高
-    affected_capabilities: [CAP-SYNC-A09]
-    conclusion: syncjob 先提交运行终态，再单独追加终态事件且忽略追加错误；读取者可能看到 succeeded 却只有 queued、started，崩溃或写入失败时还可能永久缺少完成事件。
-    evidence: [internal/syncjob/manager.go:900-906, internal/syncjob/store.go:961-992, internal/syncjob/store.go:1626-1662, internal/syncjob/manager_test.go:71-88]
-    impact: 任务历史可能显示已完成但时间线缺少完成反馈，审计流水与运行状态不一致，用户和运维人员难以判断真实结束状态。
-    recommendation: 新增事务型 CompleteRunOwnedWithTerminalEvent，在同一 SQLite 事务内校验 ownership、更新终态、分配序号并插入终态事件；提交后再触发 hook，事件失败必须回滚。
-    acceptance_criteria: [终态对读取者可见时对应终态事件已持久化, 终态事件写入失败不会留下无事件终态, success partial fail cancel interrupted 均有一致性测试, 重复运行 100 次稳定通过, event sequence 连续且 hook 仅在提交后触发]
-    first_seen_commit: 02da747e287ffb2fe442731517c00343bc2bd8f6
-    affected_paths: [internal/syncjob/manager.go, internal/syncjob/store.go, internal/syncjob/manager_test.go]
-    verification_status: 自动化测试确认
-    verification_path: go test ./internal/syncjob -run "^TestManagerQueuesRunsForTheSameJobWithoutOverlap$" -count=100 -timeout=10m
-    verification_details:
-      mode: 只读验证
-      instance_id: upstream-dev-02da747e-temp-snapshot
-      verified_at: 2026-08-09T20:18:00+08:00
-      result: 退出码 1，多轮第二个运行只读取到 queued 和 started 两个事件。
-      preconditions: 使用隔离 GOCACHE 在 upstream/dev 临时快照重复运行并发队列测试。
-      steps: [连续排队同一任务的两个运行, 等待第二个运行状态成功, 立即读取第二个运行事件]
-      expected: 状态成功时 queued、started、succeeded 三个事件均可见。
-      actual: 多次只得到 queued、started；终态事件稍后才可能追加。
-      output: event count = 2, want 3；-count=100 退出码 1。
-      boundaries: 未人为制造 SQLite 插入失败或进程崩溃；当前竞态已高频复现。
-    review_history:
-      - checked_at: 2026-08-09
-        result: upstream/dev@02da747e 的 100 次重复测试多次失败，代码确认终态和事件跨两个写操作。
-    last_checked_result: 2026-08-09 自动化测试确认终态事件竞态
-    issue_url: https://github.com/Syngnat/GoNavi/issues/895
-  - id: FIND-EXTSQL-001
-    title: 已绑定的外部 SQL 目录被系统删除后无法顺畅恢复
-    status: 待修复
-    type: 功能 Bug / 恢复性缺陷
-    severity: P2
-    confidence: 高
-    affected_capabilities: [CAP-QUERY-A09]
-    conclusion: 外部 SQL 目录配置只校验路径字符串；目录在文件管理器中被删除后，启动刷新仅警告并保留空节点，删除本地目录操作因 ENOENT 直接失败且不会清理绑定，用户必须识别并改用含义相近的移除目录操作。
-    evidence: [frontend/src/store.ts:2195-2228, frontend/src/components/Sidebar.tsx:1495-1533, frontend/src/components/sidebar/SidebarExternalSqlWorkflow.tsx:999-1043, frontend/src/components/sidebar/SidebarExternalSqlWorkflow.tsx:1089-1098, internal/app/methods_file.go:602-617]
-    impact: 应用启动持续出现目录读取错误，失效节点与正常空目录不可区分；同一路径存在多连接或数据库绑定时还可能残留配置，造成用户无法完成清理闭环。
-    recommendation: 将缺失目录建模为结构化失效状态；删除缺失目录按幂等成功处理并同步清理绑定，提供重新定位或一键移除同路径全部绑定，同时保留权限错误和非空目录保护。
-    acceptance_criteria: [启动时明确标记失效目录且不重复噪声提示, 可重新定位或移除同路径全部绑定, 删除缺失目录按已不存在幂等完成配置清理, 权限错误和非空目录仍阻止误删, 覆盖后端 ENOENT 与前端启动删除恢复链路测试]
-    first_seen_commit: 02da747e287ffb2fe442731517c00343bc2bd8f6
-    affected_paths: [frontend/src/store.ts, frontend/src/components/Sidebar.tsx, frontend/src/components/sidebar/SidebarExternalSqlWorkflow.tsx, frontend/src/utils/externalSqlTree.ts, internal/app/methods_file.go]
+    affected_capabilities: [CAP-CONN-A08, CAP-DS-REDIS]
+    conclusion: 通用网络安全区对 Redis Cluster/Sentinel 仍展示并保存 SSH 开关与字段，但 Redis 后端在连接开始时无条件拒绝多节点或 Sentinel 与 SSH 的组合。
+    evidence: [frontend/src/components/connectionModal/ConnectionModalNetworkSecuritySection.tsx:90-96, frontend/src/components/connectionModal/ConnectionModalNetworkSecuritySection.tsx:603-616, internal/redis/redis_impl.go:337-342]
+    impact: 用户可以完整填写、测试并保存一个产品当前不支持的组合，只有连接时才收到失败；对需要跳板机的 Redis 高可用部署没有提前说明或可执行替代方案。
+    recommendation: 在选择 Cluster/Sentinel 拓扑时禁用 SSH 并清理互斥配置、说明限制；若产品承诺支持，则实现对所有 seed、Sentinel 发现地址和重定向节点的统一 SSH 路由。
+    acceptance_criteria: [不支持期间 Cluster/Sentinel 选择后 SSH 入口明确禁用并说明原因, 已保存冲突配置加载时可恢复且不会静默丢失, 单机 Redis SSH 不回归, 若实现支持则所有发现节点与重定向均经隧道路由, 前后端共享能力测试覆盖拓扑组合]
+    first_seen_commit: 8c111ab02764c453fc95362a2a4004c326cff447
+    affected_paths: [frontend/src/components/connectionModal/ConnectionModalNetworkSecuritySection.tsx, frontend/src/components/connectionModal/ConnectionModalStep2.tsx, internal/redis/redis_impl.go]
     verification_status: 代码证据确认
-    verification_path: 绑定外部 SQL 目录后从文件管理器删除目录，重启应用并尝试刷新、删除本地目录和移除目录
+    verification_path: 在连接弹窗选择 Redis Cluster/Sentinel 并启用 SSH，保存后执行连接测试并观察前端门控与后端错误
     verification_details:
       mode: 只读验证
-      instance_id: upstream-dev-02da747e-code-review
-      verified_at: 2026-08-09T20:14:00+08:00
-      result: 调用链确认 ENOENT 只产生警告或失败，删除失败时不会清理持久绑定；另有移除入口但缺少失效状态引导且只按单个 directoryId 清理。
-      preconditions: 已绑定一个外部 SQL 目录，并在应用外删除该物理目录。
-      steps: [重启 GoNavi, 展开或刷新外部 SQL 根节点, 对失效目录执行删除本地目录, 再检查持久绑定]
-      expected: 识别目录已不存在并允许清理绑定或重新定位。
-      actual: 用户报告启动报错并卡在失效目录；代码路径确认删除本地目录因缺失而提前失败。
-      output: 本轮未启动桌面 UI；代码证据支持用户报告的恢复断链。
-      boundaries: 未进行桌面界面流程验证；移除目录入口可清理单个绑定，但可发现性与多绑定一致性不足。
+      instance_id: current-dev-8c111ab0-code-review
+      verified_at: 2026-08-11T23:06:00+08:00
+      result: 通用网络安全组件没有 Redis 拓扑互斥条件，后端对 isCluster 或 isSentinel 且 UseSSH 直接返回不支持。
+      preconditions: 当前 dev 源码；真实 Redis 高可用服务不在连接清单中。
+      steps: [检查连接弹窗 SSH 门控, 检查配置序列化, 检查 Redis 拓扑连接前置校验]
+      expected: UI 只允许后端可执行的组合，或提前明确阻断。
+      actual: UI 可保存组合，后端必然拒绝。
+      output: redis_impl.go 在建立客户端前返回 topology_ssh_tunnel_unsupported。
+      boundaries: 未连接真实 Redis Cluster/Sentinel；单机 SSH 定向测试未发现回归。
     review_history:
-      - checked_at: 2026-08-09
-        result: upstream/dev@02da747e 三视角调用链复查确认恢复路径不闭环。
-    last_checked_result: 2026-08-09 代码证据确认失效目录缺少幂等清理与明确恢复状态
-    issue_url: https://github.com/Syngnat/GoNavi/issues/896
+      - checked_at: 2026-08-11
+        result: 产品、DB 与开发视角确认前端通用 SSH 配置未反映 Redis 拓扑限制。
+    last_checked_result: 2026-08-11 代码证据确认 Redis 高可用拓扑可配置不可执行的 SSH 组合
+    issue_url: https://github.com/Syngnat/GoNavi/issues/929
+  - id: FIND-RUNTIME-SIGNAL-001
+    title: Web 和 MCP 服务未接通信号取消且主程序吞掉特殊模式错误
+    status: 待修复
+    type: 可靠性 / 生命周期 / 运维可观测性缺陷
+    severity: P2
+    confidence: 高
+    affected_capabilities: [CAP-WEB-001, CAP-WEB-A01, CAP-MCP-001, CAP-MCP-A04]
+    conclusion: Web/MCP 入口使用 context.Background，SIGTERM 不会触发已实现的 graceful shutdown；主 gonavi 的特殊模式还只记录运行错误并返回 handled，main 随后以成功退出码结束。
+    evidence: [main.go:101-103, main.go:235-248, cmd/gonavi-mcp-server/main.go:12-17, internal/webserver/server.go:726-743, internal/mcpserver/run.go:195-226, Dockerfile.web-server:64-65, Dockerfile.mcp-server]
+    impact: 容器停止、滚动更新或服务编排终止时会跳过 HTTP drain、App/AI/backend 关闭和在途任务收尾；参数、监听或运行失败还可能被脚本与监管器误判为成功。
+    recommendation: 两个服务入口统一使用 signal.NotifyContext 监听中断与 SIGTERM；runSpecialMode 返回 handled 与 error，特殊模式错误传播为非零退出，清理完成后再结束进程。
+    acceptance_criteria: [Web/MCP 收到 SIGTERM 后进入 graceful shutdown 并等待在途请求或超时, App AI MCP backend 关闭钩子只执行一次, 参数解析端口绑定和运行期失败返回非零退出码, stdio EOF 与正常取消不误报为异常, 容器停止集成测试覆盖两个入口]
+    first_seen_commit: 8c111ab02764c453fc95362a2a4004c326cff447
+    affected_paths: [main.go, cmd/gonavi-mcp-server/main.go, internal/webserver/server.go, internal/mcpserver/run.go, Dockerfile.web-server, Dockerfile.mcp-server]
+    verification_status: 代码证据确认
+    verification_path: 以子进程启动 Web/MCP，分别发送 SIGTERM、占用监听端口和传入非法参数，检查 shutdown 钩子与退出码
+    verification_details:
+      mode: 只读验证
+      instance_id: current-dev-8c111ab0-code-review
+      verified_at: 2026-08-11T23:07:00+08:00
+      result: 服务实现已监听 ctx.Done 并提供 5 秒关闭窗口，但所有生产入口均传入不可取消的 Background context；主程序特殊模式错误不向 main 返回。
+      preconditions: 当前 dev 源码；本轮没有向运行中的容器发送终止信号。
+      steps: [追踪主程序特殊模式分发, 检查独立 MCP 入口, 检查 Web/MCP ctx 取消分支, 核对容器 ENTRYPOINT]
+      expected: 操作系统终止信号取消运行 context，失败以非零退出。
+      actual: 信号没有进入取消分支，主程序特殊模式错误只写日志。
+      output: main.go 与 cmd/gonavi-mcp-server/main.go 均创建 context.Background。
+      boundaries: 代码链路确定；仍需子进程与容器集成测试确认不同平台信号行为。
+    review_history:
+      - checked_at: 2026-08-11
+        result: 开发视角从入口到 graceful shutdown 调用链确认取消信号断链与退出码错误。
+    last_checked_result: 2026-08-11 代码证据确认 Web/MCP 生产入口没有信号取消链路
+    issue_url: https://github.com/Syngnat/GoNavi/issues/930
