@@ -34,6 +34,7 @@ active_findings:
       - checked_at: 2026-08-11
         result: 产品、DB 与开发视角全库复查确认统一 SSH 链路缺少服务端身份校验。
     last_checked_result: 2026-08-11 代码证据确认所有 SSH 隧道无条件忽略主机密钥
+    issue_url: https://github.com/Syngnat/GoNavi/issues/925
   - id: FIND-VECTOR-METADATA-001
     title: Chroma 和 Qdrant 查看字段会读取文档、Payload 与向量
     status: 待修复
@@ -65,6 +66,7 @@ active_findings:
       - checked_at: 2026-08-11
         result: DB 与开发视角调用链复查确认元数据入口包含真实数据读取。
     last_checked_result: 2026-08-11 代码证据确认 Chroma/Qdrant 字段元数据读取业务记录
+    issue_url: https://github.com/Syngnat/GoNavi/issues/926
   - id: FIND-VECTOR-SQL-WHERE-001
     title: Chroma 和 Qdrant 简化 SQL 会静默忽略 WHERE 条件
     status: 待修复
@@ -96,6 +98,7 @@ active_findings:
       - checked_at: 2026-08-11
         result: DB 与开发视角反证确认 JSON 过滤路径存在，但简化 SQL WHERE 不会进入该路径。
     last_checked_result: 2026-08-11 代码证据确认简化 SQL 静默忽略 WHERE
+    issue_url: https://github.com/Syngnat/GoNavi/issues/927
   - id: FIND-SPECIAL-SQL-001
     title: Nacos 和 JVM 连接被错误标记为支持 SQL 查询
     status: 待修复
@@ -127,6 +130,7 @@ active_findings:
       - checked_at: 2026-08-11
         result: 产品与开发视角交叉检查确认查询能力门控和菜单入口不一致。
     last_checked_result: 2026-08-11 代码证据确认 Nacos/JVM 暴露不可用 SQL 工作流
+    issue_url: https://github.com/Syngnat/GoNavi/issues/928
   - id: FIND-REDIS-SSH-UI-001
     title: Redis Cluster 和 Sentinel 可保存后端必然拒绝的 SSH 配置
     status: 待修复
@@ -158,6 +162,7 @@ active_findings:
       - checked_at: 2026-08-11
         result: 产品、DB 与开发视角确认前端通用 SSH 配置未反映 Redis 拓扑限制。
     last_checked_result: 2026-08-11 代码证据确认 Redis 高可用拓扑可配置不可执行的 SSH 组合
+    issue_url: https://github.com/Syngnat/GoNavi/issues/929
   - id: FIND-RUNTIME-SIGNAL-001
     title: Web 和 MCP 服务未接通信号取消且主程序吞掉特殊模式错误
     status: 待修复
@@ -189,3 +194,4 @@ active_findings:
       - checked_at: 2026-08-11
         result: 开发视角从入口到 graceful shutdown 调用链确认取消信号断链与退出码错误。
     last_checked_result: 2026-08-11 代码证据确认 Web/MCP 生产入口没有信号取消链路
+    issue_url: https://github.com/Syngnat/GoNavi/issues/930

@@ -33,7 +33,7 @@ if (-not $field.title -or -not $field.conclusion) { throw "发现 $FindingId 缺
 if (-not $field.type -or -not $field.verification_status) { throw "发现 $FindingId 缺少类型或验证状态" }
 $allowedVerification = @('待验证','自动化测试确认','受控验证确认','已验证','代码证据确认','代码证据未运行时验证')
 if ($field.verification_status -notin $allowedVerification) { throw "发现 $FindingId 的验证状态不受支持: $($field.verification_status)" }
-if ($field.type -match 'Bug|缺陷') { $type = 'bug' }
+if ($field.type -match 'Bug|缺陷|不一致') { $type = 'bug' }
 elseif ($field.type -match '缺口|需求|能力') { $type = 'enhancement' }
 else { throw "发现 $FindingId 的类型不受支持: $($field.type)" }
 $titlePrefix = if ($type -eq 'bug') { '[Bug]' } else { '[Enhancement]' }
