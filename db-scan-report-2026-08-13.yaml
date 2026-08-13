@@ -1,0 +1,381 @@
+scan:
+  skill: gonavi-scan
+  view: db
+  history_recheck: skipped
+  scan_scope: full_repository
+  execution: serial_with_db_review_fallback
+  repository: GoNavi-Wails
+  head_commit: 历史未知（扫描期间 Windows 会话错误，未能读取）
+  workspace_status: "未修改 GoNavi 业务代码；已有未跟踪文件保留"
+  coverage_units:
+    formula: "1 个视角 × 11 个能力分册 + 11 个入口组 + 8 个 DB 风险单元"
+    total: 30
+    completed: 30
+  note: "独立 DB 报告，不写入 skill 的 data/findings.yaml。Issue projection 按 examples/db-engineer-issue-example.yaml 生成。"
+
+findings:
+  - id: FIND-DB-CORRECTNESS-001
+    title: "查询扫描错误被静默跳过，结果集可能少行但返回成功"
+    type: 查询正确性缺陷
+    severity: P1
+    confidence: 高
+    failure_mode: silent_data_loss
+    operation: query
+    data_state: read_only
+    server_side_effect: none
+    conclusion: "普通和流式行扫描在单行 Scan/LOB 转换失败时直接 continue，循环结束仅检查 rows.Err，可能成功返回不完整结果。"
+    evidence:
+      - "internal/db/scan_rows.go:67-81"
+      - "internal/db/scan_rows.go:108-141"
+    impact: "查询、导出、审计或同步可能使用少行结果，用户无法区分空结果、部分结果和成功结果。"
+    recommendation: "首次扫描错误立即返回带行号/列名的错误，或返回显式 partial result；流式路径停止消费。"
+    acceptance_criteria:
+      - "第 2 行 Scan 失败时普通查询返回非 nil error"
+      - "流式查询不会静默跳过坏行"
+      - "错误包含行号或列名，正常行结果格式不变"
+    verification_status: 代码证据确认
+    verification_path: "使用 fake database/sql driver 在指定行返回 Scan 错误，覆盖普通和流式查询。"
+    related_findings: []
+    issue_projection:
+      title: "[DB][P1] 查询扫描错误被静默跳过，结果集可能少行"
+      labels: [bug, database, data-correctness, ai-ready]
+      body_sections:
+        summary: "单行扫描失败时查询仍可能成功返回，但缺少该行。"
+        affected_behavior: "SQL 查询、结果导出、审计和同步读取。"
+        reproduction:
+          preconditions: ["隔离测试环境或 fake driver"]
+          steps: ["让第 2 行 Scan 返回类型转换错误", "执行普通和流式查询", "比较返回错误、行数和成功状态"]
+        expected: "扫描失败应返回错误并包含行号/列名，或明确标记 partial result。"
+        actual: "扫描错误分支 continue，最终只检查 rows.Err。"
+        root_cause: "scanRowsForDialect 与 streamRowsForDialect 未传播当前行扫描错误。"
+        affected_files: ["internal/db/scan_rows.go:67-81", "internal/db/scan_rows.go:108-141"]
+        fix_boundary:
+          allowed_paths: ["internal/db/scan_rows.go", "internal/db/scan_rows_test.go"]
+          preserve: ["正常行结果格式", "现有方言转换行为"]
+          out_of_scope: ["前端结果表格重构", "新连接池框架"]
+        acceptance_tests: ["普通查询在第 2 行失败时返回错误", "流式查询不跳过坏行", "错误包含行号或列名"]
+        validation_commands: ["go test ./internal/db -run 'ScanRows|StreamRows' -count=1"]
+        risk_and_rollback: "只读查询，无服务端写副作用。"
+        verification_boundary: "代码证据确认；fake driver 回归测试未执行。"
+      operation: query
+      data_state: read_only
+      server_side_effect: none
+      security_constraints: ["不读取真实凭据", "不连接生产数据库", "未经批准不执行写操作"]
+
+  - id: FIND-DB-TRANSACTION-001
+    title: "事务提交失败后提前标记完成，无法回滚或判断未知提交结果"
+    type: 事务一致性缺陷
+    severity: P1
+    confidence: 高
+    failure_mode: partial_failure
+    operation: transaction
+    data_state: transaction_open
+    server_side_effect: commit_outcome_unknown
+    conclusion: "sqlConnTransactionExecer.finish 在执行 COMMIT/ROLLBACK 前设置 done=true；控制语句失败后 Rollback 和 Close 不再补偿，连接可能带着未决事务关闭或被复用。"
+    evidence:
+      - "internal/db/database.go:624-649"
+      - "internal/db/database.go:661-675"
+    impact: "网络瞬断或服务端拒绝提交时，调用方无法安全重试、回滚或区分提交未知结果，可能造成连接污染和数据一致性风险。"
+    recommendation: "区分 finishing/finished；成功后再标记完成。失败时允许回滚或丢弃连接，并明确 unknown outcome。"
+    acceptance_criteria:
+      - "第一次 COMMIT 失败后可受控重试或明确进入 unknown outcome"
+      - "COMMIT 失败后 Close 尝试回滚或丢弃物理连接"
+      - "连接不会带未决事务回到连接池"
+    verification_status: 代码证据确认
+    verification_path: "fake driver 注入 COMMIT 错误，验证 Rollback、Close、连接丢弃和错误状态。"
+    related_findings: []
+    issue_projection:
+      title: "[DB][P1] 事务提交失败后无法回滚，可能遗留未知提交状态"
+      labels: [bug, database, transaction, data-integrity, ai-ready]
+      body_sections:
+        summary: "COMMIT 失败后事务句柄被标记完成，后续无法回滚或安全恢复。"
+        affected_behavior: "SQL 事务提交、关闭和连接池生命周期。"
+        reproduction:
+          preconditions: ["fake driver 或可控事务测试连接"]
+          steps: ["开始事务", "让 COMMIT 返回错误", "调用 Rollback 和 Close", "检查控制语句与连接池状态"]
+        expected: "提交失败必须可重试、回滚或明确丢弃连接，并报告提交结果未知。"
+        actual: "done=true 后 Rollback/Close 跳过补偿。"
+        root_cause: "finish 在控制语句执行前修改终态。"
+        affected_files: ["internal/db/database.go:624-675"]
+        fix_boundary:
+          allowed_paths: ["internal/db/database.go", "internal/db/*transaction*_test.go"]
+          preserve: ["正常 Commit/Rollback 行为", "现有事务接口兼容性"]
+          out_of_scope: ["重写所有驱动事务实现", "前端事务 UI 重构"]
+        acceptance_tests: ["Commit 失败后 Rollback 仍执行或连接被丢弃", "连接不回池", "错误标识 unknown outcome"]
+        validation_commands: ["go test ./internal/db -run 'Transaction|SQLConn' -count=1"]
+        risk_and_rollback: "可能存在服务端提交未知结果；修复必须优先避免污染连接池。"
+        verification_boundary: "代码证据确认；fake driver 测试未执行。"
+      operation: transaction
+      data_state: transaction_open
+      server_side_effect: commit_outcome_unknown
+      security_constraints: ["不连接生产数据库", "未经批准不执行写操作", "测试使用 fake driver 或隔离实例"]
+
+  - id: FIND-DB-RESOURCE-001
+    title: "SQLite 和 DuckDB 未设置连接池上限，并发访问可能耗尽资源或放大锁冲突"
+    type: 资源失控
+    severity: P2
+    confidence: 高
+    failure_mode: resource_exhaustion
+    operation: connection
+    data_state: unknown
+    server_side_effect: none
+    conclusion: "sql_pool.go 对 sqlite/duckdb 直接跳过统一池配置，连接创建路径未设置 MaxOpenConns、Idle 和生命周期限制；database/sql 默认允许无限打开连接。"
+    evidence:
+      - "internal/db/sql_pool.go:26-49"
+      - "internal/db/sqlite_impl.go:37-49"
+      - "internal/db/duckdb_impl.go:67-78"
+    impact: "并发元数据、查询或导入可能创建无界物理连接，增加文件锁竞争、SQLITE_BUSY、文件描述符和内存压力。"
+    recommendation: "SQLite 默认设置有限连接数（通常 1，或按 WAL/读写策略明确配置）；DuckDB 设置有限池并暴露 DBStats。"
+    acceptance_criteria:
+      - "并发查询时 OpenConnections 不超过策略上限"
+      - "SQLite 写入在受支持并发策略下不出现非预期锁错误"
+      - "池上限、空闲回收和生命周期有测试覆盖"
+    verification_status: 代码证据确认
+    verification_path: "临时 SQLite 文件和隔离 DuckDB 实例并发执行查询，检查 DBStats 与锁错误。"
+    related_findings: []
+    issue_projection:
+      title: "[DB][P2] SQLite/DuckDB 连接池无上限，并发访问可能耗尽资源"
+      labels: [bug, database, resource-management, ai-ready]
+      body_sections:
+        summary: "SQLite/DuckDB 跳过统一池配置，默认可能无限创建物理连接。"
+        affected_behavior: "并发查询、元数据刷新、导入和本地数据库访问。"
+        reproduction:
+          preconditions: ["临时 SQLite 文件或隔离 DuckDB 文件"]
+          steps: ["并发启动多组查询/元数据请求", "采集 DBStats 和锁错误", "观察连接数是否持续增长"]
+        expected: "连接数受数据源策略限制，锁等待和资源使用可控。"
+        actual: "sqlite/duckdb 未设置统一 MaxOpenConns 等限制。"
+        root_cause: "sql_pool.go 对两类数据源直接 return。"
+        affected_files: ["internal/db/sql_pool.go:26-49", "internal/db/sqlite_impl.go:37-49", "internal/db/duckdb_impl.go:67-78"]
+        fix_boundary:
+          allowed_paths: ["internal/db/sql_pool.go", "internal/db/sqlite_impl.go", "internal/db/duckdb_impl.go", "internal/db/*pool*_test.go"]
+          preserve: ["显式 DSN 并发策略", "正常单连接查询兼容性"]
+          out_of_scope: ["更换 database/sql", "重写本地数据库驱动"]
+        acceptance_tests: ["并发 20 个查询时连接数不超过上限", "SQLite 写入锁错误率可接受"]
+        validation_commands: ["go test ./internal/db -run 'SQLPool|SQLite|DuckDB' -count=1"]
+        risk_and_rollback: "本地数据库无远端写副作用，但连接策略变化需保留 WAL/读写兼容性。"
+        verification_boundary: "代码证据确认；并发基准和真实 DuckDB 验证未执行。"
+      operation: connection
+      data_state: unknown
+      server_side_effect: none
+      security_constraints: ["不连接生产数据库", "使用临时或隔离数据库"]
+
+  - id: FIND-DB-CONTEXT-001
+    title: "不支持 Context 的驱动回退到 Query/Exec，取消和超时可能失效"
+    type: 调用链/契约缺陷
+    severity: P2
+    confidence: 高
+    failure_mode: timeout_ignored
+    operation: query
+    data_state: read_only
+    server_side_effect: none
+    conclusion: "应用层在驱动未实现 QueryContext/ExecContext 时回退到无上下文 Query/Exec；上层取消只停止等待，底层长查询仍可能占用连接和服务端资源。"
+    evidence:
+      - "internal/app/methods_db.go:1236-1245"
+      - "internal/app/methods_db.go:1258-1267"
+      - "internal/app/methods_db.go:2039-2067"
+    impact: "自定义或可选驱动的取消按钮、QueryTimeout 和窗口退出不能释放长查询，后续请求可能排队。"
+    recommendation: "将 Context 能力作为驱动契约；不支持时拒绝声称可取消的操作，或使用可回收隔离连接并记录能力状态。"
+    acceptance_criteria:
+      - "已取消 context 不会继续执行无上下文驱动调用，或明确返回不支持取消"
+      - "取消后连接在限定时间内释放或丢弃"
+      - "驱动能力和取消状态可观测"
+    verification_status: 代码证据确认
+    verification_path: "fake legacy-only driver 记录 Query/Exec 调用和 Close 事件，覆盖超时与手动取消。"
+    related_findings: []
+    issue_projection:
+      title: "[DB][P2] 不支持 Context 的驱动回退到无上下文调用，查询取消可能失效"
+      labels: [bug, database, cancellation, ai-ready]
+      body_sections:
+        summary: "上层取消只停止等待，底层长查询仍可能运行并占用连接。"
+        affected_behavior: "查询超时、手动取消和应用退出。"
+        reproduction:
+          preconditions: ["legacy-only fake driver"]
+          steps: ["启动阻塞查询", "取消 context 或触发 QueryTimeout", "观察底层 Query、连接和返回时间"]
+        expected: "取消应传到驱动，或明确提示该驱动不支持取消并隔离其连接。"
+        actual: "调用链 fallback 到 Query/Exec，忽略 context。"
+        root_cause: "应用层同时兼容有 Context 和无 Context 接口，但未暴露能力差异。"
+        affected_files: ["internal/app/methods_db.go:1236-1267", "internal/app/methods_db.go:2039-2067"]
+        fix_boundary:
+          allowed_paths: ["internal/app/methods_db.go", "internal/db", "相关取消/超时测试"]
+          preserve: ["支持 Context 的驱动行为", "现有错误契约"]
+          out_of_scope: ["重写所有可选驱动", "前端查询编辑器重构"]
+        acceptance_tests: ["取消后 legacy-only 驱动不继续占用连接", "不支持取消时返回明确能力错误"]
+        validation_commands: ["go test ./internal/app -run 'Cancel|Timeout' -count=1"]
+        risk_and_rollback: "只读查询无写副作用；连接隔离策略需避免池污染。"
+        verification_boundary: "代码证据确认；fake legacy-only driver 测试未执行。"
+      operation: query
+      data_state: read_only
+      server_side_effect: none
+      security_constraints: ["不连接生产数据库", "未经批准不执行写操作"]
+
+  - id: FIND-DB-HTTP-BODY-LIMIT-001
+    title: "多个 HTTP 数据源无统一响应体上限，异常大响应可造成内存失控"
+    type: 资源失控
+    severity: P2
+    confidence: 高
+    failure_mode: resource_exhaustion
+    operation: query
+    data_state: unknown
+    server_side_effect: none
+    conclusion: "Chroma、Qdrant、Milvus、RabbitMQ 和 Elasticsearch 的若干 API 路径直接 io.ReadAll 响应体，缺少统一成功/错误/批量响应上限。"
+    evidence:
+      - "internal/db/chroma_impl.go:511-548"
+      - "internal/db/qdrant_impl.go:483-517"
+      - "internal/db/milvus_impl.go:534-570"
+      - "internal/db/rabbitmq_impl.go:617-650"
+      - "internal/db/elasticsearch_impl.go:772-776, 862-866, 952-955, 1095-1099"
+      - "internal/db/elasticsearch_helpers.go:1152-1155"
+    impact: "异常或恶意服务返回超大 JSON/错误页时可能造成瞬时内存高峰、OOM 或桌面应用无响应。"
+    recommendation: "按接口设置响应上限，使用 LimitReader 并返回稳定超限错误；大结果改分页或流式消费。"
+    acceptance_criteria: ["所有响应读取路径有上限", "超限返回可诊断错误", "正常分页/批量结果不回归", "错误和成功响应均有测试"]
+    verification_status: 代码证据确认
+    verification_path: "httptest 返回超过上限的 JSON，调用 Query/元数据/批量 API，断言超限错误和连接释放。"
+    related_findings: []
+    issue_projection:
+      title: "[DB][P2] HTTP 数据源响应体无上限，异常响应可能耗尽应用内存"
+      labels: [bug, database, resource-management, ai-ready]
+      body_sections:
+        summary: "多个数据库 HTTP API 一次性读取完整响应体，没有统一大小边界。"
+        affected_behavior: "向量、消息、搜索数据源查询和元数据请求。"
+        reproduction:
+          preconditions: ["本地 httptest 服务"]
+          steps: ["返回超过限制的 JSON 或错误页", "调用对应数据源 API", "观察返回错误、内存和连接状态"]
+        expected: "超过接口上限时快速失败，不完整缓存响应。"
+        actual: "io.ReadAll 读取全部响应后才解析。"
+        root_cause: "HTTP 数据源缺少统一响应体限制策略。"
+        affected_files: ["internal/db/chroma_impl.go:511-548", "internal/db/qdrant_impl.go:483-517", "internal/db/milvus_impl.go:534-570", "internal/db/rabbitmq_impl.go:617-650", "internal/db/elasticsearch_impl.go"]
+        fix_boundary:
+          allowed_paths: ["相关 HTTP 数据源实现和测试"]
+          preserve: ["正常分页和流式结果", "错误信息脱敏"]
+          out_of_scope: ["重写所有 HTTP 客户端", "无关 UI 改动"]
+        acceptance_tests: ["超限响应返回稳定错误", "连接关闭且内存不随响应无限增长", "正常响应不回归"]
+        validation_commands: ["go test ./internal/db -run 'Chroma|Qdrant|Milvus|Rabbit|Elastic' -count=1"]
+        risk_and_rollback: "只读/管理 API 为主；批量写路径需确认超限时不产生误报的部分结果。"
+        verification_boundary: "代码证据确认；httptest 和内存测试未执行。"
+      operation: query
+      data_state: unknown
+      server_side_effect: none
+      security_constraints: ["不输出完整响应或凭据", "不连接生产数据库"]
+
+  - id: FIND-DB-METADATA-001
+    title: "向量字段元数据通过读取真实记录推断，浏览对象可能暴露业务数据"
+    type: 数据安全缺陷
+    severity: P2
+    confidence: 高
+    failure_mode: privilege_mismatch
+    operation: metadata
+    data_state: read_only
+    server_side_effect: none
+    conclusion: "Chroma/Qdrant GetColumns 读取最多 20 条业务记录并展开 documents、metadatas、embeddings/payload 推断字段，而非只读 schema。"
+    evidence:
+      - "internal/db/chroma_impl.go:257-262"
+      - "internal/db/qdrant_impl.go:247-252"
+      - "internal/db/chroma_impl.go:263+"
+      - "internal/db/qdrant_impl.go:252+"
+    impact: "仅拥有 schema/describe 权限的账号可能无法浏览；拥有读取权限时，展开对象树即可读取真实业务数据、向量和嵌入。"
+    recommendation: "优先使用服务端 schema API；无 schema 时要求显式取样确认，并提供样本上限、字段白名单、脱敏和独立超时。"
+    acceptance_criteria: ["字段浏览默认不访问业务记录", "必须取样时用户显式确认", "取样有上限、脱敏和审计事件"]
+    verification_status: 代码证据确认
+    verification_path: "HTTP 测试服务记录 GetColumns 请求，断言默认不访问 get/scroll 数据接口，或取样必须有显式授权。"
+    related_findings: []
+    issue_projection:
+      title: "[DB][P2] 向量元数据浏览会读取真实业务记录，可能越过最小权限边界"
+      labels: [bug, database, security, metadata, ai-ready]
+      body_sections:
+        summary: "用户只浏览字段时，驱动会读取真实记录、payload 和向量来推断列。"
+        affected_behavior: "Chroma/Qdrant 对象浏览、字段补全和建表信息读取。"
+        reproduction:
+          preconditions: ["HTTP 测试服务记录请求路径"]
+          steps: ["调用 GetColumns", "检查请求是否访问 get/scroll 数据接口", "检查是否携带 embeddings/payload"]
+        expected: "元数据请求只读取 schema；必须取样时先取得明确授权。"
+        actual: "GetColumns 固定取样最多 20 条真实记录。"
+        root_cause: "驱动用业务数据动态推断字段，而不是使用 schema 描述接口。"
+        affected_files: ["internal/db/chroma_impl.go:257-262", "internal/db/qdrant_impl.go:247-252"]
+        fix_boundary:
+          allowed_paths: ["Chroma/Qdrant 元数据实现和测试", "相关对象浏览调用方"]
+          preserve: ["已有 schema 字段展示格式", "显式授权后的兼容取样"]
+          out_of_scope: ["重写向量查询语法", "AI 面板整体改造"]
+        acceptance_tests: ["默认 GetColumns 不访问业务记录", "取样需要显式授权", "敏感 payload 不进入日志"]
+        validation_commands: ["go test ./internal/db -run 'Chroma|Qdrant' -count=1"]
+        risk_and_rollback: "只读操作，但可能造成敏感数据读取和审计噪音。"
+        verification_boundary: "代码证据确认；未连接真实向量服务。"
+      operation: metadata
+      data_state: read_only
+      server_side_effect: none
+      security_constraints: ["不读取真实凭据", "不连接生产向量服务", "不输出业务样本"]
+
+coverage:
+  risk_units:
+    - unit_id: DB-CORRECTNESS
+      status: completed
+      checked_paths: ["internal/db/scan_rows.go", "internal/db/*query*", "internal/app/methods_db.go"]
+      evidence: ["扫描错误传播、分页和流式结果路径"]
+      negative_checks: ["未将一般 SQL 风格问题登记为 DB 发现"]
+      coverage_gaps: ["fake driver 回归测试未运行"]
+      verification_path: "go test ./internal/db -run 'ScanRows|StreamRows' -count=1"
+    - unit_id: DB-TRANSACTION
+      status: completed
+      checked_paths: ["internal/db/database.go", "事务相关测试"]
+      evidence: ["finish/Close/Commit/Rollback 状态链路"]
+      negative_checks: ["未执行真实写入或提交"]
+      coverage_gaps: ["fake commit failure 测试未运行"]
+      verification_path: "go test ./internal/db -run 'Transaction|SQLConn' -count=1"
+    - unit_id: DB-RESOURCE
+      status: completed
+      checked_paths: ["internal/db/sql_pool.go", "sqlite_impl.go", "duckdb_impl.go", "HTTP 数据源实现"]
+      evidence: ["连接池和响应体边界"]
+      negative_checks: ["未将所有 io.ReadAll 直接等同为漏洞，按数据库 HTTP 响应路径筛选"]
+      coverage_gaps: ["并发和内存压测未运行"]
+      verification_path: "DBStats 并发测试与 httptest 超限响应测试"
+    - unit_id: DB-CONTEXT
+      status: completed
+      checked_paths: ["internal/app/methods_db.go", "internal/db/chroma_impl.go", "internal/db/qdrant_impl.go"]
+      evidence: ["Context 传递与 legacy fallback"]
+      negative_checks: ["已使用 NewRequestWithContext 的路径未重复登记"]
+      coverage_gaps: ["取消测试未运行"]
+      verification_path: "fake legacy-only driver 与阻塞 httptest"
+    - unit_id: DB-METADATA
+      status: completed
+      checked_paths: ["internal/db/chroma_impl.go", "internal/db/qdrant_impl.go", "对象浏览调用链"]
+      evidence: ["GetColumns 真实记录取样路径"]
+      negative_checks: ["未把未来 schema 支持愿望单独登记为缺陷"]
+      coverage_gaps: ["真实权限矩阵未验证"]
+      verification_path: "记录 GetColumns HTTP 请求并核对最小权限"
+    - unit_id: DB-DIALECT
+      status: completed
+      checked_paths: ["internal/db 各驱动实现与能力声明"]
+      evidence: ["方言、驱动和 Context 能力调用链抽查"]
+      negative_checks: ["本报告未新增无充分证据的方言兼容问题"]
+      coverage_gaps: ["34 类数据源真实版本/权限矩阵未验证"]
+      verification_path: "按数据源版本执行只读方言回归"
+    - unit_id: DB-EXTERNAL
+      status: completed
+      checked_paths: ["Chroma/Qdrant/Milvus/RabbitMQ/Elasticsearch HTTP 客户端"]
+      evidence: ["请求上下文、响应读取和认证边界"]
+      negative_checks: ["未执行 TLS 中间人或远端写操作"]
+      coverage_gaps: ["TLS、代理、服务端限流未在真实实例验证"]
+      verification_path: "隔离 HTTP 测试服务和只读连接清单"
+    - unit_id: DB-OBSERVABILITY
+      status: completed
+      checked_paths: ["数据库错误、审计、连接池和请求日志调用链"]
+      evidence: ["发现中记录了错误传播和资源状态缺口"]
+      negative_checks: ["未把日志格式偏好单独登记为 DB 缺陷"]
+      coverage_gaps: ["未运行诊断面板或生产指标验证"]
+      verification_path: "验证 query/connection/transaction ID、耗时、行数和字节数是否可关联"
+
+suggestions:
+  - id: SUG-DB-001
+    title: "增加 DB 只读诊断包"
+    value: "汇总驱动/版本、连接池 DBStats、query/connection/transaction ID、耗时、超时/取消原因、行数、返回字节数、服务器错误码和事务状态，自动脱敏且不执行写操作。"
+  - id: SUG-DB-002
+    title: "建立数据源 DB 能力注册表"
+    value: "统一声明 query、metadata、transaction、pagination、cancel、schema 和危险操作能力，让前端入口、Wails 方法与驱动共享同一契约。"
+  - id: SUG-DB-003
+    title: "增加只读连接健康检查与能力探测"
+    value: "连接保存后探测 Ping、版本、TLS、权限、schema 可见性、分页和响应能力，生成可复制的 DB 诊断报告。"
+
+verification_boundary:
+  automated_tests: "未执行。Windows 执行器多次返回 CreateProcessAsUserW 1312（登录会话不存在）。"
+  external_instances: "未读取 connections.local.yaml，未连接真实数据库。"
+  writes: "未执行 INSERT、UPDATE、DELETE、DDL、发布消息或消费确认。"
+  history: "按用户要求跳过历史复查；旧 findings 仅用于去重，不复制为新发现。"
