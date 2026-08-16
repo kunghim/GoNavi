@@ -25,7 +25,6 @@ optional-driver-agent
 optional-driver-agent.exe
 .ace-tool/
 .superpowers/
-.claude/
 .gemini/
 .playwright-mcp/
 .zcode/
@@ -33,11 +32,14 @@ optional-driver-agent.exe
 docs/superpowers/
 docs/需求追踪/
 
-CLAUDE.md
-**/CLAUDE.md
 .worktrees
 docs
 !docs/
 docs/*
 !docs/download-cdn-operations.md
 .tmp_superpowers_edit
+
+# gonavi-scan 本机测试连接（含密码/API Token，不提交）
+.agents/skills/gonavi-scan/config/connections.local.yaml
+# 迁移兼容：旧路径上的本地连接文件也不得提交
+.agents/skills/gonavi-scan/connections.local.yaml

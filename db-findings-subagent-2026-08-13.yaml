@@ -1,0 +1,305 @@
+scan:
+  skill: gonavi-scan
+  source: subagent_db_engineer
+  view: db
+  history_recheck: skipped
+  scan_scope: full_repository
+  execution: parallel_subagent
+  repository: GoNavi-Wails
+  head_commit: 9e5808011c62df18eb8062ba4a08d889e917ca2c
+  history_findings_passed_to_subagent: false
+  external_services: not_used
+  writes: not_performed
+  coverage:
+    capability_units: 11
+    entry_groups: 11
+    db_risk_units: 8
+    total_units: 30
+    completed_units: 30
+  verification_boundary: "代码证据确认；Windows 执行器报 CreateProcessAsUserW 1312，自动化测试未启动。"
+
+findings:
+  - id: FIND-DB-CORRECTNESS-001
+    title: "查询行扫描失败被静默跳过，结果集可能少行但返回成功"
+    type: 查询正确性缺陷
+    severity: P1
+    confidence: 高
+    failure_mode: silent_data_loss
+    operation: query
+    data_state: read_only
+    server_side_effect: none
+    conclusion: "普通和流式扫描在 Scan/LOB 转换失败时 continue，rows.Err 不承接 Scan 转换错误，调用者可能收到成功但不完整的结果。"
+    evidence: ["internal/db/scan_rows.go:67-80", "internal/db/scan_rows.go:115-125"]
+    impact: "查询、导出、同步和审计可能无提示地漏行。"
+    recommendation: "首次扫描错误立即返回并包含行号/列上下文；普通、流式、多结果集行为一致。"
+    acceptance_criteria: ["普通查询传播第 N 行 Scan 错误", "两种流式 consumer 均不静默跳过", "错误不包含完整业务行值"]
+    verification_status: 代码证据确认
+    verification_path: "fake database/sql/driver 返回不可扫描值，运行普通、value consumer 和 map consumer 回归测试。"
+    related_findings: []
+    issue_projection:
+      title: "[DB][P1] 查询扫描错误被静默跳过，结果集可能少行"
+      labels: [bug, database, data-correctness, ai-ready]
+      body_sections:
+        summary: "单行扫描失败时查询仍可能成功返回，但缺少该行。"
+        affected_behavior: "SQL 查询、流式导出和同步消费。"
+        reproduction: {preconditions: ["fake driver"], steps: ["让第 2 行 Scan 失败", "执行普通和流式查询", "检查错误、行数和成功状态"]}
+        expected: "扫描失败应返回错误并包含行号/列名，不能成功返回部分结果。"
+        actual: "扫描错误直接 continue，最终只检查 rows.Err。"
+        root_cause: "scanRowsForDialect 与 streamRowsForDialect 未传播当前行错误。"
+        affected_files: ["internal/db/scan_rows.go:67-80", "internal/db/scan_rows.go:115-125"]
+        fix_boundary: {allowed_paths: ["internal/db/scan_rows.go", "internal/db/scan_rows_test.go"], preserve: ["正常类型转换和结果格式"], out_of_scope: ["前端结果表格重构", "连接池重构"]}
+        acceptance_tests: ["普通查询、value consumer、map consumer 均传播 Scan 错误"]
+        validation_commands: ["go test ./internal/db -count=1 -run 'TestScanRows|TestStreamRows'"]
+        risk_and_rollback: "只读查询，无服务端写副作用。"
+        verification_boundary: "代码证据确认；自动化验证待执行。"
+      operation: query
+      data_state: read_only
+      server_side_effect: none
+      security_constraints: ["不输出业务行值", "不连接生产数据库", "未经批准不执行写操作"]
+
+  - id: FIND-DB-TRANSACTION-001
+    title: "事务提交失败后提前标记完成，无法回滚或处置未知提交结果"
+    type: 事务一致性缺陷
+    severity: P1
+    confidence: 高
+    failure_mode: partial_failure
+    operation: transaction
+    data_state: transaction_open
+    server_side_effect: commit_outcome_unknown
+    conclusion: "文本事务 finish 在执行 COMMIT/ROLLBACK 前设置 done=true；控制语句失败后 Rollback/Close 不再补偿。"
+    evidence: ["internal/db/database.go:624-640", "internal/db/database.go:661-675", "internal/db/oracle_impl.go:343-351"]
+    impact: "Oracle 等文本事务可能留下未知提交状态或污染连接池，调用方无法安全恢复。"
+    recommendation: "区分 finalizing/completed/unknown，成功后再完成；失败时回滚或丢弃连接并明确未知结果。"
+    acceptance_criteria: ["COMMIT 失败后 Rollback 实际执行或连接丢弃", "Close-after-failure 不无动作", "连接不带未决事务回池"]
+    verification_status: 代码证据确认
+    verification_path: "fake driver 注入 COMMIT 错误，验证 Rollback、Close、连接丢弃和并发终结。"
+    related_findings: []
+    issue_projection:
+      title: "[DB][P1] 事务提交失败后无法回滚，可能遗留未知提交状态"
+      labels: [bug, database, transaction, data-integrity, ai-ready]
+      body_sections:
+        summary: "COMMIT 失败后事务句柄被标记完成，后续无法安全恢复。"
+        affected_behavior: "文本事务提交、回滚、关闭和连接池生命周期。"
+        reproduction: {preconditions: ["fake transaction driver"], steps: ["开始事务", "让 COMMIT 返回错误", "调用 Rollback 和 Close", "检查控制语句与连接池"]}
+        expected: "提交失败必须可回滚、重试或明确丢弃连接并报告未知结果。"
+        actual: "done=true 后 Rollback/Close 跳过补偿。"
+        root_cause: "finish 在控制 SQL 执行前修改终态。"
+        affected_files: ["internal/db/database.go:624-675", "internal/db/oracle_impl.go:343-351"]
+        fix_boundary: {allowed_paths: ["internal/db/database.go", "internal/db/*transaction*_test.go"], preserve: ["正常 Commit/Rollback 行为"], out_of_scope: ["重写所有驱动事务实现", "前端事务 UI"]}
+        acceptance_tests: ["Commit 失败后可回滚或连接被丢弃", "错误标识 commit outcome unknown"]
+        validation_commands: ["go test ./internal/db -count=1 -run 'TestSQLConnTransaction|TestOracleOpenTransaction'"]
+        risk_and_rollback: "服务端提交结果可能未知，修复必须避免污染连接池。"
+        verification_boundary: "代码证据确认；自动化验证待执行。"
+      operation: transaction
+      data_state: transaction_open
+      server_side_effect: commit_outcome_unknown
+      security_constraints: ["不记录事务 SQL 原文或参数", "不连接生产数据库", "未经批准不执行写操作"]
+
+  - id: FIND-DB-RESOURCE-001
+    title: "SQLite 和 DuckDB 跳过连接池限制，并发访问可能耗尽资源或放大锁冲突"
+    type: 资源失控
+    severity: P2
+    confidence: 高
+    failure_mode: resource_exhaustion
+    operation: connection
+    data_state: unknown
+    server_side_effect: none
+    conclusion: "sql_pool.go 对 sqlite/duckdb 直接 return，创建的 database/sql 连接保留 MaxOpenConns=0 默认无限上限。"
+    evidence: ["internal/db/sql_pool.go:26-49", "internal/db/sqlite_impl.go:28-49", "internal/db/duckdb_impl.go:54-78"]
+    impact: "并发元数据、查询和导入会增加文件锁、SQLITE_BUSY、句柄和内存压力。"
+    recommendation: "SQLite 默认有限连接数，DuckDB 设置保守上限并暴露 DBStats。"
+    acceptance_criteria: ["并发请求 OpenConnections 不超过策略上限", "SQLite 写入锁冲突可控", "池配置有回归测试"]
+    verification_status: 代码证据确认
+    verification_path: "临时 SQLite/DuckDB 文件并发查询，检查 DBStats 与锁错误。"
+    related_findings: []
+    issue_projection:
+      title: "[DB][P2] 为 SQLite 和 DuckDB 配置受控连接池上限"
+      labels: [bug, database, resource-management, ai-ready]
+      body_sections:
+        summary: "嵌入式数据库跳过池配置，可能无限创建物理连接。"
+        affected_behavior: "并发查询、元数据刷新、导入和本地数据库访问。"
+        reproduction: {preconditions: ["临时 SQLite/DuckDB 文件"], steps: ["并发执行 20 个请求", "采集 DBStats 和锁错误", "观察连接数增长"]}
+        expected: "连接数受数据源策略限制，锁和资源可控。"
+        actual: "sqlite/duckdb 沿用 database/sql 无限 MaxOpenConns 默认值。"
+        root_cause: "configureSQLConnectionPool 对两类数据源直接 return。"
+        affected_files: ["internal/db/sql_pool.go:26-49", "internal/db/sqlite_impl.go:28-49", "internal/db/duckdb_impl.go:54-78"]
+        fix_boundary: {allowed_paths: ["internal/db/sql_pool.go", "internal/db/sql_pool_test.go", "相关 SQLite/DuckDB 测试"], preserve: ["现有 DSN 和正常单连接行为"], out_of_scope: ["更换 database/sql", "重写驱动"]}
+        acceptance_tests: ["并发 20 请求连接数不超过上限", "SQLite 锁错误符合策略"]
+        validation_commands: ["go test ./internal/db -count=1 -run TestConfigureSQLConnectionPool"]
+        risk_and_rollback: "本地数据库资源风险；连接策略变化需兼容 WAL/读写模式。"
+        verification_boundary: "代码证据确认；并发验证待执行。"
+      operation: connection
+      data_state: unknown
+      server_side_effect: none
+      security_constraints: ["仅使用临时/隔离数据库", "不连接生产数据库"]
+
+  - id: FIND-DB-METADATA-001
+    title: "达梦元数据 SQL 未统一转义 schema 与表名字面量"
+    type: 查询正确性缺陷
+    severity: P1
+    confidence: 高
+    failure_mode: privilege_mismatch
+    operation: metadata
+    data_state: quoted_identifier
+    server_side_effect: none
+    conclusion: "Dameng GetTables、GetCreateStatement、GetTriggers 及部分 metadata builder 直接拼接用户可见 schema/table 名称；同一驱动只有部分路径转义单引号。"
+    evidence: ["internal/db/dameng_impl.go:258-263", "internal/db/dameng_impl.go:381-385", "internal/db/dameng_metadata.go:108-148", "internal/db/dameng_metadata.go:247-249"]
+    impact: "含单引号或特殊名称的对象元数据读取失败，受控输入还可能改变只读字典查询结构。"
+    recommendation: "建立统一 Dameng metadata literal escape helper，所有元数据构造器一致使用。"
+    acceptance_criteria: ["schema/table 单引号使用两个单引号", "五类元数据入口统一转义", "普通大小写行为不回归"]
+    verification_status: 代码证据确认
+    verification_path: "使用包含单引号和大小写的 metadata 名称，断言生成 SQL 和请求参数。"
+    related_findings: [FIND-DB-DIALECT-001]
+    issue_projection:
+      title: "[DB][P1] 统一达梦元数据 SQL 字面量转义"
+      labels: [bug, database, dameng, query-correctness, ai-ready]
+      body_sections:
+        summary: "达梦不同元数据入口对 schema/table 名称采用不一致的字面量转义。"
+        affected_behavior: "Tables、CreateStatement、Columns、ForeignKeys、Triggers 元数据读取。"
+        reproduction: {preconditions: ["隔离达梦测试服务或 SQL 构造单测"], steps: ["传入含单引号名称", "调用五类元数据入口", "检查生成 SQL"]}
+        expected: "所有用户可控名称统一安全转义并正确匹配对象。"
+        actual: "部分入口直接拼接名称，部分入口才 ReplaceAll 单引号。"
+        root_cause: "Dameng 元数据构造器没有共享 literal escape helper。"
+        affected_files: ["internal/db/dameng_impl.go:258-385", "internal/db/dameng_metadata.go:108-325"]
+        fix_boundary: {allowed_paths: ["Dameng 元数据实现与测试"], preserve: ["用户 SQL 执行路径", "现有大小写规则"], out_of_scope: ["重写 Dameng 驱动"]}
+        acceptance_tests: ["覆盖单引号、大小写和普通名称", "五类元数据 SQL 均使用统一 helper"]
+        validation_commands: ["go test ./internal/db -count=1 -run 'Test.*Dameng.*(Metadata|Columns|Foreign|Trigger|Create)'"]
+        risk_and_rollback: "只读字典查询；错误日志不得包含完整敏感对象值以外的业务数据。"
+        verification_boundary: "代码证据确认；真实达梦实例待验证。"
+      operation: metadata
+      data_state: quoted_identifier
+      server_side_effect: none
+      security_constraints: ["禁止新增字符串拼接旁路", "不连接生产数据库"]
+
+  - id: FIND-DB-METADATA-002
+    title: "PostgreSQL 类数据库元数据入口对裸表名使用不同 search_path 解析规则"
+    type: 调用链/契约缺陷
+    severity: P2
+    confidence: 高
+    failure_mode: privilege_mismatch
+    operation: metadata
+    data_state: search_path_non_public
+    server_side_effect: none
+    conclusion: "Columns/Indexes 使用 normalizeMetadataSchemaAndTable，ForeignKeys/Triggers 使用 normalizeSchemaAndTable；当 search_path 当前 schema 非 public 时，同一对象详情可能查询不同 schema。"
+    evidence: ["internal/app/db_context.go:183-199", "internal/app/methods_db.go:3181-3210", "internal/app/methods_db.go:3241-3250"]
+    impact: "UI 展示的列/索引与 FK/Triggers 可能不属于同一逻辑对象，结构分析被误导。"
+    recommendation: "四类对象详情统一采用 visible relation/search_path 解析，显式 schema 仍保持精确匹配。"
+    acceptance_criteria: ["search_path=tenant,public 时四类元数据均命中 tenant.orders", "显式 public.orders 仍命中 public", "同名跨 schema 有测试"]
+    verification_status: 代码证据确认
+    verification_path: "使用 PostgreSQL 类隔离实例设置 search_path，调用 Columns/Indexes/FKs/Triggers 并比较 schema。"
+    related_findings: [FIND-DB-DIALECT-001]
+    issue_projection:
+      title: "[DB][P2] 统一 PostgreSQL 类数据库元数据的 search_path 解析"
+      labels: [bug, database, postgres, metadata, ai-ready]
+      body_sections:
+        summary: "同一裸表名在列/索引与外键/触发器入口可能被解析到不同 schema。"
+        affected_behavior: "PostgreSQL、Kingbase、HighGo、Vastbase 等元数据读取。"
+        reproduction: {preconditions: ["search_path=tenant,public", "tenant.orders 与 public.orders 同时存在"], steps: ["调用四类元数据 API", "比较返回对象 schema"]}
+        expected: "四类元数据都遵循同一 visible relation 解析规则。"
+        actual: "Columns/Indexes 与 FKs/Triggers 使用不同 normalizer。"
+        root_cause: "方法层元数据入口未共享同一个 PG-like schema 规范化契约。"
+        affected_files: ["internal/app/db_context.go:183-199", "internal/app/methods_db.go:3181-3250"]
+        fix_boundary: {allowed_paths: ["internal/app/db_context.go", "internal/app/methods_db.go", "PG-like 元数据测试"], preserve: ["显式 schema 语义", "既有安全 quoting"], out_of_scope: ["重写各 PG-like 驱动"]}
+        acceptance_tests: ["非 public search_path", "显式 schema", "同名跨 schema"]
+        validation_commands: ["go test ./internal/app ./internal/db -count=1 -run 'Test.*Metadata|TestBuildPGLike'"]
+        risk_and_rollback: "只读元数据，无写副作用。"
+        verification_boundary: "代码证据确认；真实 search_path 矩阵待验证。"
+      operation: metadata
+      data_state: search_path_non_public
+      server_side_effect: none
+      security_constraints: ["继续使用既有 identifier quoting", "不连接生产数据库"]
+
+  - id: FIND-DB-EXTERNAL-001
+    title: "Elasticsearch 写别名解析忽略 is_write_index，可能写入错误物理索引"
+    type: 数据安全缺陷
+    severity: P1
+    confidence: 高
+    failure_mode: partial_failure
+    operation: write
+    data_state: write_in_progress
+    server_side_effect: possible_partial_write
+    conclusion: "resolveWriteIndex 对多索引 alias 按名称倒序选择最新索引，没有读取 alias metadata 的 is_write_index。"
+    evidence: ["internal/db/elasticsearch_impl.go:931-977", "internal/db/elasticsearch_impl.go:990-1006"]
+    impact: "ApplyChanges 的 bulk update/delete/index 可能落到错误物理索引，导致查询不一致或更新不可见。"
+    recommendation: "读取 alias is_write_index；多索引无唯一 write index 时拒绝写入。"
+    acceptance_criteria: ["唯一 write index 被选", "无/多个 write index 明确报错", "物理索引和 bulk _index 不回归"]
+    verification_status: 代码证据确认
+    verification_path: "httptest 模拟 rollover alias，断言 ApplyChanges 的 bulk _index。"
+    related_findings: []
+    issue_projection:
+      title: "[DB][P1] 按 is_write_index 解析 Elasticsearch rollover 写别名"
+      labels: [bug, database, elasticsearch, data-integrity, ai-ready]
+      body_sections:
+        summary: "多索引写别名按名称猜测目标，可能把变更写入错误物理索引。"
+        affected_behavior: "Elasticsearch ApplyChanges 的 bulk update/delete/index。"
+        reproduction: {preconditions: ["alias 指向历史索引和当前写索引"], steps: ["配置唯一 is_write_index", "执行 ApplyChanges", "检查 bulk _index"]}
+        expected: "严格使用唯一 is_write_index=true 的索引。"
+        actual: "按索引名称倒序选择，不读取 is_write_index。"
+        root_cause: "resolveWriteIndex 只解析索引集合，没有解析 alias metadata。"
+        affected_files: ["internal/db/elasticsearch_impl.go:931-977", "internal/db/elasticsearch_impl.go:990-1006"]
+        fix_boundary: {allowed_paths: ["internal/db/elasticsearch_impl.go", "internal/db/elasticsearch_impl_test.go"], preserve: ["查询 alias 行为", "物理索引直写行为"], out_of_scope: ["重写 ES 客户端"]}
+        acceptance_tests: ["唯一/缺失/冲突 write index", "物理索引", "bulk action 精确断言"]
+        validation_commands: ["go test ./internal/db -count=1 -run 'TestElasticsearch.*(WriteIndex|ApplyChanges)'"]
+        risk_and_rollback: "可能已有部分 bulk 写入；失败时必须返回可诊断结果，不自动重试到另一索引。"
+        verification_boundary: "代码证据确认；真实 rollover alias 待验证。"
+      operation: write
+      data_state: write_in_progress
+      server_side_effect: possible_partial_write
+      security_constraints: ["不输出 Authorization 或文档原文", "写测试仅使用隔离服务并经批准"]
+
+  - id: FIND-DB-OBSERVABILITY-001
+    title: "错误日志和慢查询历史保留原始 SQL 字面量，可能泄漏敏感数据"
+    type: 安全缺陷
+    severity: P1
+    confidence: 高
+    failure_mode: privilege_mismatch
+    operation: query
+    data_state: read_only
+    server_side_effect: none
+    conclusion: "sqlSnippet 仅截断，query history 保存 SQLText/SQLPreview 原文并通过 GetSlowQueries 返回；password、token、邮箱和 VALUES 数据可能进入日志、本地历史和 UI/AI 快照。"
+    evidence: ["internal/app/methods_db.go:2076-2082", "internal/app/query_history_store.go:753-795", "internal/app/methods_query_history.go:21-54", "internal/connection/explain.go:128-134"]
+    impact: "数据库凭据或个人数据可能在日志、历史文件、导出和 AI 上下文中二次泄漏。"
+    recommendation: "默认存储结构化 fingerprint 和脱敏预览；原始 SQL 需显式 opt-in，脱敏失败 fail closed。"
+    acceptance_criteria: ["password/token/email/VALUES literal 不出现在默认日志和历史 API", "fingerprint/耗时统计仍可用", "长 SQL/注释/参数化均有测试"]
+    verification_status: 代码证据确认
+    verification_path: "构造含敏感字面量的失败 SQL 和慢 SQL，检查日志、历史 JSON 和 GetSlowQueries 返回。"
+    related_findings: []
+    issue_projection:
+      title: "[DB][P1] 为 SQL 日志和慢查询历史增加统一字面量脱敏"
+      labels: [bug, database, security, observability, ai-ready]
+      body_sections:
+        summary: "SQL 只做截断不做脱敏，敏感字面量可能持久化并对外返回。"
+        affected_behavior: "查询错误日志、慢查询历史、诊断和 AI/导出读取。"
+        reproduction: {preconditions: ["本地隔离配置"], steps: ["提交含 password/token/email/VALUES 的 SQL", "触发错误或慢查询记录", "读取日志、历史文件和 GetSlowQueries"]}
+        expected: "默认观测面仅保留脱敏 SQL 摘要和 fingerprint。"
+        actual: "sqlSnippet、SQLPreview、SQLText 保留原始字面量。"
+        root_cause: "日志与 query history 没有共享 literals redaction 策略。"
+        affected_files: ["internal/app/methods_db.go:2076-2082", "internal/app/query_history_store.go:753-795", "internal/app/methods_query_history.go", "internal/connection/explain.go:128-134"]
+        fix_boundary: {allowed_paths: ["上述日志/历史模块及测试"], preserve: ["SQL 实际执行文本", "fingerprint 和统计能力"], out_of_scope: ["重写 SQL parser", "前端 AI 面板重构"]}
+        acceptance_tests: ["敏感 literal 负向断言", "脱敏失败 fail closed", "默认 API 不返回原文"]
+        validation_commands: ["go test ./internal/app -count=1 -run 'Test.*QueryHistory|Test.*SQL.*Redact'"]
+        risk_and_rollback: "不改变数据库写入；修复后历史兼容读取需避免把旧原文重新暴露。"
+        verification_boundary: "代码证据确认；日志权限和 AI snapshot 全链路待验证。"
+      operation: query
+      data_state: read_only
+      server_side_effect: none
+      security_constraints: ["默认不输出原始 SQL/DSN/凭据", "本地历史迁移需二次脱敏"]
+
+coverage:
+  units:
+    - {unit_id: DB-CORRECTNESS, status: completed, checked_paths: ["internal/db/scan_rows.go", "internal/db/scan_rows_test.go"], negative_checks: ["正常类型/LOB 转换测试已检查但未发现回归"], coverage_gaps: ["Scan failure fake driver 未执行"]}
+    - {unit_id: DB-TRANSACTION, status: completed, checked_paths: ["internal/db/database.go", "internal/db/oracle_impl.go"], negative_checks: ["未执行真实写入"], coverage_gaps: ["Oracle 网络故障未实测"]}
+    - {unit_id: DB-RESOURCE, status: completed, checked_paths: ["internal/db/sql_pool.go", "sqlite_impl.go", "duckdb_impl.go", "elasticsearch_impl.go"], negative_checks: ["ES 普通查询已有 32 MiB 限制"], coverage_gaps: ["并发/内存压力未测"]}
+    - {unit_id: DB-CONTEXT, status: completed, checked_paths: ["internal/app/methods_db.go", "internal/db/*_impl.go"], negative_checks: ["内置主流驱动均找到 Context 实现，未登记 fallback 为正式缺陷"], coverage_gaps: ["第三方驱动契约测试和故障注入未执行"]}
+    - {unit_id: DB-METADATA, status: completed, checked_paths: ["internal/db/dameng_impl.go", "internal/db/dameng_metadata.go", "internal/app/db_context.go", "internal/app/methods_db.go"], negative_checks: ["PG/MySQL 已有部分安全 quoting"], coverage_gaps: ["真实达梦/PG search_path 未测"]}
+    - {unit_id: DB-DIALECT, status: completed, checked_paths: ["internal/db/pg_metadata.go", "mysql_impl.go", "dameng_*", "postgres_impl.go"], negative_checks: ["已识别的 unsupported DDL fallback 未重复登记"], coverage_gaps: ["多方言真实版本矩阵未测"]}
+    - {unit_id: DB-EXTERNAL, status: completed, checked_paths: ["internal/db/elasticsearch_impl.go", "kafka_impl.go", "rabbitmq_impl.go"], negative_checks: ["Kafka 预览不 commit，RabbitMQ requeue 行为已有能力边界"], coverage_gaps: ["真实 rollover alias 未测"]}
+    - {unit_id: DB-OBSERVABILITY, status: completed, checked_paths: ["internal/app/methods_db.go", "query_history_store.go", "methods_query_history.go", "internal/connection/explain.go"], negative_checks: ["长度截断已检查，但不等同于脱敏"], coverage_gaps: ["日志权限、加密和 AI snapshot 未审计"]}
+
+suggestions:
+  - id: SUG-DB-OBSERVABILITY-001
+    title: "提供自动脱敏的只读数据库诊断包"
+    operation: diagnostics
+    value: "汇总驱动/版本、DBStats、池配置、超时/取消结果、事务状态、元数据耗时、query ID 和错误分类；默认不含 DSN、凭据、SQL literals、业务行值或敏感文件路径。"
+    acceptance_criteria: ["一键生成诊断包", "敏感字段负向断言", "无连接/多驱动/取消中/事务中状态可区分"]
+    verification_status: 产品建议
