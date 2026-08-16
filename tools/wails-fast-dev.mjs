@@ -10,7 +10,7 @@ const projectRoot = path.resolve(scriptDir, '..');
 const frontendDir = path.join(projectRoot, 'frontend');
 const wailsConfigPath = path.join(projectRoot, 'wails.json');
 const nodeCommand = process.execPath;
-const wailsCommand = process.platform === 'win32' ? 'wails.exe' : 'wails';
+const wailsCommand = path.join(projectRoot, '.tools', 'bin', process.platform === 'win32' ? 'wails.exe' : 'wails');
 
 const usage = `Usage:
   node tools/wails-fast-dev.mjs [--refresh-bindings] [--no-install] [--dry-run] [wails dev flags...]
@@ -93,6 +93,12 @@ if (dryRun) {
   const quoteArg = (arg) => (/\s/.test(arg) ? JSON.stringify(arg) : arg);
   console.log(`Would run: ${[wailsCommand, ...fastArgs, ...passThroughArgs].map(quoteArg).join(' ')}`);
   process.exit(0);
+}
+
+if (!existsSync(wailsCommand)) {
+  console.error(`Project Wails CLI is missing: ${wailsCommand}`);
+  console.error('Run: node tools/project-tools.mjs install');
+  process.exit(1);
 }
 
 const child = spawn(wailsCommand, [...fastArgs, ...passThroughArgs], {
