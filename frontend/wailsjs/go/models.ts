@@ -2113,7 +2113,12 @@ export namespace connection {
 	    data: any;
 	    fields?: string[];
 	    messages?: string[];
+	    partial?: boolean;
+	    warnings?: string[];
+	    failedObjectTypes?: string[];
+	    retryable?: boolean;
 	    queryId?: string;
+	    cancellationState?: string;
 	    transactionId?: string;
 	    transactionPending?: boolean;
 
@@ -2128,7 +2133,12 @@ export namespace connection {
 	        this.data = source["data"];
 	        this.fields = source["fields"];
 	        this.messages = source["messages"];
+	        this.partial = source["partial"];
+	        this.warnings = source["warnings"];
+	        this.failedObjectTypes = source["failedObjectTypes"];
+	        this.retryable = source["retryable"];
 	        this.queryId = source["queryId"];
+	        this.cancellationState = source["cancellationState"];
 	        this.transactionId = source["transactionId"];
 	        this.transactionPending = source["transactionPending"];
 	    }

@@ -1333,6 +1333,73 @@ func normalizeAppLogTailLineLimit(input int) int {
 	return input
 }
 
+func redactAppLogSQLFields(line string) string {
+	searchFrom := 0
+	for searchFrom < len(line) {
+		fieldStart, fieldLength := findSQLLogField(line, searchFrom)
+		if fieldStart < 0 {
+			break
+		}
+		valueStart := fieldStart + fieldLength
+		if valueStart >= len(line) {
+			break
+		}
+		valueEnd := valueStart
+		var value string
+		if line[valueStart] == '"' {
+			valueEnd++
+			escaped := false
+			for valueEnd < len(line) {
+				if escaped {
+					escaped = false
+					valueEnd++
+					continue
+				}
+				if line[valueEnd] == '\\' {
+					escaped = true
+					valueEnd++
+					continue
+				}
+				if line[valueEnd] == '"' {
+					valueEnd++
+					break
+				}
+				valueEnd++
+			}
+			if valueEnd > len(line) || valueEnd <= valueStart+1 {
+				break
+			}
+			decoded, err := strconv.Unquote(line[valueStart:valueEnd])
+			if err != nil {
+				break
+			}
+			value = strconv.Quote(sqlaudit.RedactSQL(decoded))
+		} else {
+			valueEnd = len(line)
+			value = sqlaudit.RedactSQL(line[valueStart:valueEnd])
+		}
+		line = line[:valueStart] + value + line[valueEnd:]
+		searchFrom = valueStart + len(value)
+	}
+	return sqlaudit.RedactError(line)
+}
+
+func findSQLLogField(line string, start int) (int, int) {
+	lower := strings.ToLower(line)
+	bestIndex := -1
+	bestLength := 0
+	for _, marker := range []string{"sql片段=", "sqltext=", "sql="} {
+		if index := strings.Index(lower[start:], marker); index >= 0 {
+			index += start
+			if bestIndex < 0 || index < bestIndex {
+				bestIndex = index
+				bestLength = len(marker)
+			}
+		}
+	}
+	return bestIndex, bestLength
+}
+
 func readAppLogTailWindow(filePath string, maxBytes int64) ([]byte, bool, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
@@ -1421,7 +1488,7 @@ func readAppLogTailByPathWithText(filePath string, lineLimit int, keyword string
 		if line == "" {
 			continue
 		}
-		lines = append(lines, line)
+		lines = append(lines, redactAppLogSQLFields(line))
 	}
 
 	filteredLines := make([]string, 0, len(lines))
@@ -4390,6 +4457,15 @@ func (a *App) stoppedImportResult(resultData importExecutionResult, detail strin
 // ImportDataWithProgressOptions executes a streamed import with optional source-header
 // to database-column mappings. ImportDataWithProgress remains the compatibility entrypoint.
 func (a *App) ImportDataWithProgressOptions(config connection.ConnectionConfig, dbName, tableName, filePath string, options ImportFileOptions) (result connection.QueryResult) {
+	return a.importDataWithProgressOptions(config, dbName, tableName, filePath, options, nil)
+}
+
+func (a *App) importDataWithProgressOptions(
+	config connection.ConnectionConfig,
+	dbName, tableName, filePath string,
+	options ImportFileOptions,
+	recovery *tableImportRecoveryPlan,
+) (result connection.QueryResult) {
 	if strings.TrimSpace(filePath) == "" {
 		return connection.QueryResult{Success: false, Message: a.appText("file.backend.error.import_file_empty", nil)}
 	}
@@ -4416,7 +4492,7 @@ func (a *App) ImportDataWithProgressOptions(config connection.ConnectionConfig, 
 	if err := validateImportConflictPolicyForDB(dbType, options); err != nil {
 		return connection.QueryResult{Success: false, Message: err.Error()}
 	}
-	if strings.TrimSpace(options.ResumeJobID) != "" {
+	if strings.TrimSpace(options.ResumeJobID) != "" && recovery == nil {
 		return connection.QueryResult{Success: false, Message: a.appText("file.backend.error.import_resume_unavailable", nil)}
 	}
 	sourceIdentity, err := captureImportSourceIdentity(filePath)
@@ -4426,11 +4502,19 @@ func (a *App) ImportDataWithProgressOptions(config connection.ConnectionConfig, 
 	if expected := strings.TrimSpace(options.SourceIdentityToken); expected != "" && expected != sourceIdentity.Token {
 		return connection.QueryResult{Success: false, Message: a.appText("file.backend.error.import_source_changed", nil)}
 	}
+	if recovery != nil {
+		if err := a.validateTableImportRecovery(recovery, config, dbName, tableName, options, sourceIdentity); err != nil {
+			return connection.QueryResult{Success: false, Message: importJobRecoveryErrorMessage(a, err)}
+		}
+	}
 	metadataSchemaName, metadataTableName := normalizeMetadataSchemaAndTable(config, dbName, tableName)
 
 	importCtx, importCancel := context.WithCancel(context.Background())
 	defer importCancel()
 	jobID := strings.TrimSpace(options.JobID)
+	if recovery != nil && jobID == "" {
+		return connection.QueryResult{Success: false, Message: a.appText("file.backend.error.import_resume_unavailable", nil)}
+	}
 	var managedJob *managedImportJob
 	var managedArtifact *managedImportErrorArtifact
 	mayHaveDatabaseSideEffects := false
@@ -4440,7 +4524,12 @@ func (a *App) ImportDataWithProgressOptions(config connection.ConnectionConfig, 
 			return connection.QueryResult{Success: false, Message: a.appText("file.backend.error.import_job_already_running", nil)}
 		}
 		defer cleanupRegistration()
-		managedJob, err = a.beginManagedImportJob(managedImportJobStart{
+		if recovery != nil {
+			if err := a.claimTableImportRecovery(recovery, sourceIdentity.Token, buildImportTargetFingerprint(config, dbName, tableName), buildImportFileOptionsHash(options)); err != nil {
+				return connection.QueryResult{Success: false, Message: importJobRecoveryErrorMessage(a, err)}
+			}
+		}
+		start := managedImportJobStart{
 			ID:                  jobID,
 			Kind:                importjob.KindTable,
 			SourcePath:          filePath,
@@ -4452,8 +4541,24 @@ func (a *App) ImportDataWithProgressOptions(config connection.ConnectionConfig, 
 			DatabaseName:        dbName,
 			TableName:           tableName,
 			OptionsHash:         buildImportFileOptionsHash(options),
-		})
+			TableImportOptions:  importJobTableOptionsFromImportFileOptions(options),
+		}
+		if recovery != nil {
+			start.Stage = "resuming"
+			start.ParentJobID = recovery.ParentJob.ID
+			start.RecoveryAction = "resume"
+			start.Current = recovery.ParentJob.Checkpoint.SourceRow
+			start.Succeeded = recovery.ParentJob.Succeeded
+			start.Skipped = recovery.ParentJob.Skipped
+			start.Failed = recovery.ParentJob.Failed
+			start.BytesRead = recovery.ParentJob.Checkpoint.ByteOffset
+			start.Checkpoint = recovery.ParentJob.Checkpoint
+		}
+		managedJob, err = a.beginManagedImportJob(start)
 		if err != nil {
+			if recovery != nil {
+				_ = a.releaseTableImportRecovery(recovery)
+			}
 			return connection.QueryResult{Success: false, Message: err.Error()}
 		}
 		defer func() {
@@ -4463,6 +4568,9 @@ func (a *App) ImportDataWithProgressOptions(config connection.ConnectionConfig, 
 		}()
 		managedArtifact, err = a.beginManagedImportErrorArtifact(jobID)
 		if err != nil {
+			if recovery != nil {
+				_ = a.releaseTableImportRecovery(recovery)
+			}
 			return connection.QueryResult{Success: false, Message: err.Error()}
 		}
 		defer managedArtifact.abort()
@@ -4517,7 +4625,6 @@ func (a *App) ImportDataWithProgressOptions(config connection.ConnectionConfig, 
 	}
 
 	writer := newImportDatabaseRowWriterWithOptions(dbInst, dbType, tableName, newImportColumnTypeLookup(targetColumns), options)
-	continueOnError := resolveImportContinueOnError(options)
 	var jobPersistErr error
 	batchConsumer := newImportBatchConsumer(writer, defaultImportApplyBatchSize, 0, false, resolveImportContinueOnError(options), func(state importProgressState) {
 		if state.Success+state.Skipped+state.Errors > 0 {
@@ -4538,11 +4645,11 @@ func (a *App) ImportDataWithProgressOptions(config connection.ConnectionConfig, 
 			SourceBytesTotal: state.TotalBytes,
 			ByteProgressKind: "rawSource",
 			Checkpoint: importjob.Checkpoint{
-				Safe:       false,
+				Safe:       state.CheckpointSafe,
 				SourceRow:  int64(state.Current),
 				ByteOffset: state.BytesRead,
 			},
-			ForcePersist: !continueOnError,
+			ForcePersist: state.CheckpointSafe,
 		})
 		if jobPersistErr != nil {
 			importCancel()
@@ -4550,12 +4657,24 @@ func (a *App) ImportDataWithProgressOptions(config connection.ConnectionConfig, 
 	})
 	batchConsumer.SetContext(importCtx)
 	batchConsumer.jobID = jobID
+	if recovery != nil {
+		batchConsumer.SetInitialProgress(
+			int(recovery.ParentJob.Checkpoint.SourceRow),
+			int(recovery.ParentJob.Succeeded),
+			int(recovery.ParentJob.Skipped),
+			int(recovery.ParentJob.Failed),
+		)
+	}
 	if managedArtifact != nil {
 		batchConsumer.SetRowErrorHandler(managedArtifact.append)
 	}
-	consumer, err := newImportColumnMappingConsumer(batchConsumer, options.ColumnMappings, targetColumns)
+	mappedConsumer, err := newImportColumnMappingConsumer(batchConsumer, options.ColumnMappings, targetColumns)
 	if err != nil {
 		return connection.QueryResult{Success: false, Message: err.Error()}
+	}
+	var consumer importFileConsumer = mappedConsumer
+	if recovery != nil {
+		consumer = newImportResumeSkippingConsumer(consumer, recovery.ParentJob.Checkpoint.SourceRow)
 	}
 	finishArtifact := func(resultData *importExecutionResult) error {
 		if managedArtifact == nil {
@@ -6151,7 +6270,14 @@ func normalizeExportObjectKeyByParts(schemaName, objectName string) string {
 }
 
 func listViewNameLookup(dbInst db.Database, config connection.ConnectionConfig, dbName string) map[string]string {
+	viewLookup, _ := listViewNameLookupWithStatus(dbInst, config, dbName)
+	return viewLookup
+}
+
+func listViewNameLookupWithStatus(dbInst db.Database, config connection.ConnectionConfig, dbName string) (map[string]string, error) {
 	viewLookup := make(map[string]string)
+	var firstErr error
+	querySucceeded := false
 	queries := buildListViewQueries(config, dbName)
 	for _, query := range queries {
 		if strings.TrimSpace(query) == "" {
@@ -6159,8 +6285,12 @@ func listViewNameLookup(dbInst db.Database, config connection.ConnectionConfig, 
 		}
 		rows, _, err := queryDataForExport(dbInst, config, query)
 		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
 			continue
 		}
+		querySucceeded = true
 		for _, row := range rows {
 			tableType := strings.ToUpper(exportRowValueCI(row, "table_type", "type"))
 			if tableType != "" && tableType != "VIEW" {
@@ -6187,7 +6317,10 @@ func listViewNameLookup(dbInst db.Database, config connection.ConnectionConfig, 
 			}
 		}
 	}
-	return viewLookup
+	if !querySucceeded && firstErr != nil {
+		return viewLookup, firstErr
+	}
+	return viewLookup, nil
 }
 
 func buildListViewQueries(config connection.ConnectionConfig, dbName string) []string {
