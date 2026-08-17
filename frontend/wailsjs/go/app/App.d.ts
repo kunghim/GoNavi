@@ -109,6 +109,8 @@ export function DBQueryMultiTransactional(arg1:connection.ConnectionConfig,arg2:
 
 export function DBQueryWithCancel(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string):Promise<connection.QueryResult>;
 
+export function DBRefreshTableStats(arg1:connection.ConnectionConfig,arg2:string,arg3:Array<string>):Promise<connection.QueryResult>;
+
 export function DBReleaseConnection(arg1:connection.ConnectionConfig):Promise<connection.QueryResult>;
 
 export function DBRollbackTransaction(arg1:string):Promise<connection.QueryResult>;
@@ -564,6 +566,10 @@ export function ResultDiffPage(arg1:resultdiff.PageRequest):Promise<connection.Q
 export function ResultDiffStart(arg1:app.ResultDiffStartRequest):Promise<connection.QueryResult>;
 
 export function ResultDiffUploadChunk(arg1:resultdiff.UploadChunkRequest):Promise<connection.QueryResult>;
+
+export function ResumeImportJob(arg1:string):Promise<connection.QueryResult>;
+
+export function RetryImportJobFailedRows(arg1:string):Promise<connection.QueryResult>;
 
 export function RetrySecurityUpdateCurrentRound(arg1:app.RetrySecurityUpdateRequest):Promise<app.SecurityUpdateStatus>;
 
