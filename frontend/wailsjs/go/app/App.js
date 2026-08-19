@@ -22,6 +22,10 @@ export function AuthorizeMCPConnectionSQL(arg1, arg2) {
   return window['go']['app']['App']['AuthorizeMCPConnectionSQL'](arg1, arg2);
 }
 
+export function BuildDatabaseDiagnosticPackage() {
+  return window['go']['app']['App']['BuildDatabaseDiagnosticPackage']();
+}
+
 export function BuildSQLAuditExport(arg1, arg2) {
   return window['go']['app']['App']['BuildSQLAuditExport'](arg1, arg2);
 }
@@ -228,6 +232,10 @@ export function DBTableExists(arg1, arg2, arg3) {
 
 export function DataImportCapability(arg1) {
   return window['go']['app']['App']['DataImportCapability'](arg1);
+}
+
+export function DataSourceCapability(arg1) {
+  return window['go']['app']['App']['DataSourceCapability'](arg1);
 }
 
 export function DataSync(arg1) {
@@ -442,6 +450,10 @@ export function ExportDataWithOptions(arg1, arg2, arg3, arg4) {
   return window['go']['app']['App']['ExportDataWithOptions'](arg1, arg2, arg3, arg4);
 }
 
+export function ExportDatabaseDiagnosticPackage() {
+  return window['go']['app']['App']['ExportDatabaseDiagnosticPackage']();
+}
+
 export function ExportDatabaseSQL(arg1, arg2, arg3) {
   return window['go']['app']['App']['ExportDatabaseSQL'](arg1, arg2, arg3);
 }
@@ -516,6 +528,10 @@ export function GetAppInfo() {
 
 export function GetDataRootDirectoryInfo() {
   return window['go']['app']['App']['GetDataRootDirectoryInfo']();
+}
+
+export function GetDatabaseDiagnosticPackagePreview() {
+  return window['go']['app']['App']['GetDatabaseDiagnosticPackagePreview']();
 }
 
 export function GetDriverStatusList(arg1, arg2) {
@@ -624,6 +640,14 @@ export function ImportSavedQueries(arg1) {
 
 export function InspectElasticsearchConsole(arg1, arg2, arg3) {
   return window['go']['app']['App']['InspectElasticsearchConsole'](arg1, arg2, arg3);
+}
+
+export function InspectSavedConnectionHealth(arg1) {
+  return window['go']['app']['App']['InspectSavedConnectionHealth'](arg1);
+}
+
+export function InspectSavedConnectionsHealth(arg1) {
+  return window['go']['app']['App']['InspectSavedConnectionsHealth'](arg1);
 }
 
 export function InstallLocalDriverPackage(arg1, arg2, arg3, arg4) {
