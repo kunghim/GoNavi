@@ -229,11 +229,13 @@ Elasticsearch 连接复用查询工作区，并按服务端版本提供受控 RE
 
 - [Go](https://go.dev/dl/) 1.21+
 - [Node.js](https://nodejs.org/) 18+
-- [Wails CLI](https://wails.io/docs/gettingstarted/installation)
+- [Wails CLI](https://wails.io/docs/gettingstarted/installation)，由项目本地安装
 
 ```bash
-go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+node tools/project-tools.mjs install
 ```
+
+与项目强绑定的 CLI 必须通过 `tools/project-tools.mjs` 安装到 `.tools/bin`，并在该脚本中固定版本；不要写入全局 `GOBIN`，也不要提交二进制文件。用户级 Go 模块和构建缓存仍保留在仓库外；CI 可以在其隔离环境中自行安装工具。
 
 ### 开发
 
@@ -241,7 +243,7 @@ go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
 git clone https://github.com/Syngnat/GoNavi.git
 cd GoNavi
 
-wails dev                          # 完整热重载
+node tools/project-tools.mjs wails dev  # 完整热重载
 node tools/wails-fast-dev.mjs      # Go 导出签名未变时更快
 node tools/wails-fast-dev.mjs --refresh-bindings  # 修改导出方法签名后刷新绑定
 ```
@@ -249,8 +251,8 @@ node tools/wails-fast-dev.mjs --refresh-bindings  # 修改导出方法签名后�
 ### 构建
 
 ```bash
-wails build
-wails build -clean   # 发布前推荐
+node tools/project-tools.mjs wails build
+node tools/project-tools.mjs wails build -clean   # 发布前推荐
 ```
 
 产物位于 `build/bin`。

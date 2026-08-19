@@ -7,6 +7,7 @@ frontend/release/
 **/release/
 **/dist/
 build/bin/
+.tools/bin/
 
 # wails / node artifacts (按需)
 node_modules/
