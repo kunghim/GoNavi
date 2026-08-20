@@ -77,10 +77,9 @@ class CLIReleaseAssetsTest(unittest.TestCase):
             self.assertIn('gonavi-cli_${version}_checksums.txt', source)
             self.assertIn('(cd cli-assets && sha256sum "${expected[@]}"', source)
             self.assertIn('sha256sum --check "$cli_checksum_name"', source)
-            self.assertIn(
-                './tools/generate-driver-agent-revisions.sh --platform "${{ matrix.goos }}/${{ matrix.goarch }}"',
-                source,
-            )
+            self.assertIn("Download canonical driver revision map", source)
+            self.assertIn("Install canonical driver revision map", source)
+            self.assertIn("canonical-driver-revision-map/driver_agent_revisions_gen.go", source)
             self.assertIn("--component gui", source)
             self.assertIn("--assets-dir release-assets", source)
             self.assertIn("release-assets/*", source)
@@ -99,6 +98,7 @@ class CLIReleaseAssetsTest(unittest.TestCase):
             "release.yml": (
                 "Build and package CLI",
                 "Package macOS DMG",
+                "Verify GUI and CLI driver revision contracts",
                 "Validate CLI artifact staging",
                 "Generate CLI checksums",
                 "Generate SHA256SUMS",
@@ -110,6 +110,7 @@ class CLIReleaseAssetsTest(unittest.TestCase):
             "dev-build.yml": (
                 "Build and package dev CLI",
                 "Package macOS DMG",
+                "Verify GUI and CLI driver revision contracts",
                 "Validate dev CLI artifact staging",
                 "Generate dev CLI checksums",
                 "Generate SHA256SUMS",
@@ -140,6 +141,82 @@ class CLIReleaseAssetsTest(unittest.TestCase):
                     0,
                     f"invalid bash in {workflow_name} step {step_name!r}:\n{result.stderr}",
                 )
+
+    def test_gui_and_cli_driver_revisions_are_compared_before_release_staging(self) -> None:
+        cases = (
+            (
+                "release.yml",
+                "Build and package CLI",
+                "Validate CLI artifact staging",
+                "cli-driver-revision-contract-*",
+                "gui-driver-revision-contract-*",
+            ),
+            (
+                "dev-build.yml",
+                "Build and package dev CLI",
+                "Validate dev CLI artifact staging",
+                "dev-cli-driver-revision-contract-*",
+                "dev-gui-driver-revision-contract-*",
+            ),
+        )
+        for workflow_name, cli_step, staging_step, cli_pattern, gui_pattern in cases:
+            source = (ROOT / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
+            cli_script = extract_workflow_run_script(source, cli_step)
+            gui_script = extract_workflow_run_script(source, "Build")
+            verification_script = extract_workflow_run_script(
+                source, "Verify GUI and CLI driver revision contracts"
+            )
+
+            self.assertIn("tools/write-driver-revision-contract.sh --role cli", cli_script)
+            self.assertIn('--platform "GITHUB_EXPRESSION/GITHUB_EXPRESSION"', cli_script)
+            self.assertIn("--output-dir driver-revision-contract", cli_script)
+            self.assertIn("tools/write-driver-revision-contract.sh", gui_script)
+            self.assertIn("--role gui", gui_script)
+            self.assertIn('--platform "GITHUB_EXPRESSION"', gui_script)
+            self.assertIn("--output-dir driver-revision-contract", gui_script)
+            self.assertIn(
+                "tools/verify-driver-revision-contract.sh --contracts-dir driver-revision-contract",
+                verification_script,
+            )
+            self.assertIn("driver_revision_maps", source)
+            self.assertIn("Download canonical driver revision map", source)
+            self.assertIn("Install canonical driver revision map", source)
+            self.assertNotIn("generate-driver-agent-revisions.sh --platform", cli_script)
+            self.assertNotIn("generate-driver-agent-revisions.sh --platform", gui_script)
+            self.assertIn(cli_pattern, source)
+            self.assertIn(gui_pattern, source)
+            self.assertIn('--platform "${{ matrix.goos }}/${{ matrix.goarch }}"', source)
+            self.assertIn('--platform "${{ matrix.platform }}"', source)
+            self.assertIn("path: driver-revision-contract", source)
+            self.assertIn('driver_revision_variant: "webkit41"', source)
+            self.assertIn('revision_contract_args+=(--variant "${{ matrix.driver_revision_variant }}")', source)
+            self.assertIn("name: " + gui_pattern[:-1] + "${{ matrix.build_name }}", source)
+            self.assertNotIn("if: ${{ matrix.wails_tags == '' }}", source)
+            self.assertLess(
+                source.index("Verify GUI and CLI driver revision contracts"),
+                source.index(staging_step),
+            )
+
+            cli_job_marker = "name: Build CLI" if workflow_name == "release.yml" else "name: Build dev CLI"
+            cli_needs_index = source.index(cli_job_marker)
+            self.assertIn("driver_revision_maps", source[cli_needs_index : source.index("    steps:", cli_needs_index)])
+            build_index = source.index("name: Build ${{ matrix.platform }}")
+            build_header = source[build_index : source.index("    steps:", build_index)]
+            self.assertIn("driver_revision_maps", build_header)
+            for artifact_key in (
+                "darwin-amd64",
+                "darwin-arm64",
+                "linux-amd64",
+                "linux-arm64",
+                "windows-amd64",
+                "windows-arm64",
+            ):
+                self.assertIn(f"canonical_revision_map: {artifact_key}", source)
+            self.assertIn("canonical_revision_map: linux-amd64\n            wails_tags: \"webkit2_41\"", source)
+
+        for workflow_name in ("release.yml", "dev-build.yml"):
+            source = (ROOT / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
+            self.assertIn("bash tools/verify-driver-revision-contract.test.sh", source)
 
     def test_stable_release_title_matches_immutable_tag(self) -> None:
         source = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
