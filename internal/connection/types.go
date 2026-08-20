@@ -202,8 +202,11 @@ type QueryResult struct {
 	Messages           []string    `json:"messages,omitempty"`
 	Partial            bool        `json:"partial,omitempty"`
 	Warnings           []string    `json:"warnings,omitempty"`
+	OutcomeUnknown     bool        `json:"outcomeUnknown,omitempty"`
 	FailedObjectTypes  []string    `json:"failedObjectTypes,omitempty"`
 	Retryable          bool        `json:"retryable,omitempty"`
+	Truncated          bool        `json:"truncated,omitempty"`
+	ScannedCount       int         `json:"scannedCount,omitempty"`
 	QueryID            string      `json:"queryId,omitempty"` // Unique ID for query cancellation
 	CancellationState  string      `json:"cancellationState,omitempty"`
 	TransactionID      string      `json:"transactionId,omitempty"`

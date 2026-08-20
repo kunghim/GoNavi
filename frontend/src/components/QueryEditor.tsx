@@ -15,7 +15,7 @@ import {
 } from '@ant-design/icons';
 import { format } from 'sql-formatter';
 import { v4 as uuidv4 } from 'uuid';
-import { TabData, ColumnDefinition, type SavedQuery, type SqlSnippet } from '../types';
+import { TabData, ColumnDefinition, type ConnectionConfig, type SavedQuery, type SqlSnippet } from '../types';
 import { type SqlLog, useStore } from '../store';
 import { DBQuery, DBQueryWithCancel, DBQueryMulti, DBQueryMultiInTransaction, DBQueryMultiTransactional, DBGetTables, DBTableExists, DBGetAllColumns, DBGetDatabases, DBGetColumns, DBGetTriggers, DBShowCreateTable, CancelQuery, GenerateQueryID, WriteSQLFile, ExportSQLFile, InspectElasticsearchConsole, ExecuteElasticsearchConsole } from '../../wailsjs/go/app/App';
 import { GONAVI_ROW_KEY } from './DataGrid';
@@ -145,6 +145,7 @@ import {
     extractQueryEditorCurrentSchema,
     QUERY_EDITOR_CURRENT_SCHEMA_SQL,
     resolveLoadedQueryEditorSchema,
+    shouldIncludeQueryEditorSchemaObject,
     supportsQueryEditorSchemaSelection,
 } from './queryEditor/queryEditorSchemaContext';
 import { useSqlEditorTransactionController } from './useSqlEditorTransactionController';
@@ -1014,7 +1015,7 @@ const resolveQueryEditorAiConnectionHost = (connection: any): string => {
 
 // HMR 重载时释放旧注册避免补全和 hover 内容重复
 const _g = globalThis as any;
-const SQL_COMPLETION_PROVIDER_VERSION = '20260803-prefix-retrigger-v2';
+const SQL_COMPLETION_PROVIDER_VERSION = '20260817-schema-context-v3';
 const QUERY_EDITOR_MONACO_LANGUAGE_IDS = ['sql', 'mysql'] as const;
 if (!_g.__gonaviSqlCompletionState) {
     _g.__gonaviSqlCompletionState = { registered: false, version: '', disposables: [] as any[] };
@@ -1029,6 +1030,7 @@ let sqlCompletionDisposables = _g.__gonaviSqlCompletionState.disposables;
 // 每个 QueryEditor 实例在成为活跃 Tab 时更新这些变量，确保 provider 始终使用正确的上下文。
 let sharedCurrentDb = '';
 let sharedCurrentConnectionId = '';
+let sharedCurrentSchema = '';
 let sharedConnections: any[] = [];
 let sharedTablesData: CompletionTableMeta[] = [];
 let sharedAllColumnsData: CompletionColumnMeta[] = [];
@@ -1320,6 +1322,7 @@ const resetSharedQueryEditorMetadata = () => {
     sharedQueryEditorMetadataContextKey = '';
     sharedQueryEditorMetadataConnectionConfig = null;
     sharedCurrentDb = '';
+    sharedCurrentSchema = '';
     sharedTablesData = [];
     sharedAllColumnsData = [];
     sharedVisibleDbs = [];
@@ -2327,6 +2330,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           sharedQueryEditorMetadataConnectionConfig = targetConnectionConfig;
           sharedCurrentDb = normalizedDbName;
           sharedCurrentConnectionId = normalizedConnectionId;
+          sharedCurrentSchema = '';
           sharedConnections = connections;
           sharedVisibleDbs = visibleDbsRef.current;
           sharedActiveEditorModelUri = String(editorRef.current?.getModel?.()?.uri?.toString?.() || '');
@@ -2867,6 +2871,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       }
       sharedCurrentDb = currentDb;
       sharedCurrentConnectionId = currentConnectionId;
+      sharedCurrentSchema = currentSchema;
       sharedConnections = connections;
       sharedTablesData = tablesRef.current;
       sharedAllColumnsData = allColumnsRef.current;
@@ -2880,7 +2885,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       sharedPackagesData = packagesRef.current;
       sharedColumnsCacheData = columnsCacheRef.current;
       sharedActiveEditorModelUri = String(editorRef.current?.getModel?.()?.uri?.toString?.() || '');
-  }, [isActive, currentDb, currentConnectionId, connections, tab.id]);
+  }, [isActive, currentDb, currentConnectionId, currentSchema, connections, tab.id]);
 
   useEffect(() => {
       connectionsRef.current = connections;
@@ -6286,6 +6291,11 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                       : applyQueryEditorCompletionFragmentCase(ident, fragment)
               );
               const getActiveCompletionDbName = () => String(sharedCurrentDb || currentDbRef.current || currentDb || tab.dbName || '').trim();
+              const getActiveCompletionSchemaName = () => (
+                  isPostgresSchemaDialect(activeDialect)
+                      ? String(sharedCurrentSchema || '').trim()
+                      : ''
+              );
               const dialectKeywords = resolveSqlKeywords(activeDialect);
               const dialectFunctions = resolveSqlFunctions(activeDialect);
 
@@ -7022,6 +7032,13 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
               }
               if (expectsTableName && currentDatabase) {
                   completionTables = findCompletionTablesByDatabase(completionTables, currentDatabase);
+              }
+              const currentCompletionSchema = getActiveCompletionSchemaName();
+              if (expectsTableName && currentCompletionSchema) {
+                  completionTables = completionTables.filter((table) => {
+                      const parsed = splitSchemaAndTable(table.tableName || '', table.dbName);
+                      return shouldIncludeQueryEditorSchemaObject(currentCompletionSchema, parsed.schema);
+                  });
               }
 
               const referencedColumns: CompletionColumnMeta[] = [];
@@ -7958,7 +7975,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       if (
           pendingTransaction
           && matchesCurrentExecutionContext
-          && canReusePendingSqlEditorTransactionForType(dbType, sourceStatements)
+          && canReusePendingSqlEditorTransactionForType(dbType, sourceStatements, config as ConnectionConfig)
       ) {
           return DBQueryMultiInTransaction(pendingTransaction.id, sql, queryId);
       }
@@ -8723,7 +8740,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
     }
     const connCaps = getDataSourceCapabilities(conn.config);
     if (!connCaps.supportsQueryEditor) {
-        message.error(translate('query_editor.message.unsupported_source'));
+        message.error(translate(connCaps.query.messageKey || 'query_editor.message.unsupported_source'));
         if (isCurrentRun()) setLoading(false);
         return;
     }
@@ -8957,13 +8974,13 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                 clearUnpinnedResultSets();
                 return;
             }
-            const useManagedTransaction = shouldUseSqlEditorManagedTransactionForType(normalizedDbType, sourceStatements);
+            const useManagedTransaction = shouldUseSqlEditorManagedTransactionForType(normalizedDbType, sourceStatements, config);
             if (useManagedTransaction && pendingSqlTransactionRef.current) {
                 message.warning(translate('query_editor.transaction.message.pending_managed_transaction'));
                 return;
             }
             const managedTransactionStatementCount = sourceStatements
-                .filter((statement) => shouldUseSqlEditorManagedTransactionForType(normalizedDbType, [statement]))
+                .filter((statement) => shouldUseSqlEditorManagedTransactionForType(normalizedDbType, [statement], config))
                 .length || sourceStatements.length;
 
             const forceReadOnlyResult = connCaps.forceReadOnlyQueryResult;

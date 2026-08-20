@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	goRuntime "runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -970,16 +971,32 @@ func selectSQLFileForExecutionByPathWithText(filePath string, text fileBackendTe
 }
 
 func sqlFileExecutionDialogFilters(text fileBackendTextFunc) []runtime.FileFilter {
-	return []runtime.FileFilter{
+	return sqlFileExecutionDialogFiltersForPlatform(text, goRuntime.GOOS)
+}
+
+func sqlFileExecutionDialogFiltersForPlatform(text fileBackendTextFunc, platform string) []runtime.FileFilter {
+	pattern := "*.sql;*.sql.gz"
+	includeAllFiles := true
+	// Wails turns compound extensions into UTTypes on macOS. "sql.gz" is not
+	// recognized and makes the native dialog abort; "gz" keeps gzip SQL selectable.
+	if platform == "darwin" {
+		pattern = "*.sql;*.gz"
+		includeAllFiles = false
+	}
+
+	filters := []runtime.FileFilter{
 		{
 			DisplayName: fileBackendText(text, "file.backend.filter.sql_files", nil),
-			Pattern:     "*.sql;*.sql.gz",
-		},
-		{
-			DisplayName: fileBackendText(text, "file.backend.filter.all_files_pattern", nil),
-			Pattern:     "*.*",
+			Pattern:     pattern,
 		},
 	}
+	if includeAllFiles {
+		filters = append(filters, runtime.FileFilter{
+			DisplayName: fileBackendText(text, "file.backend.filter.all_files_pattern", nil),
+			Pattern:     "*.*",
+		})
+	}
+	return filters
 }
 
 func readSQLFileWithMetadataByPath(filePath string) connection.QueryResult {
@@ -1333,6 +1350,73 @@ func normalizeAppLogTailLineLimit(input int) int {
 	return input
 }
 
+func redactAppLogSQLFields(line string) string {
+	searchFrom := 0
+	for searchFrom < len(line) {
+		fieldStart, fieldLength := findSQLLogField(line, searchFrom)
+		if fieldStart < 0 {
+			break
+		}
+		valueStart := fieldStart + fieldLength
+		if valueStart >= len(line) {
+			break
+		}
+		valueEnd := valueStart
+		var value string
+		if line[valueStart] == '"' {
+			valueEnd++
+			escaped := false
+			for valueEnd < len(line) {
+				if escaped {
+					escaped = false
+					valueEnd++
+					continue
+				}
+				if line[valueEnd] == '\\' {
+					escaped = true
+					valueEnd++
+					continue
+				}
+				if line[valueEnd] == '"' {
+					valueEnd++
+					break
+				}
+				valueEnd++
+			}
+			if valueEnd > len(line) || valueEnd <= valueStart+1 {
+				break
+			}
+			decoded, err := strconv.Unquote(line[valueStart:valueEnd])
+			if err != nil {
+				break
+			}
+			value = strconv.Quote(sqlaudit.RedactSQL(decoded))
+		} else {
+			valueEnd = len(line)
+			value = sqlaudit.RedactSQL(line[valueStart:valueEnd])
+		}
+		line = line[:valueStart] + value + line[valueEnd:]
+		searchFrom = valueStart + len(value)
+	}
+	return sqlaudit.RedactError(line)
+}
+
+func findSQLLogField(line string, start int) (int, int) {
+	lower := strings.ToLower(line)
+	bestIndex := -1
+	bestLength := 0
+	for _, marker := range []string{"sql片段=", "sqltext=", "sql="} {
+		if index := strings.Index(lower[start:], marker); index >= 0 {
+			index += start
+			if bestIndex < 0 || index < bestIndex {
+				bestIndex = index
+				bestLength = len(marker)
+			}
+		}
+	}
+	return bestIndex, bestLength
+}
+
 func readAppLogTailWindow(filePath string, maxBytes int64) ([]byte, bool, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
@@ -1421,7 +1505,7 @@ func readAppLogTailByPathWithText(filePath string, lineLimit int, keyword string
 		if line == "" {
 			continue
 		}
-		lines = append(lines, line)
+		lines = append(lines, redactAppLogSQLFields(line))
 	}
 
 	filteredLines := make([]string, 0, len(lines))
