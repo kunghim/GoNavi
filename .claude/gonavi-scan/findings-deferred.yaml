@@ -1,0 +1,3 @@
+version: 1
+# 用户明确延期的 finding。默认只用于全量新问题扫描时去重，不自动复查。
+deferred_findings: []
