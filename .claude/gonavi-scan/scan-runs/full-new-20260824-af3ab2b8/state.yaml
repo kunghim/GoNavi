@@ -1,0 +1,22 @@
+artifact_schema: 2
+manifest_path: scan-manifest.yaml
+coverage_path: coverage.yaml
+scan_id: full-new-20260824-af3ab2b8
+head_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
+baseline_status: ok
+scan_mode: 全量新问题扫描
+review_views: [product, db, developer]
+developer_scan_mode: contract_first
+execution: parallel
+scan_scope: full_repository
+history_recheck: not_applicable
+history_recheck_status: not_applicable
+full_scan_status: completed
+coverage_units_total: 60
+coverage_units_completed: 60
+started_at: 2026-08-24T03:24:20Z
+completed_at: 2026-08-24T04:10:00Z
+start_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
+workspace_status: 有未提交改动
+included_scope: [frontend/src, internal, cmd, tools, delivery]
+excluded_scope: [真实外部服务写入, 桌面人工点击, 生产凭据]
