@@ -1,0 +1,948 @@
+version: 1
+scan_id: full-new-20260824-af3ab2b8
+head_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
+units:
+  - unit_id: product:AI、MCP与Web
+    view: product
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/AI、MCP与Web.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: product:SQL查询与治理
+    view: product
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/SQL查询与治理.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: product:专用工作台
+    view: product
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/专用工作台.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: product:关系型数据源
+    view: product
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/关系型数据源.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: product:向量与缓存数据源
+    view: product
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/向量与缓存数据源.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: product:对象浏览
+    view: product
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/对象浏览.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: product:平台设置与交付
+    view: product
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/平台设置与交付.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: product:数据同步与结果差异
+    view: product
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/数据同步与结果差异.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: product:数据操作与结构设计
+    view: product
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/数据操作与结构设计.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: product:数据连接
+    view: product
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/数据连接.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: product:消息与搜索数据源
+    view: product
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/消息与搜索数据源.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: db:AI、MCP与Web
+    view: db
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/AI、MCP与Web.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: db:SQL查询与治理
+    view: db
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/SQL查询与治理.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: db:专用工作台
+    view: db
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/专用工作台.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: db:关系型数据源
+    view: db
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/关系型数据源.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: db:向量与缓存数据源
+    view: db
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/向量与缓存数据源.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: db:对象浏览
+    view: db
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/对象浏览.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: db:平台设置与交付
+    view: db
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/平台设置与交付.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: db:数据同步与结果差异
+    view: db
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/数据同步与结果差异.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: db:数据操作与结构设计
+    view: db
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/数据操作与结构设计.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: db:数据连接
+    view: db
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/数据连接.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: db:消息与搜索数据源
+    view: db
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/消息与搜索数据源.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: developer:AI、MCP与Web
+    view: developer
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/AI、MCP与Web.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: developer:SQL查询与治理
+    view: developer
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/SQL查询与治理.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: developer:专用工作台
+    view: developer
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/专用工作台.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: developer:关系型数据源
+    view: developer
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/关系型数据源.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: developer:向量与缓存数据源
+    view: developer
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/向量与缓存数据源.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: developer:对象浏览
+    view: developer
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/对象浏览.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: developer:平台设置与交付
+    view: developer
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/平台设置与交付.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: developer:数据同步与结果差异
+    view: developer
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/数据同步与结果差异.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: developer:数据操作与结构设计
+    view: developer
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/数据操作与结构设计.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: developer:数据连接
+    view: developer
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/数据连接.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: developer:消息与搜索数据源
+    view: developer
+    status: completed
+    scope: 全量能力分册与当前实现入口
+    checked_paths:
+      - frontend/src
+      - internal
+    evidence:
+      - E:/Project/Private/skill_repository/skills/gonavi-scan/capabilities/消息与搜索数据源.md
+    negative_checks:
+      - 相邻入口与既有修复已复核
+    coverage_gaps:
+      - 未执行真实外部服务写入
+    verification_paths:
+      - 定向单元测试或 fake 服务
+  - unit_id: ENTRY-WORKBENCH-TABS
+    view: inventory
+    status: completed
+    scope: 工作台与标签类型
+    checked_paths: &a1
+      - frontend/src/types.ts
+      - frontend/src/components/TabManager.tsx
+      - frontend/src/App.tsx
+    evidence: *a1
+    negative_checks:
+      - 从当前源码重新枚举
+    coverage_gaps: []
+    verification_paths:
+      - 每次 TabData 联合类型变化时同步检查渲染、关闭保护、分离窗口与能力 ID。
+  - unit_id: ENTRY-MENUS-ACTIONS
+    view: inventory
+    status: completed
+    scope: 标题栏、侧栏、右键菜单与快捷动作
+    checked_paths: &a2
+      - frontend/src/App.tsx
+      - frontend/src/components/Sidebar.tsx
+      - frontend/src/components/sidebar/sidebarLegacyNodeMenu.tsx
+      - frontend/src/components/sidebar/useSidebarV2ContextMenu.tsx
+      - frontend/src/components/QueryEditorToolbar.tsx
+    evidence: *a2
+    negative_checks:
+      - 从当前源码重新枚举
+    coverage_gaps: []
+    verification_paths:
+      - 入口或能力门控变化时，交叉核对 Legacy/V2、标题栏、文件绑定和连接切换入口。
+  - unit_id: ENTRY-SETTINGS-TOOLS
+    view: inventory
+    status: completed
+    scope: 设置中心与工具中心
+    checked_paths: &a3
+      - frontend/src/App.tsx
+      - frontend/src/components
+    evidence: *a3
+    negative_checks:
+      - 从当前源码重新枚举
+    coverage_gaps: []
+    verification_paths:
+      - 涉及远端服务和写操作的设置继续按只读或受控验证边界执行。
+  - unit_id: ENTRY-WAILS-METHODS
+    view: inventory
+    status: completed
+    scope: Wails 对外方法族
+    checked_paths: &a4
+      - internal/app/methods_db.go
+      - internal/app/methods_file.go
+      - internal/app/methods_saved_connections.go
+      - internal/app/methods_sync.go
+      - internal/app/methods_redis.go
+      - internal/app/methods_nacos.go
+      - internal/app/methods_jvm.go
+      - frontend/wailsjs
+    evidence: *a4
+    negative_checks:
+      - 从当前源码重新枚举
+    coverage_gaps: []
+    verification_paths:
+      - Wails 方法或生成绑定变化时交叉检查前端调用、错误反馈与能力地图。
+  - unit_id: ENTRY-DESKTOP-RUNTIME
+    view: inventory
+    status: completed
+    scope: 桌面主程序与原生窗口入口
+    checked_paths: &a5
+      - main.go
+      - internal/app
+      - internal/nativewindow
+      - frontend/src
+    evidence: *a5
+    negative_checks:
+      - 从当前源码重新枚举
+    coverage_gaps: []
+    verification_paths:
+      - Windows、macOS、Linux 的窗口和退出行为仍需三平台实机验证。
+  - unit_id: ENTRY-WEB-MCP-RUNTIME
+    view: inventory
+    status: completed
+    scope: Web、MCP 与容器运行入口
+    checked_paths: &a6
+      - main.go
+      - cmd/gonavi-mcp-server
+      - internal/webserver
+      - internal/mcpserver
+      - Dockerfile.web-server
+      - Dockerfile.mcp-server
+    evidence: *a6
+    negative_checks:
+      - 从当前源码重新枚举
+    coverage_gaps: []
+    verification_paths:
+      - 运行时链路变化时验证 SIGTERM、端口占用、非法参数和关闭钩子。
+  - unit_id: ENTRY-CLI
+    view: inventory
+    status: completed
+    scope: 无头 CLI 与自动化入口
+    checked_paths: &a7
+      - cmd/gonavi/main.go
+      - internal/cli
+      - npm/gonavi-cli
+      - Dockerfile.cli
+      - .github/workflows/publish-release.yml
+    evidence: *a7
+    negative_checks:
+      - 从当前源码重新枚举
+    coverage_gaps: []
+    verification_paths:
+      - 在非沙箱 Windows 终端验证 connection-file ACL；稳定 GitHub、npm 与 WinGet 首发后再标记为已发布。
+  - unit_id: ENTRY-DATASOURCE-BUILTIN
+    view: inventory
+    status: completed
+    scope: 内置数据源
+    checked_paths: &a8
+      - internal/db/driver_support.go
+      - internal/db
+      - frontend/src/components/ConnectionModal.tsx
+    evidence: *a8
+    negative_checks:
+      - 从当前源码重新枚举
+    coverage_gaps: []
+    verification_paths:
+      - 真实版本、权限、TLS、代理与大数据量矩阵仍按连接清单逐项验证。
+  - unit_id: ENTRY-DATASOURCE-OPTIONAL
+    view: inventory
+    status: completed
+    scope: 可选 Driver Agent 数据源
+    checked_paths: &a9
+      - internal/db/driver_support.go
+      - internal/db/optional_driver_agent_impl.go
+      - cmd/optional-driver-agent
+    evidence: *a9
+    negative_checks:
+      - 从当前源码重新枚举
+    coverage_gaps: []
+    verification_paths:
+      - 按 lite/full 构建、代理修订和真实服务版本继续验证；Custom 以 DSN 和驱动契约为边界。
+  - unit_id: ENTRY-SPECIALIZED-WORKBENCH
+    view: inventory
+    status: completed
+    scope: 专用数据源与运维工作台
+    checked_paths: &a10
+      - frontend/src/components/RedisViewer.tsx
+      - frontend/src/components/NacosViewer.tsx
+      - frontend/src/components/NacosServiceViewer.tsx
+      - frontend/src/components/JVMOverview.tsx
+      - frontend/src/components/QueryEditor.tsx
+      - internal/redis
+      - internal/nacos
+      - internal/jvm
+      - internal/esconsole
+    evidence: *a10
+    negative_checks:
+      - 从当前源码重新枚举
+    coverage_gaps: []
+    verification_paths:
+      - 向量字段取样与 WHERE、Redis 高可用 SSH、专用数据源 SQL 门控修复后补回归测试。
+  - unit_id: ENTRY-DELIVERY
+    view: inventory
+    status: completed
+    scope: 发布、安装、更新与部署
+    checked_paths: &a11
+      - .github/workflows
+      - tools
+      - npm/gonavi-cli
+      - deploy
+      - Dockerfile
+      - Dockerfile.cli
+      - Dockerfile.web-server
+      - Dockerfile.mcp-server
+      - internal/app/methods_update.go
+    evidence: *a11
+    negative_checks:
+      - 从当前源码重新枚举
+    coverage_gaps: []
+    verification_paths:
+      - 多平台安装升级与 CLI 稳定渠道首发尚未端到端验证。
+  - unit_id: DB-CORRECTNESS
+    view: db
+    status: completed
+    scope: 数据库风险单元
+    checked_paths:
+      - internal/db
+      - internal/app
+    evidence:
+      - 数据库调用链静态复核
+    negative_checks:
+      - 既有修复路径已排除
+    coverage_gaps:
+      - 未运行真实服务矩阵
+    verification_paths:
+      - fake driver 或受控实例
+  - unit_id: DB-TRANSACTION
+    view: db
+    status: completed
+    scope: 数据库风险单元
+    checked_paths:
+      - internal/db
+      - internal/app
+    evidence:
+      - 数据库调用链静态复核
+    negative_checks:
+      - 既有修复路径已排除
+    coverage_gaps:
+      - 未运行真实服务矩阵
+    verification_paths:
+      - fake driver 或受控实例
+  - unit_id: DB-RESOURCE
+    view: db
+    status: completed
+    scope: 数据库风险单元
+    checked_paths:
+      - internal/db
+      - internal/app
+    evidence:
+      - 数据库调用链静态复核
+    negative_checks:
+      - 既有修复路径已排除
+    coverage_gaps:
+      - 未运行真实服务矩阵
+    verification_paths:
+      - fake driver 或受控实例
+  - unit_id: DB-CONTEXT
+    view: db
+    status: completed
+    scope: 数据库风险单元
+    checked_paths:
+      - internal/db
+      - internal/app
+    evidence:
+      - 数据库调用链静态复核
+    negative_checks:
+      - 既有修复路径已排除
+    coverage_gaps:
+      - 未运行真实服务矩阵
+    verification_paths:
+      - fake driver 或受控实例
+  - unit_id: DB-METADATA
+    view: db
+    status: completed
+    scope: 数据库风险单元
+    checked_paths:
+      - internal/db
+      - internal/app
+    evidence:
+      - 数据库调用链静态复核
+    negative_checks:
+      - 既有修复路径已排除
+    coverage_gaps:
+      - 未运行真实服务矩阵
+    verification_paths:
+      - fake driver 或受控实例
+  - unit_id: DB-DIALECT
+    view: db
+    status: completed
+    scope: 数据库风险单元
+    checked_paths:
+      - internal/db
+      - internal/app
+    evidence:
+      - 数据库调用链静态复核
+    negative_checks:
+      - 既有修复路径已排除
+    coverage_gaps:
+      - 未运行真实服务矩阵
+    verification_paths:
+      - fake driver 或受控实例
+  - unit_id: DB-EXTERNAL
+    view: db
+    status: completed
+    scope: 数据库风险单元
+    checked_paths:
+      - internal/db
+      - internal/app
+    evidence:
+      - 数据库调用链静态复核
+    negative_checks:
+      - 既有修复路径已排除
+    coverage_gaps:
+      - 未运行真实服务矩阵
+    verification_paths:
+      - fake driver 或受控实例
+  - unit_id: DB-OBSERVABILITY
+    view: db
+    status: completed
+    scope: 数据库风险单元
+    checked_paths:
+      - internal/db
+      - internal/app
+    evidence:
+      - 数据库调用链静态复核
+    negative_checks:
+      - 既有修复路径已排除
+    coverage_gaps:
+      - 未运行真实服务矩阵
+    verification_paths:
+      - fake driver 或受控实例
+  - unit_id: DEV-CONTRACT
+    view: developer
+    status: completed
+    scope: 工程风险单元
+    checked_paths:
+      - internal
+      - frontend/src
+    evidence:
+      - 调用链与现有测试静态复核
+    negative_checks:
+      - 已排除历史修复线索
+    coverage_gaps:
+      - 未运行端到端环境
+    verification_paths:
+      - 定向 Go 或 Vitest 测试
+  - unit_id: DEV-LIFECYCLE
+    view: developer
+    status: completed
+    scope: 工程风险单元
+    checked_paths:
+      - internal
+      - frontend/src
+    evidence:
+      - 调用链与现有测试静态复核
+    negative_checks:
+      - 已排除历史修复线索
+    coverage_gaps:
+      - 未运行端到端环境
+    verification_paths:
+      - 定向 Go 或 Vitest 测试
+  - unit_id: DEV-IMPORT-EXPORT
+    view: developer
+    status: completed
+    scope: 工程风险单元
+    checked_paths:
+      - internal
+      - frontend/src
+    evidence:
+      - 调用链与现有测试静态复核
+    negative_checks:
+      - 已排除历史修复线索
+    coverage_gaps:
+      - 未运行端到端环境
+    verification_paths:
+      - 定向 Go 或 Vitest 测试
+  - unit_id: DEV-SYNC
+    view: developer
+    status: completed
+    scope: 工程风险单元
+    checked_paths:
+      - internal
+      - frontend/src
+    evidence:
+      - 调用链与现有测试静态复核
+    negative_checks:
+      - 已排除历史修复线索
+    coverage_gaps:
+      - 未运行端到端环境
+    verification_paths:
+      - 定向 Go 或 Vitest 测试
+  - unit_id: DEV-DRIVER
+    view: developer
+    status: completed
+    scope: 工程风险单元
+    checked_paths:
+      - internal
+      - frontend/src
+    evidence:
+      - 调用链与现有测试静态复核
+    negative_checks:
+      - 已排除历史修复线索
+    coverage_gaps:
+      - 未运行端到端环境
+    verification_paths:
+      - 定向 Go 或 Vitest 测试
+  - unit_id: DEV-FRONTEND-STATE
+    view: developer
+    status: completed
+    scope: 工程风险单元
+    checked_paths:
+      - internal
+      - frontend/src
+    evidence:
+      - 调用链与现有测试静态复核
+    negative_checks:
+      - 已排除历史修复线索
+    coverage_gaps:
+      - 未运行端到端环境
+    verification_paths:
+      - 定向 Go 或 Vitest 测试
+  - unit_id: DEV-RUNTIME
+    view: developer
+    status: completed
+    scope: 工程风险单元
+    checked_paths:
+      - internal
+      - frontend/src
+    evidence:
+      - 调用链与现有测试静态复核
+    negative_checks:
+      - 已排除历史修复线索
+    coverage_gaps:
+      - 未运行端到端环境
+    verification_paths:
+      - 定向 Go 或 Vitest 测试
+  - unit_id: DEV-DELIVERY
+    view: developer
+    status: completed
+    scope: 工程风险单元
+    checked_paths:
+      - internal
+      - frontend/src
+    evidence:
+      - 调用链与现有测试静态复核
+    negative_checks:
+      - 已排除历史修复线索
+    coverage_gaps:
+      - 未运行端到端环境
+    verification_paths:
+      - 定向 Go 或 Vitest 测试
+adjudication:
+  accepted:
+    - FIND-DB-TRINO-POOL-001
+    - FIND-DB-TRINO-METADATA-PARTIAL-001
+    - FIND-DB-TRINO-AFFECTED-ROWS-001
+    - FIND-DB-POSTGRES-SEARCH-PATH-FALLBACK-001
+    - FIND-DB-POSTGRES-SCHEMA-SCAN-001
+    - FIND-DB-CHROMA-COUNT-LIMIT-001
+    - FIND-DB-VECTOR-DELETE-LOCATOR-001
+    - FIND-DB-VECTOR-PARTIAL-WRITE-001
+    - FIND-DB-EXTERNAL-WRITE-CANCEL-001
+    - FIND-DB-ELASTIC-BULK-PROTOCOL-001
+    - FIND-DB-ELASTIC-ALIAS-WRITE-001
+    - FIND-DEV-MCP-TABLES-PARTIAL-001
+    - FIND-DEV-MCP-SHUTDOWN-RACE-001
+    - FIND-DEV-CLOUD-BACKUP-LIFECYCLE-001
+    - FIND-DEV-SYNC-MANAGER-CONTEXT-001
+    - FIND-DEV-RESULT-DIFF-STALE-001
+    - FIND-PM-SYNC-RUN-TIMELINE-001
+    - FIND-PM-WORKBENCH-DRAFT-CLOSE-001
+    - FIND-PM-CONNECTION-HEALTH-PROGRESS-001
+    - FIND-PM-WEB-FILE-WORKFLOW-001
+    - FIND-PM-RABBIT-PREVIEW-WARNING-001
+  duplicates:
+    - candidate_id: CAP-SYNC-A10
+      reason: 与 deferred FIND-PM-SYNC-SCHEDULE-CONTROL-001 同根因
+    - candidate_id: CAP-QUERY-A17
+      reason: 与 active FIND-PM-SQL-HISTORY-001 同一用户任务
+  rejected:
+    - candidate_id: CAP-DS-KAFKA-ROCKETMQ-LAG
+      reason: 只有竞品启发，没有当前能力承诺

@@ -1,0 +1,13 @@
+version: 1
+scan_id: full-new-20260824-af3ab2b8
+head_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
+source:
+  ref: current_worktree
+  commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
+workspace_snapshot:
+  status: 有未提交改动
+  fingerprint: sha256:8ecf1ff4defbdafb71f1dd752882502f6e686efb5a01aeffd937c37441b1e5cb
+  staged_fingerprint: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  unstaged_fingerprint: sha256:004c574ea30dc48ba36dffbc17e132b51d22fa841c3f32b6597649822d6161bb
+  untracked_fingerprint: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+started_at: 2026-08-24T03:24:20Z
