@@ -2562,6 +2562,7 @@ func (a *App) DBGetDatabases(config connection.ConnectionConfig) connection.Quer
 		return connection.QueryResult{Success: false, Message: err.Error()}
 	}
 
+	dbs = dedupeMetadataDatabaseNames(dbs)
 	resData := make([]map[string]string, 0, len(dbs))
 	for _, name := range dbs {
 		resData = append(resData, map[string]string{"Database": name})
@@ -2643,6 +2644,7 @@ func (a *App) DBGetTables(config connection.ConnectionConfig, dbName string) con
 		logger.Error(err, "DBGetTables 获取表列表失败：%s", formatConnSummary(runConfig))
 		return connection.QueryResult{Success: false, Message: err.Error()}
 	}
+	tables = dedupeMetadataTableNames(tables)
 
 	if isSQLiteConnection(runConfig) {
 		cachedStats, cacheErr := a.readSQLiteTableStats(runConfig, dbName)
@@ -2692,6 +2694,49 @@ func (a *App) DBGetTables(config connection.ConnectionConfig, dbName string) con
 	}
 
 	return connection.QueryResult{Success: true, Data: resData}
+}
+
+// Metadata may come from a driver agent or catalog query with duplicate rows.
+// Preserve exact identifiers and order while removing only identical nonblank entries.
+func dedupeMetadataDatabaseNames(databases []string) []string {
+	if len(databases) == 0 {
+		return databases
+	}
+	seen := make(map[string]struct{}, len(databases))
+	result := make([]string, 0, len(databases))
+	for _, database := range databases {
+		if strings.TrimSpace(database) == "" {
+			continue
+		}
+		if _, exists := seen[database]; exists {
+			continue
+		}
+		seen[database] = struct{}{}
+		result = append(result, database)
+	}
+	return result
+}
+
+// Metadata may come from an optional driver agent or a catalog view with
+// duplicate rows. Preserve exact identifiers and order while removing only
+// identical nonblank entries so schema-qualified names remain distinct.
+func dedupeMetadataTableNames(tables []string) []string {
+	if len(tables) == 0 {
+		return tables
+	}
+	seen := make(map[string]struct{}, len(tables))
+	result := make([]string, 0, len(tables))
+	for _, table := range tables {
+		if strings.TrimSpace(table) == "" {
+			continue
+		}
+		if _, exists := seen[table]; exists {
+			continue
+		}
+		seen[table] = struct{}{}
+		result = append(result, table)
+	}
+	return result
 }
 
 func buildRedisTablesPartialResult(tables []string, reason string) connection.QueryResult {
@@ -2811,6 +2856,20 @@ func lookupExactTableExists(database tableNameMetadataProvider, dbName, tableNam
 	return containsExactTableName(tables, tableName), nil
 }
 
+func normalizeTableExistsLookup(config connection.ConnectionConfig, dbName, tableName string) (string, string) {
+	// MySQL-family drivers enumerate TABLE_NAME without the database prefix,
+	// while callers may pass a qualified object (database.table) from a data
+	// sync mapping. Keep the database in the GetTables argument and compare the
+	// bare table name, matching the contract used by GetColumns and DDL paths.
+	switch resolveDDLDBType(config) {
+	case "mysql", "mariadb":
+		if schema, table := normalizeMetadataSchemaAndTable(config, dbName, tableName); strings.TrimSpace(table) != "" {
+			return schema, table
+		}
+	}
+	return dbName, tableName
+}
+
 // DBTableExists checks one table against the driver's table-name metadata without
 // loading row counts, storage statistics, or sampled message fields.
 func (a *App) DBTableExists(config connection.ConnectionConfig, dbName string, tableName string) connection.QueryResult {
@@ -2819,7 +2878,8 @@ func (a *App) DBTableExists(config connection.ConnectionConfig, dbName string, t
 		return connection.QueryResult{Success: true, Data: map[string]bool{"exists": false}}
 	}
 
-	runConfig := normalizeMetadataRunConfig(config, dbName)
+	lookupDBName, lookupTableName := normalizeTableExistsLookup(config, dbName, targetTableName)
+	runConfig := normalizeMetadataRunConfig(config, lookupDBName)
 	if strings.EqualFold(strings.TrimSpace(runConfig.Type), "redis") {
 		runConfig.Type = "redis"
 		client, err := a.getRedisClient(runConfig)
@@ -2841,7 +2901,7 @@ func (a *App) DBTableExists(config connection.ConnectionConfig, dbName string, t
 		return connection.QueryResult{Success: false, Message: err.Error()}
 	}
 
-	exists, err := lookupExactTableExists(dbInst, dbName, targetTableName)
+	exists, err := lookupExactTableExists(dbInst, lookupDBName, lookupTableName)
 	if err != nil && shouldRefreshCachedConnection(err) {
 		if a.invalidateCachedDatabase(runConfig, err) {
 			retryInst, retryErr := a.getDatabaseForcePing(runConfig)
@@ -2849,7 +2909,7 @@ func (a *App) DBTableExists(config connection.ConnectionConfig, dbName string, t
 				logger.Error(retryErr, "DBTableExists 重建连接失败：%s 表=%s.%s", formatConnSummary(runConfig), dbName, targetTableName)
 				return connection.QueryResult{Success: false, Message: retryErr.Error()}
 			}
-			exists, err = lookupExactTableExists(retryInst, dbName, targetTableName)
+			exists, err = lookupExactTableExists(retryInst, lookupDBName, lookupTableName)
 		}
 	}
 	if err != nil {

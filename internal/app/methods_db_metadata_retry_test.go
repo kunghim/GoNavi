@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -223,6 +224,46 @@ func TestDBGetTablesReusesOceanBaseOracleBaseConnectionForSelectedSchema(t *test
 	fixture.requireBaseConnectionReused(t, "selected schema table metadata")
 	if dbInst.tableCalls != 1 || dbInst.tableSchema != "CRH_AC" {
 		t.Fatalf("expected table metadata for CRH_AC once, calls=%d schema=%q", dbInst.tableCalls, dbInst.tableSchema)
+	}
+}
+
+func TestDBGetObjectsDeduplicatesExactTableMetadataNames(t *testing.T) {
+	dbInst := &fakeMetadataRetryDB{tables: []string{
+		" ldf_server.ldf_application_type ",
+		"ldf_server.ldf_application_type",
+		"archive.ldf_application_type",
+		"LDF_SERVER.LDF_APPLICATION_TYPE",
+	}}
+	fixture := newOceanBaseOracleMetadataFixture(t, dbInst)
+
+	result := fixture.app.DBGetObjects(fixture.config, "CRH_AC")
+	if !result.Success {
+		t.Fatalf("expected DBGetObjects success, got failure: %s", result.Message)
+	}
+	objects, ok := result.Data.([]connection.DatabaseObject)
+	if !ok {
+		t.Fatalf("DBGetObjects data type = %T, want []connection.DatabaseObject", result.Data)
+	}
+	tableNames := make([]string, 0, len(objects))
+	for _, object := range objects {
+		if object.Type == "table" {
+			tableNames = append(tableNames, object.Schema+"."+object.Name)
+		}
+	}
+	if len(tableNames) != 3 {
+		t.Fatalf("DBGetObjects table count = %d, want 3: %v", len(tableNames), tableNames)
+	}
+	want := map[string]struct{}{
+		"ldf_server.ldf_application_type": {},
+		"archive.ldf_application_type":    {},
+		"LDF_SERVER.LDF_APPLICATION_TYPE": {},
+	}
+	got := make(map[string]struct{}, len(tableNames))
+	for _, tableName := range tableNames {
+		got[tableName] = struct{}{}
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("DBGetObjects table names = %v, want %v", got, want)
 	}
 }
 
@@ -886,6 +927,42 @@ func TestDBGetColumnsKeepsDatabaseForMySQLMetadata(t *testing.T) {
 	}
 	if dbInst.columnSchema != "demo_db" || dbInst.columnTable != "users" {
 		t.Fatalf("expected mysql metadata to pass database/table, got %q.%q", dbInst.columnSchema, dbInst.columnTable)
+	}
+}
+
+func TestDBTableExistsNormalizesQualifiedMySQLTableMetadata(t *testing.T) {
+	originalNewDatabaseFunc := newDatabaseFunc
+	originalResolveDialConfigWithProxyFunc := resolveDialConfigWithProxyFunc
+	t.Cleanup(func() {
+		newDatabaseFunc = originalNewDatabaseFunc
+		resolveDialConfigWithProxyFunc = originalResolveDialConfigWithProxyFunc
+	})
+
+	dbInst := &fakeMetadataRetryDB{tables: []string{"users"}}
+	newDatabaseFunc = func(dbType string) (db.Database, error) {
+		return dbInst, nil
+	}
+	resolveDialConfigWithProxyFunc = func(raw connection.ConnectionConfig) (connection.ConnectionConfig, error) {
+		return raw, nil
+	}
+
+	app := NewAppWithSecretStore(secretstore.NewUnavailableStore("test"))
+	result := app.DBTableExists(connection.ConnectionConfig{
+		Type: "mysql",
+		Host: "127.0.0.1",
+		Port: 3306,
+		User: "root",
+	}, "demo_db", "demo_db.users")
+
+	if !result.Success {
+		t.Fatalf("expected DBTableExists success, got failure: %s", result.Message)
+	}
+	exists, ok := result.Data.(map[string]bool)
+	if !ok || !exists["exists"] {
+		t.Fatalf("expected qualified MySQL table to exist, got %#v", result.Data)
+	}
+	if dbInst.tableSchema != "demo_db" {
+		t.Fatalf("expected MySQL table lookup database demo_db, got %q", dbInst.tableSchema)
 	}
 }
 
