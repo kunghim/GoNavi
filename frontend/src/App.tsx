@@ -93,6 +93,10 @@ import {
 import { getMacNativeTitlebarPaddingLeft, getMacNativeTitlebarPaddingRight, shouldHandleMacNativeFullscreenShortcut, shouldSuppressMacNativeEscapeExit } from './utils/macWindow';
 import { shouldEnableMacWindowDiagnostics } from './utils/macWindowDiagnostics';
 import { getConnectionWorkbenchState } from './utils/startupReadiness';
+import {
+  createConnectionSidebarLayoutCoordinator,
+  type ConnectionSidebarLayoutCoordinator,
+} from './utils/connectionSidebarLayoutCoordinator';
 import { createGlobalProxyDraft, toSaveGlobalProxyInput } from './utils/globalProxyDraft';
 import {
   detectConnectionImportKind,
@@ -104,7 +108,12 @@ import { downloadBrowserTextFile } from './utils/browserFileTransfer';
 import { buildDataSyncWorkbenchTab } from './utils/dataSyncTab';
 import { buildSqlAuditWorkbenchTab } from './utils/sqlAuditTab';
 import { buildRequestDiagnosticsWorkbenchTab } from './utils/requestDiagnosticsTab';
-import { getDataSourceCapabilities, resolveDataSourceType } from './utils/dataSourceCapabilities';
+import {
+  getDataSourceCapabilities,
+  isMessageQueueDataSource,
+  resolveMessageQueueExecutionDbName,
+  resolveDataSourceType,
+} from './utils/dataSourceCapabilities';
 import { buildContextualNewQueryTemplate } from './utils/objectQueryTemplates';
 import {
   extractCustomThemeAntTokens,
@@ -783,6 +792,7 @@ function App() {
   const setAutoCheckForUpdatesIntervalMinutes = useStore(state => state.setAutoCheckForUpdatesIntervalMinutes);
   const globalProxy = useStore(state => state.globalProxy);
   const replaceConnections = useStore(state => state.replaceConnections);
+  const replaceConnectionSidebarLayout = useStore(state => state.replaceConnectionSidebarLayout);
   const replaceGlobalProxy = useStore(state => state.replaceGlobalProxy);
   const replaceSavedQueries = useStore(state => state.replaceSavedQueries);
   const reloadSavedQueryGroups = useStore(state => state.reloadSavedQueryGroups);
@@ -1072,6 +1082,8 @@ function App() {
   const savedQueriesBootstrapPromiseRef = useRef<Promise<void> | null>(null);
   const savedQueriesLoadedRef = useRef(false);
   const [hasLoadedSecureConfig, setHasLoadedSecureConfig] = useState(false);
+  const [hasLoadedConnectionSidebarLayout, setHasLoadedConnectionSidebarLayout] = useState(false);
+  const connectionSidebarLayoutCoordinatorRef = useRef<ConnectionSidebarLayoutCoordinator | null>(null);
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 1280 : window.innerWidth || 1280));
   const [securityUpdateStatus, setSecurityUpdateStatus] = useState<SecurityUpdateStatus>(() => createEmptySecurityUpdateStatus());
   const [securityUpdateRawPayload, setSecurityUpdateRawPayload] = useState<string | null>(null);
@@ -1161,7 +1173,11 @@ function App() {
   const windowDiagLastSignatureRef = React.useRef('');
   const windowDiagLastAtRef = React.useRef(0);
   const captureMainWindowStateRef = React.useRef<() => Promise<void>>(async () => undefined);
-  const connectionWorkbenchState = getConnectionWorkbenchState(isStoreHydrated, hasLoadedSecureConfig);
+  const connectionWorkbenchState = getConnectionWorkbenchState(
+      isStoreHydrated,
+      hasLoadedSecureConfig,
+      hasLoadedConnectionSidebarLayout,
+  );
   const securityUpdateStatusMeta = useMemo(
       () => getSecurityUpdateStatusMeta(securityUpdateStatus, t),
       [securityUpdateStatus, t],
@@ -1365,6 +1381,74 @@ function App() {
           cancelled = true;
       };
   }, [applySecurityUpdateStatus, isStoreHydrated, replaceConnections, replaceGlobalProxy, t]);
+
+  useEffect(() => {
+      if (!isStoreHydrated || !hasLoadedSecureConfig) {
+          return;
+      }
+
+      let cancelled = false;
+      const coordinator = createConnectionSidebarLayoutCoordinator({
+          backend: (window as any).go?.app?.App,
+          store: {
+              getLayout: () => {
+                  const state = useStore.getState();
+                  return {
+                      connectionTags: state.connectionTags,
+                      sidebarRootOrder: state.sidebarRootOrder,
+                  };
+              },
+              replaceLayout: replaceConnectionSidebarLayout,
+              subscribe: (listener) => useStore.subscribe((state, previousState) => {
+                  if (
+                      state.connectionTags !== previousState.connectionTags
+                      || state.sidebarRootOrder !== previousState.sidebarRootOrder
+                  ) {
+                      listener();
+                  }
+              }),
+          },
+          onError: (error) => {
+              console.warn('Failed to synchronize shared connection sidebar layout', error);
+          },
+          refreshIntervalMs: 2_000,
+      });
+      connectionSidebarLayoutCoordinatorRef.current = coordinator;
+      const flushConnectionSidebarLayout = () => {
+          void coordinator.flush().catch((error) => {
+              console.warn('Failed to flush shared connection sidebar layout', error);
+          });
+      };
+      const refreshConnectionSidebarLayout = () => {
+          void coordinator.refresh().catch(() => undefined);
+      };
+      const refreshVisibleConnectionSidebarLayout = () => {
+          if (document.visibilityState === 'visible') {
+              refreshConnectionSidebarLayout();
+          }
+      };
+      window.addEventListener('pagehide', flushConnectionSidebarLayout, true);
+      window.addEventListener('beforeunload', flushConnectionSidebarLayout, true);
+      window.addEventListener('focus', refreshConnectionSidebarLayout);
+      document.addEventListener('visibilitychange', refreshVisibleConnectionSidebarLayout);
+      void coordinator.bootstrap().finally(() => {
+          if (!cancelled) {
+              setHasLoadedConnectionSidebarLayout(true);
+          }
+      });
+
+      return () => {
+          cancelled = true;
+          window.removeEventListener('pagehide', flushConnectionSidebarLayout, true);
+          window.removeEventListener('beforeunload', flushConnectionSidebarLayout, true);
+          window.removeEventListener('focus', refreshConnectionSidebarLayout);
+          document.removeEventListener('visibilitychange', refreshVisibleConnectionSidebarLayout);
+          coordinator.dispose();
+          if (connectionSidebarLayoutCoordinatorRef.current === coordinator) {
+              connectionSidebarLayoutCoordinatorRef.current = null;
+          }
+      };
+  }, [hasLoadedSecureConfig, isStoreHydrated, replaceConnectionSidebarLayout]);
 
   useEffect(() => {
       let cancelled = false;
@@ -2251,6 +2335,14 @@ function App() {
   const setActiveTab = useStore(state => state.setActiveTab);
   const savedQueries = useStore(state => state.savedQueries);
   const saveQuery = useStore(state => state.saveQuery);
+  const currentPrimaryActionConnection = useMemo(() => {
+      const activeTab = activeTabId ? tabs.find(tab => tab.id === activeTabId) : undefined;
+      const connectionId = String(activeContext?.connectionId || activeTab?.connectionId || '').trim();
+      return connections.find(connection => connection.id === connectionId) || null;
+  }, [activeContext?.connectionId, activeTabId, connections, tabs]);
+  const primaryActionIsMessageQueue = isMessageQueueDataSource(
+      currentPrimaryActionConnection?.config,
+  );
   const applicationQuitConfirmRef = useRef<{ destroy: () => void } | null>(null);
   const applicationQuitHandlingRef = useRef(false);
   const openSecurityUpdateSettings = useCallback((focusTarget?: SecurityUpdateSettingsFocusTarget | null) => {
@@ -2782,6 +2874,22 @@ function App() {
           validConnectionIds,
       });
       const connection = connections.find(c => c.id === targetContext.connectionId);
+      if (connection && isMessageQueueDataSource(connection.config)) {
+          const dbName = resolveMessageQueueExecutionDbName(
+              connection.config,
+              targetContext.dbName,
+          );
+          addTab({
+              id: `message-queue-${connection.id}-${encodeURIComponent(dbName || 'default')}`,
+              title: `${connection.name} · ${t('message_queue_workbench.tab_kind')}`,
+              type: 'message-queue',
+              connectionId: connection.id,
+              dbName,
+              messageQueueAction: 'open',
+              messageQueueRequestKey: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          });
+          return;
+      }
       const inheritsTableContext = canInheritNewQueryTableContext({
           activeTab: currentTab,
           targetContext,
@@ -2846,7 +2954,10 @@ function App() {
               await prepareApplicationQuitPersistence({
                   captureWindowState: () => captureMainWindowStateRef.current(),
                   flushDrafts: flushQueryTabDraftSnapshots,
-                  flushAppState: flushAppStatePersistence,
+                  flushAppState: async () => {
+                      await flushAppStatePersistence();
+                      await connectionSidebarLayoutCoordinatorRef.current?.flush();
+                  },
               });
               if (confirmedAction) {
                   accepted = await confirmedAction();
@@ -7995,7 +8106,10 @@ function App() {
                       )}
                   </div>
                   <TitleBarPrimaryActions
-                    newQueryLabel={t('query.new')}
+                    newQueryLabel={t(primaryActionIsMessageQueue
+                      ? 'message_queue_workbench.action.open'
+                      : 'query.new')}
+                    newQueryIcon={primaryActionIsMessageQueue ? <MessageOutlined /> : undefined}
                     newConnectionLabel={t('connection.new')}
                     newQueryShortcut={titleBarNewQueryShortcut}
                     newConnectionShortcut={titleBarNewConnectionShortcut}

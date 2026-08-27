@@ -51,11 +51,13 @@ import {
 } from '../../../wailsjs/go/app/App';
 import { resolveSidebarNodeConnectionId, type SidebarTreeNode as TreeNode } from '../sidebarV2Utils';
 import { buildSidebarSchemaNodeKey } from '../../utils/sidebarLocate';
+import { resolveSidebarMessageActionTarget } from './sidebarMessageActions';
 
 export type SidebarMessagePublishTarget = {
   connection: SavedConnection;
   executionDbName: string;
   destination: string;
+  exchange?: string;
 };
 
 type RunExportWithProgress = <T extends ExportRunResult>(
@@ -123,11 +125,31 @@ type UseSidebarObjectActionsArgs = {
   runExportWithProgress: RunExportWithProgress;
   setAIPanelVisible: (visible: boolean) => void;
   addAIContext: (connectionId: string, context: { dbName: string; tableName: string; ddl: string }) => void;
-  migrateSchemaVisibilityForRenamedDatabase: (
+  migrateVisibilityForRenamedDatabase: (
     connection: SavedConnection,
     oldDbName: string,
     newDbName: string,
   ) => Promise<SavedConnection>;
+  removeVisibilityForDeletedDatabase: (
+    connection: SavedConnection,
+    dbName: string,
+  ) => Promise<SavedConnection>;
+  migrateVisibilityForRenamedSchema: (
+    connection: SavedConnection,
+    dbName: string,
+    oldSchemaName: string,
+    newSchemaName: string,
+  ) => Promise<SavedConnection>;
+  removeVisibilityForDeletedSchema: (
+    connection: SavedConnection,
+    dbName: string,
+    schemaName: string,
+  ) => Promise<SavedConnection>;
+  migratePinnedDatabaseKey: (
+    connectionId: string,
+    oldDbName: string,
+    newDbName?: string,
+  ) => void;
 };
 
 const resolveCopyObjectNameLabel = (node: any): string => {
@@ -252,7 +274,11 @@ export const useSidebarObjectActions = ({
   runExportWithProgress,
   setAIPanelVisible,
   addAIContext,
-  migrateSchemaVisibilityForRenamedDatabase,
+  migrateVisibilityForRenamedDatabase,
+  removeVisibilityForDeletedDatabase,
+  migrateVisibilityForRenamedSchema,
+  removeVisibilityForDeletedSchema,
+  migratePinnedDatabaseKey,
 }: UseSidebarObjectActionsArgs) => {
   const resolveActionConnection = (connRef: any): SavedConnection | null => {
     const connectionId = String(connRef?.id || connRef?.connectionId || '').trim();
@@ -615,6 +641,12 @@ export const useSidebarObjectActions = ({
         newSchemaName,
       );
       if (res.success) {
+        await migrateVisibilityForRenamedSchema(
+          conn as SavedConnection,
+          dbName,
+          oldSchemaName,
+          newSchemaName,
+        );
         const schemaKeyPrefixes = getSidebarSchemaTreeKeyPrefixes(conn.id, dbName, oldSchemaName);
         setExpandedKeys(prev => prev.filter(k => !isSidebarSchemaTreeKey(k, schemaKeyPrefixes)));
         setLoadedKeys(prev => prev.filter(k => !isSidebarSchemaTreeKey(k, schemaKeyPrefixes)));
@@ -651,6 +683,7 @@ export const useSidebarObjectActions = ({
           schemaName,
         );
         if (res.success) {
+          await removeVisibilityForDeletedSchema(conn as SavedConnection, dbName, schemaName);
           const schemaKeyPrefixes = getSidebarSchemaTreeKeyPrefixes(conn.id, dbName, schemaName);
           setExpandedKeys(prev => prev.filter(k => !isSidebarSchemaTreeKey(k, schemaKeyPrefixes)));
           setLoadedKeys(prev => prev.filter(k => !isSidebarSchemaTreeKey(k, schemaKeyPrefixes)));
@@ -683,11 +716,12 @@ export const useSidebarObjectActions = ({
       const config = buildRuntimeConfig(conn, conn.dbName);
       const res = await RenameDatabase(buildRpcConnectionConfig(config) as any, oldDbName, newDbName);
       if (res.success) {
-        const migratedConnection = await migrateSchemaVisibilityForRenamedDatabase(
+        const migratedConnection = await migrateVisibilityForRenamedDatabase(
           conn as SavedConnection,
           oldDbName,
           newDbName,
         );
+        migratePinnedDatabaseKey(String(conn.id || ''), oldDbName, newDbName);
         setExpandedKeys(prev => prev.filter(k => !k.toString().startsWith(`${conn.id}-${oldDbName}`)));
         setLoadedKeys(prev => prev.filter(k => !k.toString().startsWith(`${conn.id}-${oldDbName}`)));
         await loadDatabases(
@@ -718,10 +752,15 @@ export const useSidebarObjectActions = ({
         const config = buildRuntimeConfig(conn, conn.dbName);
         const res = await DropDatabase(buildRpcConnectionConfig(config) as any, dbName);
         if (res.success) {
+          const cleanedConnection = await removeVisibilityForDeletedDatabase(
+            conn as SavedConnection,
+            dbName,
+          );
+          migratePinnedDatabaseKey(String(conn.id || ''), dbName);
           closeTabsByDatabase(conn.id, dbName);
           setExpandedKeys(prev => prev.filter(k => !k.toString().startsWith(`${conn.id}-${dbName}`)));
           setLoadedKeys(prev => prev.filter(k => !k.toString().startsWith(`${conn.id}-${dbName}`)));
-          await loadDatabases(getConnectionNodeRef(conn), { ensureFresh: true });
+          await loadDatabases(getConnectionNodeRef(cleanedConnection), { ensureFresh: true });
           message.success(t('sidebar.message.database_deleted'));
         } else {
           message.error(t('sidebar.message.operation_drop_failed', { error: res.message }));
@@ -1551,12 +1590,44 @@ export const useSidebarObjectActions = ({
     if (!sourceConnection?.config) return null;
     const capabilities = getDataSourceCapabilities(sourceConnection.config);
     if (!capabilities.supportsMessagePublish) return null;
+    const actionTarget = resolveSidebarMessageActionTarget(node);
 
     return {
       connection: sourceConnection,
-      executionDbName: String(node?.dataRef?.dbName || ''),
-      destination: String(node?.dataRef?.tableName || node?.title || '').trim(),
+      executionDbName: actionTarget?.executionDbName || String(node?.dataRef?.dbName || ''),
+      destination: actionTarget?.publish.destination || '',
+      ...(actionTarget?.publish.exchange ? { exchange: actionTarget.publish.exchange } : {}),
     };
+  };
+
+  const openMessageQueueWorkbench = (
+    node: any,
+    action: 'open' | 'consume' | 'publish' = 'open',
+  ) => {
+    const connectionId = String(node?.dataRef?.id || node?.key || '').trim();
+    const liveConnection = connections.find((item) => item.id === connectionId);
+    const sourceConnection = (liveConnection || node?.dataRef) as SavedConnection | undefined;
+    const actionTarget = resolveSidebarMessageActionTarget(node);
+    if (!sourceConnection?.config || !actionTarget) {
+      message.warning(t('sidebar.message.message_queue_workbench_unsupported'));
+      return;
+    }
+    const dbName = actionTarget.executionDbName
+      || String(node?.dataRef?.dbName || sourceConnection.config.database || '').trim();
+    const target = action === 'publish'
+      ? actionTarget.publish.destination
+      : actionTarget.consume.destination;
+    addTab({
+      id: `message-queue-${sourceConnection.id}-${encodeURIComponent(dbName || 'default')}`,
+      title: `${sourceConnection.name} · ${t('message_queue_workbench.tab_kind')}`,
+      type: 'message-queue',
+      connectionId: sourceConnection.id,
+      dbName,
+      messageQueueTarget: target,
+      messageQueueObjectKind: actionTarget.objectKind || undefined,
+      messageQueueAction: action,
+      messageQueueRequestKey: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    });
   };
 
   const openMessagePublishModal = (node: any) => {
@@ -1626,6 +1697,7 @@ export const useSidebarObjectActions = ({
     handleDropRoutine,
     handleCompileOracleObject,
     resolveMessagePublishTarget,
+    openMessageQueueWorkbench,
     openMessagePublishModal,
     handleMessagePublishSuccess,
   };

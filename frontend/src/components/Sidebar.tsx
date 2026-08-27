@@ -16,6 +16,8 @@ import {
 } from './sidebar/useSidebarBatchExport';
 import { SidebarEntityModals } from './sidebar/SidebarEntityModals';
 import { SavedQueryGroupModal } from './sidebar/SavedQueryGroupModal';
+import DatabaseSchemaVisibilityModal from './sidebar/DatabaseSchemaVisibilityModal';
+import type { DatabaseSchemaVisibilityDraft } from './sidebar/databaseSchemaVisibility';
 import { renderSidebarV2TreeTitle } from './sidebar/SidebarTreeTitle';
 import {
   useSidebarV2ContextMenu,
@@ -136,7 +138,7 @@ import {
     selectRecentSidebarSqlLogs,
     selectSidebarCommandSearchSqlLogs,
 } from './sidebar/sidebarSqlLogSelector';
-		import { SavedConnection, SavedQuery, SavedQueryGroup, ExternalSQLDirectory, ExternalSQLTreeEntry, SchemaVisibilityRule } from '../types';
+		import { SavedConnection, SavedQuery, SavedQueryGroup, ExternalSQLDirectory, ExternalSQLTreeEntry } from '../types';
 import { getDbIcon } from './DatabaseIcons';
 		import { ListSQLDirectory } from '../../wailsjs/go/app/App';
 import { supportsTableTruncateAction } from './tableDataDangerActions';
@@ -149,7 +151,9 @@ import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
 import { buildSqlAnalysisWorkbenchTab } from '../utils/sqlAnalysisTab';
 import { buildSqlAuditWorkbenchTab } from '../utils/sqlAuditTab';
 import {
+    normalizeSidebarDatabaseListRefreshRequest,
     normalizeSidebarDatabaseRefreshRequest,
+    SIDEBAR_DATABASE_LIST_REFRESH_EVENT,
     SIDEBAR_DATABASE_REFRESH_EVENT,
 } from '../utils/sidebarDatabaseRefresh';
 import { getDataSourceCapabilities, resolveDataSourceType } from '../utils/dataSourceCapabilities';
@@ -179,10 +183,15 @@ import {
   resolveSavedQueryGroupChildOrder,
 } from '../utils/savedQueryGroups';
 import {
-  getSchemaVisibilityRule,
+  moveSchemaVisibilityEntry,
   moveSchemaVisibilityRule,
+  removeSchemaVisibilityEntry,
   updateSchemaVisibilityRule,
 } from '../utils/schemaVisibility';
+import {
+  moveExactDatabaseVisibilityEntry,
+  removeExactDatabaseVisibilityEntry,
+} from '../utils/databaseVisibility';
 import { buildJVMTabTitle } from '../utils/jvmRuntimePresentation';
 import { buildJVMDiagnosticActionDescriptor, buildJVMMonitoringActionDescriptors } from '../utils/jvmSidebarActions';
 import {
@@ -304,7 +313,7 @@ export const resolveSidebarSwitcherLoadKey = (node: SidebarTreeSwitcherNodeLike 
     return connectionId ? `dbs-${connectionId}` : null;
   }
 
-  if (treeNode.type === 'database') {
+  if (treeNode.type === 'database' || treeNode.type === 'message-namespace') {
     const connectionId = String(dataRef?.id || '').trim();
     const dbName = String(dataRef?.dbName || '').trim();
     return connectionId && dbName ? `tables-${connectionId}-${dbName}` : null;
@@ -1153,17 +1162,11 @@ const Sidebar: React.FC<{
   const [isRenameSchemaModalOpen, setIsRenameSchemaModalOpen] = useState(false);
   const [renameSchemaForm] = Form.useForm();
   const [renameSchemaTarget, setRenameSchemaTarget] = useState<any>(null);
-  const [schemaVisibilityForm] = Form.useForm<{
-      mode: SchemaVisibilityRule['mode'];
-      schemas: string[];
-  }>();
-  const [schemaVisibilityTarget, setSchemaVisibilityTarget] = useState<{
+  const [connectionVisibilityTarget, setConnectionVisibilityTarget] = useState<{
       connection: SavedConnection;
-      dbName: string;
-      databaseNodeKey: React.Key;
-      availableSchemas: string[];
+      initialDatabase?: string;
   } | null>(null);
-  const [isSavingSchemaVisibility, setIsSavingSchemaVisibility] = useState(false);
+  const [isSavingConnectionVisibility, setIsSavingConnectionVisibility] = useState(false);
   const [isRenameDbModalOpen, setIsRenameDbModalOpen] = useState(false);
   const [renameDbForm] = Form.useForm();
   const [renameDbTarget, setRenameDbTarget] = useState<any>(null);
@@ -1204,7 +1207,7 @@ const Sidebar: React.FC<{
 
       expandedKeys.forEach(key => {
           const node = findTreeNodeByKey(treeData, key);
-          if (node && node.type === 'database') {
+          if (node && (node.type === 'database' || node.type === 'message-namespace')) {
               loadTables(node, { ensureFresh: true });
           }
       });
@@ -1610,7 +1613,7 @@ const Sidebar: React.FC<{
 
   const getNodeDatabaseContext = (node: any): { connectionId: string; dbName: string; dbNodeKey: string } | null => {
     if (!node) return null;
-    if (node.type === 'database') {
+    if (node.type === 'database' || node.type === 'message-namespace') {
       return {
         connectionId: String(node?.dataRef?.id || '').trim(),
         dbName: String(node?.dataRef?.dbName || '').trim(),
@@ -1836,7 +1839,7 @@ const Sidebar: React.FC<{
         await loadDatabases({ key, dataRef });
     } else if (type === 'jvm-mode' || type === 'jvm-resource') {
         await loadJVMResources({ key, dataRef });
-    } else if (type === 'database') {
+    } else if (type === 'database' || type === 'message-namespace') {
         await loadTables({ key, dataRef });
     } else if (type === 'nacos-config-entry') {
         await loadNacosConfigGroups({ key, dataRef });
@@ -1995,6 +1998,12 @@ const Sidebar: React.FC<{
       return false;
   };
 
+  const openMessageObjectNode = (node: any): boolean => {
+      if (node?.type !== 'message-object') return false;
+      openMessageQueueWorkbench(node, 'open');
+      return true;
+  };
+
   const onSelect = (keys: React.Key[], info: any) => {
       if (isV2Ui && (info?.node?.type === 'v2-table-section' || info?.node?.type === 'v2-database-section')) {
           return;
@@ -2022,9 +2031,9 @@ const Sidebar: React.FC<{
       // Update active context
       if (type === 'connection') {
           setActiveContext({ connectionId: key, dbName: '' });
-      } else if (type === 'database') {
+      } else if (type === 'database' || type === 'message-namespace') {
           setActiveContext({ connectionId: nodeConnectionId || dataRef.id, dbName: dataRef.dbName });
-      } else if (type === 'table') {
+      } else if (type === 'table' || type === 'message-object') {
           setActiveContext({ connectionId: nodeConnectionId || dataRef.id, dbName: dataRef.dbName });
       } else if (type === 'jvm-mode' || type === 'jvm-resource' || type === 'jvm-diagnostic' || type === 'jvm-monitoring') {
           setActiveContext({ connectionId: nodeConnectionId || dataRef.id, dbName: '' });
@@ -2120,13 +2129,13 @@ const Sidebar: React.FC<{
           setSelectedKeys([nodeKey]);
           selectedNodesRef.current = [node];
           setActiveContext({ connectionId: nodeKey, dbName: '' });
-      } else if (type === 'database') {
+      } else if (type === 'database' || type === 'message-namespace') {
           setSelectedKeys([nodeKey]);
           selectedNodesRef.current = [node];
           setActiveContext({ connectionId: nodeConnectionId || dataRef.id, dbName: dataRef.dbName });
       } else if (type === 'jvm-mode' || type === 'jvm-resource' || type === 'jvm-diagnostic' || type === 'jvm-monitoring') {
           setActiveContext({ connectionId: nodeConnectionId || dataRef.id, dbName: '' });
-      } else if (type === 'table' || type === 'view' || type === 'materialized-view' || type === 'sequence' || type === 'package' || type === 'db-trigger' || type === 'db-event' || type === 'routine') {
+      } else if (type === 'table' || type === 'message-object' || type === 'view' || type === 'materialized-view' || type === 'sequence' || type === 'package' || type === 'db-trigger' || type === 'db-event' || type === 'routine') {
           setActiveContext({ connectionId: nodeConnectionId || dataRef.id, dbName: dataRef.dbName });
       } else if (type === 'saved-query') setActiveContext({ connectionId: dataRef.connectionId, dbName: dataRef.dbName });
       else if (type === 'redis-db') setActiveContext({ connectionId: dataRef.id, dbName: `db${dataRef.redisDB}` });
@@ -2143,7 +2152,17 @@ const Sidebar: React.FC<{
           });
       }
 
-      if (node.type === 'table') {
+      const isMessageQueueConnection = node.type === 'connection'
+          && ['mqtt', 'kafka', 'rocketmq', 'rabbitmq'].includes(
+              resolveDataSourceType(node.dataRef?.config),
+          );
+      if (isMessageQueueConnection || node.type === 'message-namespace') {
+          openMessageQueueWorkbench(node, 'open');
+          return;
+      }
+      if (openMessageObjectNode(node)) {
+          return;
+      } else if (node.type === 'table') {
           const { tableName, dbName, id } = node.dataRef;
           // 记录表访问
           recordTableAccess(id, dbName, tableName);
@@ -2569,6 +2588,30 @@ const Sidebar: React.FC<{
   };
 
   useEffect(() => {
+      const handleSidebarDatabaseListRefresh = (event: Event) => {
+          const request = normalizeSidebarDatabaseListRefreshRequest((event as CustomEvent).detail);
+          if (!request) return;
+          const connectionNode = findTreeNodeByKeyRef.current(
+              treeDataRef.current,
+              request.connectionId,
+          );
+          if (connectionNode) {
+              void refreshConnectionResources(connectionNode);
+          }
+      };
+      window.addEventListener(
+          SIDEBAR_DATABASE_LIST_REFRESH_EVENT,
+          handleSidebarDatabaseListRefresh as EventListener,
+      );
+      return () => {
+          window.removeEventListener(
+              SIDEBAR_DATABASE_LIST_REFRESH_EVENT,
+              handleSidebarDatabaseListRefresh as EventListener,
+          );
+      };
+  }, [refreshConnectionResources]);
+
+  useEffect(() => {
       const handleNacosServicesChanged = (event: Event) => {
           const target = resolveNacosServiceGroupsRefreshTarget(
               (event as CustomEvent).detail,
@@ -2595,142 +2638,97 @@ const Sidebar: React.FC<{
       };
   }, []);
 
+  const supportsConnectionVisibility = useCallback((connection: SavedConnection): boolean => (
+      getDataSourceCapabilities(connection.config).supportsPrimaryVisibility
+  ), []);
+
+  const openConnectionVisibilitySettings = useCallback((connection: SavedConnection, initialDatabase?: string) => {
+      const currentConnection = connections.find((item) => item.id === connection.id) || connection;
+      if (!supportsConnectionVisibility(currentConnection)) return;
+      setConnectionVisibilityTarget({
+          connection: currentConnection,
+          initialDatabase: String(initialDatabase || '').trim() || undefined,
+      });
+  }, [connections, supportsConnectionVisibility]);
+
   const openSchemaVisibilitySettings = useCallback((node: any) => {
       const dbName = String(node?.dataRef?.dbName || node?.title || '').trim();
       const connectionId = String(node?.dataRef?.id || '').trim();
       const connection = connections.find((item) => item.id === connectionId) || node?.dataRef;
-      if (!connection || !dbName || !shouldHideSchemaPrefix(connection as SavedConnection)) {
-          return;
-      }
+      if (!connection || !dbName) return;
+      const capabilities = getDataSourceCapabilities((connection as SavedConnection).config);
+      if (!capabilities.supportsSecondarySchemaVisibility) return;
+      openConnectionVisibilitySettings(connection as SavedConnection, dbName);
+  }, [connections, openConnectionVisibilitySettings]);
 
-      const databaseNode = node?.type === 'database'
-          ? node
-          : getDatabaseNodeRef(connection, dbName);
-      const currentRule = getSchemaVisibilityRule(connection as SavedConnection, dbName);
-      const availableSchemas = Array.from(new Set([
-          ...(Array.isArray(databaseNode?.children)
-              ? databaseNode.children
-                  .filter((item: any) => item?.dataRef?.groupKey === 'schema')
-                  .map((item: any) => String(item?.dataRef?.schemaName || item?.title || '').trim())
-              : []),
-          ...(currentRule?.schemas || []),
-      ].filter(Boolean))).sort((a, b) => a.localeCompare(b));
-
-      schemaVisibilityForm.setFieldsValue({
-          mode: currentRule?.mode || 'include',
-          schemas: currentRule?.schemas || [],
-      });
-      setSchemaVisibilityTarget({
-          connection: connection as SavedConnection,
-          dbName,
-          databaseNodeKey: databaseNode?.key || `${connectionId}-${dbName}`,
-          availableSchemas,
-      });
-      void loadSchemas(connection as SavedConnection, dbName).then((result) => {
-          const loadedSchemas = Array.isArray(result?.schemas)
-              ? result.schemas.map((schema) => String(schema || '').trim()).filter(Boolean)
-              : [];
-          if (loadedSchemas.length === 0) return;
-          setSchemaVisibilityTarget((current) => {
-              if (!current || current.connection.id !== connectionId || current.dbName !== dbName) {
-                  return current;
-              }
-              return {
-                  ...current,
-                  availableSchemas: Array.from(new Set([
-                      ...current.availableSchemas,
-                      ...loadedSchemas,
-                  ])).sort((left, right) => left.localeCompare(right)),
-              };
-          });
-      }).catch(() => undefined);
-  }, [connections, getDatabaseNodeRef, schemaVisibilityForm]);
-
-  const handleSaveSchemaVisibility = useCallback(async () => {
-      if (!schemaVisibilityTarget) return;
-      setIsSavingSchemaVisibility(true);
+  const handleSaveConnectionVisibility = useCallback(async (
+      draft: DatabaseSchemaVisibilityDraft,
+  ) => {
+      if (!connectionVisibilityTarget) return;
+      setIsSavingConnectionVisibility(true);
       try {
-          const values = await schemaVisibilityForm.validateFields();
-          const mode = values.mode === 'exclude' ? 'exclude' : 'include';
-          const seenSchemas = new Set<string>();
-          const schemas = (Array.isArray(values.schemas) ? values.schemas : [])
-              .map((schema) => String(schema || '').trim())
-              .filter((schema) => {
-                  const normalized = schema.toLocaleLowerCase();
-                  if (!normalized || seenSchemas.has(normalized)) return false;
-                  seenSchemas.add(normalized);
-                  return true;
-              });
-          const nextRule: SchemaVisibilityRule | undefined = schemas.length > 0
-              ? { mode, schemas }
-              : undefined;
-          const nextConnection = updateSchemaVisibilityRule(
-              schemaVisibilityTarget.connection,
-              schemaVisibilityTarget.dbName,
-              nextRule,
-          );
+          const target = connections.find(
+              (item) => item.id === connectionVisibilityTarget.connection.id,
+          ) || connectionVisibilityTarget.connection;
+          const isRedis = target.config.type === 'redis';
           const backendApp = (window as any).go?.app?.App;
-          if (typeof backendApp?.SaveConnection !== 'function') {
+          if (typeof backendApp?.UpdateConnectionVisibility !== 'function') {
               throw new Error(t('connection_modal.message.save_failed'));
           }
-          const saved = await backendApp.SaveConnection({
-              id: nextConnection.id,
-              name: nextConnection.name,
-              config: nextConnection.config,
-              includeDatabases: nextConnection.includeDatabases,
-              includeDatabasePatterns: nextConnection.includeDatabasePatterns,
-              excludeDatabasePatterns: nextConnection.excludeDatabasePatterns,
-              includeRedisDatabases: nextConnection.includeRedisDatabases,
-              schemaVisibilityByDatabase: nextConnection.schemaVisibilityByDatabase,
-              iconType: nextConnection.iconType,
-              iconColor: nextConnection.iconColor,
+          const saved = await backendApp.UpdateConnectionVisibility({
+              id: target.id,
+              includeDatabases: isRedis ? target.includeDatabases : draft.includeDatabases,
+              includeDatabasePatterns: isRedis ? target.includeDatabasePatterns : draft.includeDatabasePatterns,
+              excludeDatabasePatterns: isRedis ? target.excludeDatabasePatterns : draft.excludeDatabasePatterns,
+              includeRedisDatabases: isRedis
+                  ? draft.includeDatabases
+                      .map((database) => Number(String(database).replace(/^db/i, '')))
+                      .filter((database) => Number.isInteger(database) && database >= 0)
+                  : target.includeRedisDatabases,
+              schemaVisibilityByDatabase: isRedis
+                  ? target.schemaVisibilityByDatabase
+                  : draft.schemaVisibilityByDatabase,
           });
-          const persistedConnection: SavedConnection = {
-              ...nextConnection,
-              ...(saved || {}),
-              schemaVisibilityByDatabase: nextConnection.schemaVisibilityByDatabase,
-          };
+          const persistedConnection = saved as SavedConnection;
           connectionReloadSignaturesRef.current[persistedConnection.id] =
               buildConnectionReloadSignature(persistedConnection);
           updateConnection(persistedConnection);
-          await loadTables(
-              {
-                  key: schemaVisibilityTarget.databaseNodeKey,
-                  type: 'database',
-                  dataRef: {
-                      ...persistedConnection,
-                      dbName: schemaVisibilityTarget.dbName,
-                  },
-              },
+          const connectionNodeKey = persistedConnection.id;
+          setLoadedKeys((previous) => previous.filter(
+              (key) => !isConnectionTreeKey(String(key), connectionNodeKey),
+          ));
+          replaceTreeNodeChildren(connectionNodeKey, undefined, persistedConnection);
+          await loadDatabases(
+              { key: connectionNodeKey, type: 'connection', dataRef: persistedConnection },
               { ensureFresh: true },
           );
-          setExpandedKeys((previous) => previous.includes(schemaVisibilityTarget.databaseNodeKey)
+          setExpandedKeys((previous) => previous.includes(connectionNodeKey)
               ? previous
-              : [...previous, schemaVisibilityTarget.databaseNodeKey]);
-          setSchemaVisibilityTarget(null);
-          message.success(t('sidebar.schema_visibility.message.saved'));
+              : [...previous, connectionNodeKey]);
+          setConnectionVisibilityTarget(null);
+          message.success(t('sidebar.database_schema_visibility.message.saved'));
       } catch (error: any) {
-          message.error(t('sidebar.schema_visibility.message.save_failed', {
+          message.error(t('sidebar.database_schema_visibility.message.save_failed', {
               error: error?.message || String(error),
           }));
       } finally {
-          setIsSavingSchemaVisibility(false);
+          setIsSavingConnectionVisibility(false);
       }
-  }, [loadTables, schemaVisibilityForm, schemaVisibilityTarget, updateConnection]);
+  }, [connectionVisibilityTarget, connections, loadDatabases, updateConnection]);
 
-  const migrateSchemaVisibilityForRenamedDatabase = useCallback(async (
-      connection: SavedConnection,
-      oldDbName: string,
-      newDbName: string,
+  const persistConnectionVisibilityMetadata = useCallback(async (
+      currentConnection: SavedConnection,
+      nextConnection: SavedConnection,
   ): Promise<SavedConnection> => {
-      const currentConnection = connections.find((item) => item.id === connection.id) || connection;
-      const nextConnection = moveSchemaVisibilityRule(currentConnection, oldDbName, newDbName);
-      if (nextConnection === currentConnection) {
+      if (
+          JSON.stringify(nextConnection.includeDatabases || []) === JSON.stringify(currentConnection.includeDatabases || [])
+          && JSON.stringify(nextConnection.schemaVisibilityByDatabase || {}) === JSON.stringify(currentConnection.schemaVisibilityByDatabase || {})
+      ) {
           return currentConnection;
       }
 
       const backendApp = (window as any).go?.app?.App;
-      if (typeof backendApp?.SaveConnection !== 'function') {
+      if (typeof backendApp?.UpdateConnectionVisibility !== 'function') {
           message.warning(t('sidebar.schema_visibility.message.save_failed', {
               error: t('connection_modal.message.save_failed'),
           }));
@@ -2738,23 +2736,15 @@ const Sidebar: React.FC<{
       }
 
       try {
-          const saved = await backendApp.SaveConnection({
+          const saved = await backendApp.UpdateConnectionVisibility({
               id: nextConnection.id,
-              name: nextConnection.name,
-              config: nextConnection.config,
               includeDatabases: nextConnection.includeDatabases,
               includeDatabasePatterns: nextConnection.includeDatabasePatterns,
               excludeDatabasePatterns: nextConnection.excludeDatabasePatterns,
               includeRedisDatabases: nextConnection.includeRedisDatabases,
               schemaVisibilityByDatabase: nextConnection.schemaVisibilityByDatabase,
-              iconType: nextConnection.iconType,
-              iconColor: nextConnection.iconColor,
           });
-          const persistedConnection: SavedConnection = {
-              ...nextConnection,
-              ...(saved || {}),
-              schemaVisibilityByDatabase: nextConnection.schemaVisibilityByDatabase,
-          };
+          const persistedConnection = saved as SavedConnection;
           connectionReloadSignaturesRef.current[persistedConnection.id] =
               buildConnectionReloadSignature(persistedConnection);
           updateConnection(persistedConnection);
@@ -2765,7 +2755,129 @@ const Sidebar: React.FC<{
           }));
           return currentConnection;
       }
-  }, [connections, updateConnection]);
+  }, [updateConnection]);
+
+  const migrateVisibilityForRenamedDatabase = useCallback(async (
+      connection: SavedConnection,
+      oldDbName: string,
+      newDbName: string,
+  ): Promise<SavedConnection> => {
+      const currentConnection = connections.find((item) => item.id === connection.id) || connection;
+      const capabilities = getDataSourceCapabilities(currentConnection.config);
+      const nextConnection = {
+          ...moveSchemaVisibilityRule(
+              currentConnection,
+              oldDbName,
+              newDbName,
+              { caseSensitive: capabilities.schemaIdentifierCaseSensitive },
+          ),
+          includeDatabases: moveExactDatabaseVisibilityEntry(
+              currentConnection,
+              oldDbName,
+              newDbName,
+          ),
+      };
+      return persistConnectionVisibilityMetadata(currentConnection, nextConnection);
+  }, [connections, persistConnectionVisibilityMetadata]);
+
+  const removeVisibilityForDeletedDatabase = useCallback(async (
+      connection: SavedConnection,
+      dbName: string,
+  ): Promise<SavedConnection> => {
+      const currentConnection = connections.find((item) => item.id === connection.id) || connection;
+      const capabilities = getDataSourceCapabilities(currentConnection.config);
+      const connectionNode = findTreeNodeByKeyRef.current(
+          treeDataRef.current,
+          currentConnection.id,
+      );
+      const remainingLoadedDatabases = Array.from(new Set(
+          (connectionNode?.children || [])
+              .filter((child) => child.type === 'database')
+              .map((child) => String(child.dataRef?.dbName || child.title || '').trim())
+              .filter((name) => name && name !== dbName),
+      ));
+      const exactIncludes = removeExactDatabaseVisibilityEntry(currentConnection, dbName);
+      const nextConnection = {
+          ...updateSchemaVisibilityRule(
+              currentConnection,
+              dbName,
+              undefined,
+              { caseSensitive: capabilities.schemaIdentifierCaseSensitive },
+          ),
+          includeDatabases: Array.isArray(currentConnection.includeDatabases)
+              && currentConnection.includeDatabases.length > 0
+              && exactIncludes?.length === 0
+              ? (remainingLoadedDatabases.length > 0 ? remainingLoadedDatabases : [dbName])
+              : exactIncludes,
+      };
+      return persistConnectionVisibilityMetadata(currentConnection, nextConnection);
+  }, [connections, persistConnectionVisibilityMetadata]);
+
+  const migrateVisibilityForRenamedSchema = useCallback(async (
+      connection: SavedConnection,
+      dbName: string,
+      oldSchemaName: string,
+      newSchemaName: string,
+  ): Promise<SavedConnection> => {
+      const currentConnection = connections.find((item) => item.id === connection.id) || connection;
+      const capabilities = getDataSourceCapabilities(currentConnection.config);
+      const nextConnection = moveSchemaVisibilityEntry(
+          currentConnection,
+          dbName,
+          oldSchemaName,
+          newSchemaName,
+          { caseSensitive: capabilities.schemaIdentifierCaseSensitive },
+      );
+      return persistConnectionVisibilityMetadata(currentConnection, nextConnection);
+  }, [connections, persistConnectionVisibilityMetadata]);
+
+  const removeVisibilityForDeletedSchema = useCallback(async (
+      connection: SavedConnection,
+      dbName: string,
+      schemaName: string,
+  ): Promise<SavedConnection> => {
+      const currentConnection = connections.find((item) => item.id === connection.id) || connection;
+      const capabilities = getDataSourceCapabilities(currentConnection.config);
+      const databaseNode = findTreeNodeByKeyRef.current(
+          treeDataRef.current,
+          `${currentConnection.id}-${dbName}`,
+      );
+      const normalizeSchemaName = (name: string) => (
+          capabilities.schemaIdentifierCaseSensitive
+              ? name
+              : name.toLocaleLowerCase()
+      );
+      const deletedSchemaKey = normalizeSchemaName(schemaName);
+      const remainingLoadedSchemas = (databaseNode?.children || [])
+          .filter((child) => (
+              child.type === 'object-group'
+              && child.dataRef?.groupKey === 'schema'
+              && String(child.dataRef?.id || '') === currentConnection.id
+              && String(child.dataRef?.dbName || '') === dbName
+          ))
+          .map((child) => String(child.dataRef?.schemaName ?? '').trim())
+          .filter((name) => name && normalizeSchemaName(name) !== deletedSchemaKey);
+      const nextConnection = removeSchemaVisibilityEntry(
+          currentConnection,
+          dbName,
+          schemaName,
+          { caseSensitive: capabilities.schemaIdentifierCaseSensitive },
+          remainingLoadedSchemas,
+      );
+      return persistConnectionVisibilityMetadata(currentConnection, nextConnection);
+  }, [connections, persistConnectionVisibilityMetadata]);
+
+  const migratePinnedDatabaseKey = useCallback((
+      connectionId: string,
+      oldDbName: string,
+      newDbName?: string,
+  ) => {
+      if (!isSidebarDatabasePinned(pinnedSidebarDatabases, connectionId, oldDbName)) return;
+      setSidebarDatabasePinned(connectionId, oldDbName, false);
+      if (newDbName) {
+          setSidebarDatabasePinned(connectionId, newDbName, true);
+      }
+  }, [pinnedSidebarDatabases, setSidebarDatabasePinned]);
 
   const {
       handleCopyStructure,
@@ -2812,6 +2924,7 @@ const Sidebar: React.FC<{
       handleDropRoutine,
       handleCompileOracleObject,
       resolveMessagePublishTarget,
+      openMessageQueueWorkbench,
       openMessagePublishModal,
       handleMessagePublishSuccess,
   } = useSidebarObjectActions({
@@ -2875,7 +2988,11 @@ const Sidebar: React.FC<{
       runExportWithProgress,
       setAIPanelVisible,
       addAIContext,
-      migrateSchemaVisibilityForRenamedDatabase,
+      migrateVisibilityForRenamedDatabase,
+      removeVisibilityForDeletedDatabase,
+      migrateVisibilityForRenamedSchema,
+      removeVisibilityForDeletedSchema,
+      migratePinnedDatabaseKey,
   });
 
 
@@ -2933,6 +3050,7 @@ const Sidebar: React.FC<{
       openDesign,
       openNewTableDesign,
       onDoubleClick,
+      openMessageQueueWorkbench,
       openMessagePublishModal,
       openTableDdlInDesigner,
       openTableInERView,
@@ -2957,6 +3075,7 @@ const Sidebar: React.FC<{
       handleDeleteDatabase,
       onCreateConnectionInGroup,
       onEditConnection,
+      openConnectionVisibilitySettings,
       handleDuplicateConnection,
       buildConnectionRootQueryTabTitle,
       buildConnectionRootRedisCommandTabTitle,
@@ -3015,6 +3134,12 @@ const Sidebar: React.FC<{
       setAIPanelVisible,
       extractObjectName,
   });
+  const activeConnectionIsMessageQueue = [
+      'mqtt',
+      'kafka',
+      'rocketmq',
+      'rabbitmq',
+  ].includes(resolveDataSourceType(activeConnection?.config));
   const legacyToolbarButtonColor = darkMode ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.65)';
   const legacyToolbarStyle: React.CSSProperties = {
       padding: '6px 16px',
@@ -3067,6 +3192,7 @@ const Sidebar: React.FC<{
       handleDeleteSchema,
       openRenameSchemaModal,
       openSchemaVisibilitySettings,
+      supportsConnectionVisibility,
       resolveMessagePublishTarget,
       addSqlLog,
       handleV2TableContextMenuAction,
@@ -3181,6 +3307,8 @@ const Sidebar: React.FC<{
     getMetadataDialect,
     shouldHideSchemaPrefix,
     openSchemaVisibilitySettings,
+    openConnectionVisibilitySettings,
+    supportsConnectionVisibility,
     handleV2DatabaseContextMenuAction,
     isPostgresSchemaDialect,
     handleExportSchemaSQL,
@@ -3233,6 +3361,7 @@ const Sidebar: React.FC<{
     openSequenceDefinition,
     openPackageDefinition,
     resolveMessagePublishTarget,
+    openMessageQueueWorkbench,
     openMessagePublishModal,
     openDesign,
     openCreateStarRocksRollup,
@@ -3661,6 +3790,9 @@ const Sidebar: React.FC<{
   );
   const v2CommandSearchLabel = t('sidebar.command_search.label');
   const v2CommandSearchPlaceholder = t('sidebar.command_search.placeholder');
+  const v2ExplorerSearchPlaceholder = activeConnectionIsMessageQueue
+      ? t('sidebar.message_queue.search_placeholder')
+      : v2CommandSearchPlaceholder;
 
   const handleOpenDataImportWorkbench = useCallback(() => {
     const node = selectedNodesRef.current[0];
@@ -4121,7 +4253,7 @@ const Sidebar: React.FC<{
                         aria-label={v2CommandSearchLabel}
                     >
                         <SearchOutlined />
-                        <span>{v2PersistedSidebarFilter || v2CommandSearchPlaceholder}</span>
+                        <span>{v2PersistedSidebarFilter || v2ExplorerSearchPlaceholder}</span>
                         {focusSidebarSearchShortcutTokens.length > 0 ? (
                             <span className="gn-v2-search-shortcut" aria-hidden="true">
                                 {focusSidebarSearchShortcutTokens.map((token, index) => (
@@ -4234,7 +4366,7 @@ const Sidebar: React.FC<{
             )}
         </div>
 
-        {isV2Ui && (
+        {isV2Ui && !activeConnectionIsMessageQueue && (
             <div className="gn-v2-explorer-filter-tabs" aria-label={t('sidebar.command_search.object_kind.filter_aria')}>
                 {V2_EXPLORER_FILTER_OPTIONS.map((item) => (
                     <button
@@ -4529,77 +4661,53 @@ const Sidebar: React.FC<{
             onSave={handleSaveSavedQueryGroup}
         />
 
-        <Modal
-            title={renderSidebarModalTitle(
-                <FolderOpenOutlined />,
-                t('sidebar.schema_visibility.title', { database: schemaVisibilityTarget?.dbName || '' }),
-                t('sidebar.schema_visibility.description'),
-            )}
-            open={Boolean(schemaVisibilityTarget)}
-            centered
-            width={560}
-            okText={t('common.save')}
-            confirmLoading={isSavingSchemaVisibility}
-            styles={{
-                content: modalPanelStyle,
-                header: { background: 'transparent', borderBottom: 'none', paddingBottom: 10 },
-                body: { paddingTop: 8 },
-                footer: { background: 'transparent', borderTop: 'none', paddingTop: 12 },
-            }}
-            onOk={() => void handleSaveSchemaVisibility()}
-            onCancel={() => {
-                setSchemaVisibilityTarget(null);
-                schemaVisibilityForm.resetFields();
-            }}
-        >
-            <Form form={schemaVisibilityForm} layout="vertical">
-                <div style={modalSectionStyle}>
-                    <Form.Item
-                        name="mode"
-                        label={t('sidebar.schema_visibility.field.mode')}
-                        style={{ marginBottom: 14 }}
-                    >
-                        <Radio.Group optionType="button" buttonStyle="solid">
-                            <Radio.Button value="include">
-                                {t('sidebar.schema_visibility.mode.include')}
-                            </Radio.Button>
-                            <Radio.Button value="exclude">
-                                {t('sidebar.schema_visibility.mode.exclude')}
-                            </Radio.Button>
-                        </Radio.Group>
-                    </Form.Item>
-                    <Form.Item
-                        name="schemas"
-                        label={t('sidebar.schema_visibility.field.schemas')}
-                        help={t('sidebar.schema_visibility.field.schemas_help')}
-                        style={{ marginBottom: 12 }}
-                    >
-                        <Select
-                            mode="tags"
-                            allowClear
-                            tokenSeparators={[',', ';', '，', '；']}
-                            placeholder={t('sidebar.schema_visibility.field.schemas_placeholder')}
-                            options={(schemaVisibilityTarget?.availableSchemas || []).map((schema) => ({
-                                label: schema,
-                                value: schema,
-                            }))}
-                        />
-                    </Form.Item>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                        <span style={modalHintTextStyle}>
-                            {t('sidebar.schema_visibility.notice')}
-                        </span>
-                        <Button
-                            type="link"
-                            size="small"
-                            onClick={() => schemaVisibilityForm.setFieldsValue({ schemas: [] })}
-                        >
-                            {t('sidebar.schema_visibility.action.show_all')}
-                        </Button>
-                    </div>
-                </div>
-            </Form>
-        </Modal>
+        {connectionVisibilityTarget && (() => {
+            const target = connectionVisibilityTarget.connection;
+            const capabilities = getDataSourceCapabilities(target.config);
+            const isRedis = target.config.type === 'redis';
+            const source = isRedis ? {
+                includeDatabases: target.includeRedisDatabases?.map((database) => `db${database}`),
+                schemaVisibilityByDatabase: undefined,
+            } : target;
+            const primaryKind = capabilities.navigation.primaryKind;
+            const primaryLabel = t(`sidebar.database_schema_visibility.primary.${primaryKind}`);
+            return (
+                <DatabaseSchemaVisibilityModal
+                    open
+                    connectionName={target.name}
+                    source={source}
+                    initialDatabase={isRedis
+                        ? undefined
+                        : connectionVisibilityTarget.initialDatabase}
+                    primaryLabel={primaryLabel}
+                    supportsSchemas={!isRedis && capabilities.supportsSecondarySchemaVisibility}
+                    databaseCaseSensitive={capabilities.schemaIdentifierCaseSensitive}
+                    schemaCaseSensitive={capabilities.schemaIdentifierCaseSensitive}
+                    saving={isSavingConnectionVisibility}
+                    loadDatabases={async () => {
+                        const backendApp = (window as any).go?.app?.App;
+                        const result = isRedis
+                            ? await backendApp.RedisGetDatabases(buildRpcConnectionConfig(target.config))
+                            : await backendApp.DBGetDatabases(buildRpcConnectionConfig(target.config));
+                        if (!result?.success) {
+                            throw new Error(result?.message || t('sidebar.database_schema_visibility.message.load_failed_fallback'));
+                        }
+                        const rows = Array.isArray(result.data) ? result.data : [];
+                        return isRedis
+                            ? rows
+                                .map((row: any) => Number(row?.index ?? row?.Index))
+                                .filter((database: number) => Number.isInteger(database) && database >= 0)
+                                .map((database: number) => `db${database}`)
+                            : rows
+                                .map((row: any) => String(row?.Database ?? row?.database ?? '').trim())
+                                .filter(Boolean);
+                    }}
+                    loadSchemas={async (database) => loadSchemas(target, database)}
+                    onCancel={() => setConnectionVisibilityTarget(null)}
+                    onSave={handleSaveConnectionVisibility}
+                />
+            );
+        })()}
 
         <ExternalSQLFileModal {...externalSQLFileModalProps} />
         <ExternalSQLBindingModal {...externalSQLBindingModalProps} />
@@ -4615,6 +4723,7 @@ const Sidebar: React.FC<{
             connection={messagePublishTarget?.connection || null}
             executionDbName={messagePublishTarget?.executionDbName || ''}
             defaultDestination={messagePublishTarget?.destination || ''}
+            defaultExchange={messagePublishTarget?.exchange || ''}
             onCancel={() => setMessagePublishTarget(null)}
             onSuccess={handleMessagePublishSuccess}
         />

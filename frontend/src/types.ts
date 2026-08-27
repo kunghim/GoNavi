@@ -402,6 +402,26 @@ export interface ConnectionTag {
   childOrder?: string[];
 }
 
+export interface ConnectionSidebarLayoutInput {
+  connectionTags: ConnectionTag[];
+  sidebarRootOrder: string[];
+}
+
+export interface ConnectionSidebarLayout extends ConnectionSidebarLayoutInput {
+  initialized: boolean;
+  revision: number;
+}
+
+export interface SaveConnectionSidebarLayoutInput {
+  expectedRevision: number;
+  layout: ConnectionSidebarLayoutInput;
+}
+
+export interface SaveConnectionSidebarLayoutResult {
+  conflict: boolean;
+  layout: ConnectionSidebarLayout;
+}
+
 export interface ColumnDefinition {
   name: string;
   type: string;
@@ -486,6 +506,7 @@ export interface TabData {
     | "sql-analysis"
     | "sql-audit"
     | "request-diagnostics"
+    | "message-queue"
     | "redis-keys"
     | "redis-command"
     | "redis-monitor"
@@ -560,6 +581,12 @@ export interface TabData {
   sqlAuditTransactionId?: string;
   sqlAuditRequestKey?: string;
   preserveUnboundConnection?: boolean;
+  /** Message queue workbench target requested by the sidebar. */
+  messageQueueTarget?: string;
+  messageQueueObjectKind?: "topic-filter" | "topic" | "queue" | "exchange";
+  messageQueueAction?: "open" | "consume" | "publish";
+  /** Changes whenever an existing workbench should react to a new sidebar request. */
+  messageQueueRequestKey?: string;
   formatRestoreSnapshot?: {
     query: string;
     createdAt: number;

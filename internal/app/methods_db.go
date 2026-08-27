@@ -2333,6 +2333,12 @@ func shouldTryQueryResultFirst(dbType string, query string) bool {
 		return true
 	}
 	keyword := leadingSQLKeyword(query)
+	if normalizeSQLClassifierDBType(dbType) == "mqtt" && keyword == "unsubscribe" {
+		// MQTT models UNSUBSCRIBE as a query command because it returns the
+		// released topic filter. Route it through QueryContext instead of the
+		// JSON-only publish Exec path.
+		return true
+	}
 	switch keyword {
 	case "explain", "pragma":
 		return true
@@ -2558,6 +2564,24 @@ func (a *App) DBGetDatabases(config connection.ConnectionConfig) connection.Quer
 		}
 	}
 	if err != nil {
+		var partialErr *db.PartialMetadataError
+		if errors.As(err, &partialErr) {
+			warning := partialErr.Error()
+			logger.Warnf("DBGetDatabases 获取到部分数据库列表：%s err=%s", formatConnSummary(runConfig), warning)
+			resData := make([]map[string]string, 0, len(dbs))
+			for _, name := range dbs {
+				resData = append(resData, map[string]string{"Database": name})
+			}
+			return connection.QueryResult{
+				Success:           len(resData) > 0,
+				Data:              resData,
+				Message:           warning,
+				Partial:           true,
+				Warnings:          partialErr.Warnings(),
+				FailedObjectTypes: []string{"database"},
+				Retryable:         true,
+			}
+		}
 		logger.Error(err, "DBGetDatabases 获取数据库列表失败：%s", formatConnSummary(runConfig))
 		return connection.QueryResult{Success: false, Message: err.Error()}
 	}
@@ -2935,7 +2959,18 @@ func (a *App) DBGetViews(config connection.ConnectionConfig, dbName string) conn
 		return connection.QueryResult{Success: false, Message: err.Error()}
 	}
 
-	views := mapValuesSorted(listViewNameLookup(dbInst, runConfig, dbName))
+	viewLookup, err := listViewNameLookupWithStatus(dbInst, runConfig, dbName)
+	if err != nil {
+		logger.Warnf("DBGetViews 获取视图元数据失败：%s err=%v", formatConnSummary(runConfig), err)
+		return connection.QueryResult{
+			Success:   false,
+			Message:   err.Error(),
+			Data:      []map[string]string{},
+			Retryable: true,
+		}
+	}
+
+	views := mapValuesSorted(viewLookup)
 	resData := make([]map[string]string, 0, len(views))
 	for _, name := range views {
 		resData = append(resData, map[string]string{"View": name})

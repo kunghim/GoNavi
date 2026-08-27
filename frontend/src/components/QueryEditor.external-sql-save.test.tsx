@@ -173,6 +173,8 @@ const backendApp = vi.hoisted(() => ({
   GenerateQueryID: vi.fn(),
   WriteSQLFile: vi.fn(),
   ExportSQLFile: vi.fn(),
+  InspectElasticsearchConsole: vi.fn(),
+  ExecuteElasticsearchConsole: vi.fn(),
 }));
 
 const messageApi = vi.hoisted(() => ({
@@ -390,7 +392,8 @@ const editorState = vi.hoisted(() => {
   return state;
 });
 
-vi.mock('../store', () => {
+vi.mock('../store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../store')>();
   const useStore = Object.assign(
     (selector: (state: typeof storeState) => any) => React.useSyncExternalStore(
       (subscriber) => {
@@ -404,7 +407,7 @@ vi.mock('../store', () => {
     ),
     { getState: () => storeState },
   );
-  return { useStore };
+  return { ...actual, useStore };
 });
 
 vi.mock('../../wailsjs/runtime', () => runtimeApi);
@@ -984,6 +987,14 @@ describe('QueryEditor external SQL save', () => {
     backendApp.DBTableExists.mockResolvedValue({ success: true, data: { exists: true } });
     backendApp.DBShowCreateTable.mockResolvedValue({ success: false, data: '' });
     backendApp.GenerateQueryID.mockResolvedValue('query-1');
+    backendApp.InspectElasticsearchConsole.mockResolvedValue({
+      success: true,
+      requests: [],
+      containsWrite: false,
+      requiresConfirmation: false,
+      fingerprint: 'inspection-default',
+    });
+    backendApp.ExecuteElasticsearchConsole.mockResolvedValue({ success: true, results: [] });
     storeState.connections = createDefaultConnections();
     storeState.sqlLogs = [];
     storeState.addSqlLog.mockReset();
@@ -1133,6 +1144,77 @@ describe('QueryEditor external SQL save', () => {
     await act(async () => {
       renderer.unmount();
     });
+  });
+
+  it('refreshes Elasticsearch index choices and the sidebar after a successful index write', async () => {
+    storeState.connections[0].config.type = 'elasticsearch';
+    storeState.connections[0].config.port = 9200;
+    backendApp.InspectElasticsearchConsole.mockImplementation(
+      (_config: unknown, _defaultIndex: string, source: string) => Promise.resolve(
+        source === 'GET /'
+          ? {
+              success: true,
+              requests: [{ method: 'GET', path: '/', route: '/', risk: 'read' }],
+              containsWrite: false,
+              requiresConfirmation: false,
+              fingerprint: 'inspect-root',
+              serverMajor: 8,
+            }
+          : {
+              success: true,
+              requests: [{ method: 'PUT', path: '/events-2026', route: '/{target}', target: 'events-2026', risk: 'dangerous' }],
+              containsWrite: true,
+              requiresConfirmation: false,
+              fingerprint: 'create-events-2026',
+              serverMajor: 8,
+            },
+      ),
+    );
+    backendApp.ExecuteElasticsearchConsole.mockResolvedValue({
+      success: true,
+      results: [{
+        index: 0,
+        method: 'PUT',
+        path: '/events-2026',
+        requestLabel: 'PUT /events-2026',
+        httpStatus: 200,
+        rawResponse: '{"acknowledged":true}',
+        outcome: 'success',
+        readOnly: false,
+      }],
+    });
+    backendApp.DBGetDatabases.mockResolvedValue({
+      success: true,
+      data: [{ Database: 'events-2026' }],
+    });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({
+        dbName: '',
+        query: 'PUT /events-2026\n{}',
+      })} />);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await findButton(renderer, '运行当前请求').props.onClick();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(backendApp.DBGetDatabases).toHaveBeenCalledTimes(1);
+    expect(antdSelectState.props.some((props) => (
+      Array.isArray(props.options)
+      && props.options.some((option: any) => option?.value === 'events-2026')
+    ))).toBe(true);
+    expect(window.dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'gonavi:sidebar-database-list-refresh',
+      detail: expect.objectContaining({
+        connectionId: 'conn-1',
+        reason: 'elasticsearch-write',
+      }),
+    }));
   });
 
   it('loads PostgreSQL schemas and executes SQL with the selected search_path', async () => {
@@ -3866,7 +3948,7 @@ describe('QueryEditor external SQL save', () => {
       { lineNumber: 1, column: editorState.value.length + 1 },
     );
     const uppercaseTable = uppercaseTableResult.suggestions.find((item: any) => item.label === 'a_cninfo_announcement');
-    expect(uppercaseTable?.insertText).toBe('a_cninfo_announcement');
+    expect(uppercaseTable?.insertText).toBe('a_cninfo_announcement aca');
 
     editorState.value = 'SELECT * FROM users WHERE sh';
     editorState.latestOnChange?.(editorState.value);
@@ -3886,6 +3968,64 @@ describe('QueryEditor external SQL save', () => {
     );
     const columnSubstringLabels = columnSubstringResult.suggestions.map((item: any) => item.label);
     expect(columnSubstringLabels).toContain('emp_code');
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  it('adds deterministic aliases to table source completions and resolves conflicts', async () => {
+    let renderer!: ReactTestRenderer;
+    autoFetchState.visible = true;
+    storeState.connections[0].config.database = 'main';
+    backendApp.DBGetDatabases.mockResolvedValueOnce({ success: true, data: [{ Database: 'main' }] });
+    backendApp.DBGetTables.mockResolvedValueOnce({
+      success: true,
+      data: [
+        { Tables_in_main: 'system_user' },
+        { Tables_in_main: 'code_query_record_zykj' },
+      ],
+    });
+    backendApp.DBGetAllColumns.mockResolvedValueOnce({ success: true, data: [] });
+
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ query: '', dbName: 'main' })} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const sqlProvider = findSqlCompletionProvider();
+    expect(sqlProvider).toBeTruthy();
+
+    editorState.value = 'SELECT * FROM system_user su JOIN sys';
+    editorState.latestOnChange?.(editorState.value);
+    const conflictResult = await sqlProvider.provideCompletionItems(
+      editorState.editor.getModel(),
+      { lineNumber: 1, column: editorState.value.length + 1 },
+    );
+    expect(conflictResult.suggestions.find((item: any) => item.label === 'system_user')?.insertText)
+      .toBe('system_user su2');
+
+    editorState.value = 'SELECT * FROM code';
+    editorState.latestOnChange?.(editorState.value);
+    const initialsResult = await sqlProvider.provideCompletionItems(
+      editorState.editor.getModel(),
+      { lineNumber: 1, column: editorState.value.length + 1 },
+    );
+    expect(initialsResult.suggestions.find((item: any) => item.label === 'code_query_record_zykj')?.insertText)
+      .toBe('code_query_record_zykj cqrz');
+
+    editorState.value = 'INSERT INTO system';
+    editorState.latestOnChange?.(editorState.value);
+    const insertResult = await sqlProvider.provideCompletionItems(
+      editorState.editor.getModel(),
+      { lineNumber: 1, column: editorState.value.length + 1 },
+    );
+    expect(insertResult.suggestions.find((item: any) => item.label === 'system_user')?.insertText)
+      .toBe('system_user');
 
     await act(async () => {
       renderer.unmount();
@@ -4243,7 +4383,7 @@ describe('QueryEditor external SQL save', () => {
     const result = await sqlProvider.provideCompletionItems(editorState.editor.getModel(), { lineNumber: 1, column: editorState.value.length + 1 });
     const match = result.suggestions.find((item: any) => item.label === 'MyTable');
 
-    expect(match?.insertText).toBe('"MyTable"');
+    expect(match?.insertText).toBe('"MyTable" mt');
 
     await act(async () => {
       renderer.unmount();
@@ -4276,7 +4416,7 @@ describe('QueryEditor external SQL save', () => {
     const result = await sqlProvider.provideCompletionItems(editorState.editor.getModel(), { lineNumber: 1, column: editorState.value.length + 1 });
     const match = result.suggestions.find((item: any) => item.label === 'MyTable');
 
-    expect(match?.insertText).toBe('"MyTable"');
+    expect(match?.insertText).toBe('"MyTable" mt');
 
     await act(async () => {
       renderer.unmount();
@@ -8457,7 +8597,7 @@ describe('QueryEditor external SQL save', () => {
       const tableSuggestion = completionItems?.suggestions?.find((item: any) => item?.label === 'AAA3_NJ');
 
       expect(tableSuggestion).toBeTruthy();
-      expect(tableSuggestion.insertText).toBe('AAA3_NJ');
+      expect(tableSuggestion.insertText).toBe('AAA3_NJ an');
       expect(tableSuggestion.detail).toContain('表 (sbdev)');
       expect(completionItems?.suggestions?.some((item: any) => item?.label === 'sbdev.SBDEV.AAA3_NJ')).toBe(false);
     });

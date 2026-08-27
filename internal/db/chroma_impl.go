@@ -40,6 +40,8 @@ type ChromaDB struct {
 	forwarder   *ssh.LocalForwarder
 }
 
+var _ BatchApplierContext = (*ChromaDB)(nil)
+
 type chromaCollection struct {
 	ID        string                 `json:"id"`
 	Name      string                 `json:"name"`
@@ -311,8 +313,19 @@ func (c *ChromaDB) GetTriggers(dbName, tableName string) ([]connection.TriggerDe
 }
 
 func (c *ChromaDB) ApplyChanges(tableName string, changes connection.ChangeSet) error {
-	ctx, cancel := context.WithTimeout(context.Background(), defaultChromaQueryTimeout)
+	return c.ApplyChangesContext(context.Background(), tableName, changes)
+}
+
+func (c *ChromaDB) ApplyChangesContext(ctx context.Context, tableName string, changes connection.ChangeSet) error {
+	ctx, cancel := context.WithTimeout(ctx, defaultChromaQueryTimeout)
 	defer cancel()
+	writeApplied := false
+	writeError := func(err error) error {
+		if writeApplied {
+			return MarkWriteOutcomeUnknown(err)
+		}
+		return err
+	}
 
 	if len(changes.Deletes) > 0 {
 		ids := make([]string, 0, len(changes.Deletes))
@@ -321,10 +334,14 @@ func (c *ChromaDB) ApplyChanges(tableName string, changes connection.ChangeSet) 
 				ids = append(ids, id)
 			}
 		}
+		if len(ids) != len(changes.Deletes) {
+			return fmt.Errorf("Chroma 删除行缺少 id")
+		}
 		if len(ids) > 0 {
 			if _, err := c.deleteCommand(ctx, tableName, map[string]interface{}{"ids": ids}); err != nil {
-				return err
+				return writeError(err)
 			}
+			writeApplied = true
 		}
 	}
 
@@ -341,12 +358,13 @@ func (c *ChromaDB) ApplyChanges(tableName string, changes connection.ChangeSet) 
 			rows = append(rows, row)
 		}
 		if err := c.upsertRows(ctx, tableName, rows); err != nil {
-			return err
+			return writeError(err)
 		}
+		writeApplied = true
 	}
 	if len(changes.Inserts) > 0 {
 		if err := c.upsertRows(ctx, tableName, changes.Inserts); err != nil {
-			return err
+			return writeError(err)
 		}
 	}
 	return nil
@@ -1034,7 +1052,15 @@ func chromaCountValue(raw interface{}) int64 {
 }
 
 func chromaRowID(row map[string]interface{}) string {
-	return strings.TrimSpace(fmt.Sprintf("%v", firstExisting(row, "id", "_id")))
+	raw := firstExisting(row, "id", "_id")
+	if raw == nil {
+		return ""
+	}
+	text := strings.TrimSpace(fmt.Sprintf("%v", raw))
+	if text == "" || text == "<nil>" {
+		return ""
+	}
+	return text
 }
 
 func isChromaReservedRowField(key string) bool {

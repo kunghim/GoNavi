@@ -867,6 +867,11 @@ body[data-ui-version="v2"] .gn-v2-redis-empty-value {
   -webkit-backdrop-filter: none !important;
 }
 
+body[data-ui-version="v2"] .gn-v2-redis-header,
+body[data-ui-version="v2"] .gn-v2-redis-tree-card {
+  min-width: 0;
+}
+
 body[data-ui-version="v2"] .gn-v2-redis-header {
   grid-row: 1;
   padding: 14px !important;
@@ -875,6 +880,53 @@ body[data-ui-version="v2"] .gn-v2-redis-header {
 
 body[data-ui-version="v2"] .gn-v2-redis-toolbar {
   align-items: center;
+}
+
+body[data-ui-version="v2"] .gn-v2-redis-key-view-switch {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 0.5px solid var(--gn-br-1);
+  border-radius: 6px;
+  background: var(--gn-bg-active);
+}
+
+body[data-ui-version="v2"] .gn-v2-redis-key-view-switch-btn {
+  width: 28px;
+  min-width: 28px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gn-fg-4);
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  font: inherit;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+body[data-ui-version="v2"] .gn-v2-redis-key-view-switch-btn.is-active,
+body[data-ui-version="v2"] .gn-v2-redis-key-view-switch-btn[aria-pressed="true"] {
+  color: var(--gn-accent);
+  background: color-mix(in srgb, var(--gn-fg-1) 6%, var(--gn-bg-panel-2));
+  box-shadow: var(--gn-shadow-sm);
+}
+
+body[data-ui-version="v2"] .gn-v2-redis-key-view-switch-btn:hover {
+  color: var(--gn-fg-1);
+}
+
+body[data-ui-version="v2"] .gn-v2-redis-key-view-switch-btn:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid color-mix(in srgb, var(--gn-accent) 72%, transparent);
+  outline-offset: 1px;
 }
 
 body[data-ui-version="v2"] .gn-v2-redis-tree-card {
@@ -889,6 +941,31 @@ body[data-ui-version="v2"] .gn-v2-redis-tree-shell {
   box-shadow: none !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+}
+
+/* Redis highlights the complete Tree row, including its checkbox. Keep the
+   nested Ant Tree content wrapper transparent so hover/selection does not
+   render a second, inset highlight behind the Key label. */
+body[data-ui-version="v2"] .gn-v2-redis-workbench .ant-tree .ant-tree-treenode:hover {
+  background: var(--gn-bg-hover) !important;
+}
+
+body[data-ui-version="v2"] .gn-v2-redis-workbench .ant-tree .ant-tree-treenode.ant-tree-treenode-selected,
+body[data-ui-version="v2"] .gn-v2-redis-workbench .ant-tree .ant-tree-treenode.ant-tree-treenode-selected:hover {
+  background: var(--gn-bg-selected) !important;
+  border: none !important;
+}
+
+body[data-ui-version="v2"] .gn-v2-redis-workbench .ant-tree .ant-tree-node-content-wrapper:hover,
+body[data-ui-version="v2"] .gn-v2-redis-workbench .ant-tree .ant-tree-node-content-wrapper:active,
+body[data-ui-version="v2"] .gn-v2-redis-workbench .ant-tree .ant-tree-node-content-wrapper:focus,
+body[data-ui-version="v2"] .gn-v2-redis-workbench .ant-tree .ant-tree-node-content-wrapper:focus-visible,
+body[data-ui-version="v2"] .gn-v2-redis-workbench .ant-tree .ant-tree-node-content-wrapper.ant-tree-node-selected,
+body[data-ui-version="v2"] .gn-v2-redis-workbench .ant-tree .ant-tree-node-content-wrapper.ant-tree-node-selected:hover {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 
 body[data-ui-version="v2"] .gn-v2-redis-workbench .ant-tree-checkbox {

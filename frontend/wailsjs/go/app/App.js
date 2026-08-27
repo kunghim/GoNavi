@@ -22,6 +22,10 @@ export function AuthorizeMCPConnectionSQL(arg1, arg2) {
   return window['go']['app']['App']['AuthorizeMCPConnectionSQL'](arg1, arg2);
 }
 
+export function BootstrapConnectionSidebarLayout(arg1) {
+  return window['go']['app']['App']['BootstrapConnectionSidebarLayout'](arg1);
+}
+
 export function BuildDatabaseDiagnosticPackage() {
   return window['go']['app']['App']['BuildDatabaseDiagnosticPackage']();
 }
@@ -146,8 +150,16 @@ export function DBGetAllColumns(arg1, arg2) {
   return window['go']['app']['App']['DBGetAllColumns'](arg1, arg2);
 }
 
+export function DBGetAllColumnsContext(arg1, arg2, arg3) {
+  return window['go']['app']['App']['DBGetAllColumnsContext'](arg1, arg2, arg3);
+}
+
 export function DBGetColumns(arg1, arg2, arg3) {
   return window['go']['app']['App']['DBGetColumns'](arg1, arg2, arg3);
+}
+
+export function DBGetColumnsContext(arg1, arg2, arg3, arg4) {
+  return window['go']['app']['App']['DBGetColumnsContext'](arg1, arg2, arg3, arg4);
 }
 
 export function DBGetDatabaseForeignKeys(arg1, arg2) {
@@ -158,28 +170,56 @@ export function DBGetDatabases(arg1) {
   return window['go']['app']['App']['DBGetDatabases'](arg1);
 }
 
+export function DBGetDatabasesContext(arg1, arg2) {
+  return window['go']['app']['App']['DBGetDatabasesContext'](arg1, arg2);
+}
+
 export function DBGetForeignKeys(arg1, arg2, arg3) {
   return window['go']['app']['App']['DBGetForeignKeys'](arg1, arg2, arg3);
+}
+
+export function DBGetForeignKeysContext(arg1, arg2, arg3, arg4) {
+  return window['go']['app']['App']['DBGetForeignKeysContext'](arg1, arg2, arg3, arg4);
 }
 
 export function DBGetIndexes(arg1, arg2, arg3) {
   return window['go']['app']['App']['DBGetIndexes'](arg1, arg2, arg3);
 }
 
+export function DBGetIndexesContext(arg1, arg2, arg3, arg4) {
+  return window['go']['app']['App']['DBGetIndexesContext'](arg1, arg2, arg3, arg4);
+}
+
 export function DBGetObjects(arg1, arg2) {
   return window['go']['app']['App']['DBGetObjects'](arg1, arg2);
+}
+
+export function DBGetObjectsContext(arg1, arg2, arg3) {
+  return window['go']['app']['App']['DBGetObjectsContext'](arg1, arg2, arg3);
 }
 
 export function DBGetTables(arg1, arg2) {
   return window['go']['app']['App']['DBGetTables'](arg1, arg2);
 }
 
+export function DBGetTablesContext(arg1, arg2, arg3) {
+  return window['go']['app']['App']['DBGetTablesContext'](arg1, arg2, arg3);
+}
+
 export function DBGetTriggers(arg1, arg2, arg3) {
   return window['go']['app']['App']['DBGetTriggers'](arg1, arg2, arg3);
 }
 
+export function DBGetTriggersContext(arg1, arg2, arg3, arg4) {
+  return window['go']['app']['App']['DBGetTriggersContext'](arg1, arg2, arg3, arg4);
+}
+
 export function DBGetViews(arg1, arg2) {
   return window['go']['app']['App']['DBGetViews'](arg1, arg2);
+}
+
+export function DBGetViewsContext(arg1, arg2, arg3) {
+  return window['go']['app']['App']['DBGetViewsContext'](arg1, arg2, arg3);
 }
 
 export function DBQuery(arg1, arg2, arg3) {
@@ -232,6 +272,10 @@ export function DBRollbackTransactionWithTrigger(arg1, arg2) {
 
 export function DBShowCreateTable(arg1, arg2, arg3) {
   return window['go']['app']['App']['DBShowCreateTable'](arg1, arg2, arg3);
+}
+
+export function DBShowCreateTableContext(arg1, arg2, arg3, arg4) {
+  return window['go']['app']['App']['DBShowCreateTableContext'](arg1, arg2, arg3, arg4);
 }
 
 export function DBTableExists(arg1, arg2, arg3) {
@@ -582,6 +626,14 @@ export function GetImportJob(arg1) {
   return window['go']['app']['App']['GetImportJob'](arg1);
 }
 
+export function GetRequestDiagnostic(arg1) {
+  return window['go']['app']['App']['GetRequestDiagnostic'](arg1);
+}
+
+export function GetRequestDiagnostics(arg1) {
+  return window['go']['app']['App']['GetRequestDiagnostics'](arg1);
+}
+
 export function GetSQLAuditEvents(arg1) {
   return window['go']['app']['App']['GetSQLAuditEvents'](arg1);
 }
@@ -750,12 +802,12 @@ export function ListDatabaseCollations(arg1) {
   return window['go']['app']['App']['ListDatabaseCollations'](arg1);
 }
 
-export function ListImportJobs() {
-  return window['go']['app']['App']['ListImportJobs']();
-}
-
 export function ListDriverDownloadTasks() {
   return window['go']['app']['App']['ListDriverDownloadTasks']();
+}
+
+export function ListImportJobs() {
+  return window['go']['app']['App']['ListImportJobs']();
 }
 
 export function ListInstalledFontFamilies() {
@@ -768,6 +820,10 @@ export function ListReproductionBundleSources() {
 
 export function ListSQLDirectory(arg1) {
   return window['go']['app']['App']['ListSQLDirectory'](arg1);
+}
+
+export function LoadConnectionSidebarLayout() {
+  return window['go']['app']['App']['LoadConnectionSidebarLayout']();
 }
 
 export function LogWindowDiagnostic(arg1, arg2) {
@@ -1202,6 +1258,10 @@ export function RetrySecurityUpdateCurrentRound(arg1) {
   return window['go']['app']['App']['RetrySecurityUpdateCurrentRound'](arg1);
 }
 
+export function RevealSavedConnectionPrimaryPassword(arg1) {
+  return window['go']['app']['App']['RevealSavedConnectionPrimaryPassword'](arg1);
+}
+
 export function RevealSavedQueryInFolder(arg1) {
   return window['go']['app']['App']['RevealSavedQueryInFolder'](arg1);
 }
@@ -1212,6 +1272,10 @@ export function SaveCloudBackupConfig(arg1) {
 
 export function SaveConnection(arg1) {
   return window['go']['app']['App']['SaveConnection'](arg1);
+}
+
+export function SaveConnectionSidebarLayout(arg1) {
+  return window['go']['app']['App']['SaveConnectionSidebarLayout'](arg1);
 }
 
 export function SaveGlobalProxy(arg1) {
@@ -1298,12 +1362,12 @@ export function Shutdown() {
   return window['go']['app']['App']['Shutdown']();
 }
 
-export function StartSecurityUpdate(arg1) {
-  return window['go']['app']['App']['StartSecurityUpdate'](arg1);
-}
-
 export function StartDriverPackageDownload(arg1, arg2, arg3, arg4) {
   return window['go']['app']['App']['StartDriverPackageDownload'](arg1, arg2, arg3, arg4);
+}
+
+export function StartSecurityUpdate(arg1) {
+  return window['go']['app']['App']['StartSecurityUpdate'](arg1);
 }
 
 export function StartUpdateDownload() {
@@ -1336,6 +1400,10 @@ export function TrustSSHHostKey(arg1, arg2, arg3) {
 
 export function TrustSSHHostKeyForConnection(arg1, arg2) {
   return window['go']['app']['App']['TrustSSHHostKeyForConnection'](arg1, arg2);
+}
+
+export function UpdateConnectionVisibility(arg1) {
+  return window['go']['app']['App']['UpdateConnectionVisibility'](arg1);
 }
 
 export function UpdateSQLAuditSettings(arg1) {
