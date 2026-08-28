@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(git check-ignore *)",
-      "Bash(powershell *)"
+      "Bash(powershell *)",
+      "PowerShell(& 'C:\\\\Users\\\\admin\\\\.claude\\\\skills\\\\gonavi-issue\\\\scripts\\\\list_submit_candidates.ps1' -RepoRoot 'E:\\\\Project\\\\Github\\\\GoNavi')"
     ]
   }
 }

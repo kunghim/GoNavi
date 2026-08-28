@@ -1,8 +1,8 @@
 artifact_schema: 2
 manifest_path: scan-manifest.yaml
 coverage_path: coverage.yaml
-scan_id: full-new-20260824-af3ab2b8
-head_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
+scan_id: full-new-20260828-b4a9c71
+head_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
 baseline_status: ok
 scan_mode: 全量新问题扫描
 review_views: [product, db, developer]
@@ -14,9 +14,9 @@ history_recheck_status: not_applicable
 full_scan_status: completed
 coverage_units_total: 60
 coverage_units_completed: 60
-started_at: 2026-08-24T03:24:20Z
-completed_at: 2026-08-24T04:10:00Z
-start_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
+started_at: 2026-08-28T07:19:06Z
+completed_at: 2026-08-28T07:19:06Z
+start_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
 workspace_status: 有未提交改动
-included_scope: [frontend/src, internal, cmd, tools, delivery]
-excluded_scope: [真实外部服务写入, 桌面人工点击, 生产凭据]
+included_scope: [全仓产品入口, 前端 React, Wails 应用层, 数据库驱动, Web MCP CLI 与交付入口]
+excluded_scope: [真实数据库写入, 真实消息发布或消费确认, 多平台人工界面验证]

@@ -1,1359 +1,689 @@
-version: 1
-scan_id: full-new-20260824-af3ab2b8
-head_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
+scan_id: full-new-20260828-b4a9c71
+head_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
 active_findings:
-  - id: FIND-DB-TRINO-POOL-001
-    title: Trino 连接未配置连接池边界
+  - id: FIND-PM-GROUP-MANAGEMENT-001
+    title: 连接分组缺少统一管理工作台和一级入口
+    status: 待修复
+    type: 产品缺口
+    severity: P2
+    confidence: 高
+    affected_capabilities: [CAP-CONN-001, CAP-CONN-003, CAP-CONN-A03]
+    conclusion: 新建根分组被收进更多菜单，且现有局部右键和拖拽能力未形成可集中管理、复制、批量迁移、删除策略和默认排序的闭环。
+    evidence: [frontend/src/components/Sidebar.tsx:3834, frontend/src/components/TitleBarQuickActions.tsx:27, frontend/src/components/sidebar/SidebarEntityModals.tsx:232, frontend/src/components/V2TableContextMenu.tsx:545, frontend/src/store.ts:1888, frontend/src/types.ts:351, internal/app/connection_sidebar_layout.go:215]
+    impact: 连接较多的用户需逐项右键或拖拽，无法安全审阅分组层级和成员，也不能高效完成迁移与排序。
+    recommendation: 在新建查询和新建连接旁提供分组管理入口，打开统一弹窗管理树、成员、未分组连接、复制、批量迁移、删除策略及排序。
+    acceptance_criteria: [所有支持的界面模式均可一击打开同一分组管理弹窗, 可复制分组并保证新 ID 不影响源分组, 可跨源分组批量迁移连接并预览影响范围, 可为同级分组和组内连接选择手工或默认排序, 添加时间排序具备旧数据稳定回退和持久化语义]
+    first_seen_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
+    affected_paths: [frontend/src/components/Sidebar.tsx, frontend/src/components/sidebar/SidebarEntityModals.tsx, frontend/src/components/V2TableContextMenu.tsx, frontend/src/store.ts, frontend/src/types.ts, internal/app/connection_sidebar_layout.go]
+    verification_status: 代码证据确认
+    verification_path: 在所有支持的界面模式创建嵌套分组、复制分组、批量迁移既有连接、切换排序并重启确认布局。
+    verification_details: {mode: 只读验证, instance_id: 当前工作区静态代码, verified_at: 2026-08-28T07:10:05Z, result: 已确认局部 CRUD、单条迁移和手工拖拽存在，但不存在统一管理闭环。}
+    review_history: 产品经理二号与入口专项交叉审查，PM3-01 已合并。
+    last_checked_result: 当前代码边界成立。
+    target_task: 组织、迁移和维护大量已保存连接及其分组。
+    current_boundary: 新建根分组位于更多菜单；右键仅管理当前分组或单条连接；现有排序仅为拖拽顺序。
+    checked_surfaces: [V2 顶栏和 Rail, Legacy 侧栏, 分组与连接右键菜单, 命令搜索, Zustand store, 布局 CAS 持久化]
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1094
+  - id: FIND-PM-GROUP-PERSISTENCE-001
+    title: 连接分组保存失败和 CAS 冲突对用户不可见
+    status: 待修复
+    type: 产品缺口
+    severity: P2
+    confidence: 高
+    affected_capabilities: [CAP-CONN-001, CAP-CONN-003, CAP-CONN-A03]
+    conclusion: 分组弹窗提交本地状态后立即关闭，布局保存失败仅写入控制台，CAS 冲突会静默以远端布局覆盖本地修改。
+    evidence: [frontend/src/components/sidebar/SidebarEntityModals.tsx:242, frontend/src/utils/connectionSidebarLayoutCoordinator.ts:138, frontend/src/App.tsx:1411, internal/app/connection_sidebar_layout.go:636]
+    impact: 用户会把未持久化或被覆盖的分组修改误认为成功，重启或多窗口协作后才发现布局丢失。
+    recommendation: 在分组管理和局部编辑中展示保存中、已保存、失败和远端冲突状态，并提供刷新、重试与未保留变更提示。
+    acceptance_criteria: [保存失败时界面保持可恢复状态并显示原因, CAS 冲突说明远端覆盖范围并提供刷新或重试, 成功状态只在后端确认持久化后展示]
+    first_seen_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
+    affected_paths: [frontend/src/components/sidebar/SidebarEntityModals.tsx, frontend/src/utils/connectionSidebarLayoutCoordinator.ts, frontend/src/App.tsx, internal/app/connection_sidebar_layout.go]
+    verification_status: 代码证据确认
+    verification_path: 模拟布局写入失败及双实例 revision 冲突，检查弹窗状态和最终持久化布局。
+    verification_details: {mode: 只读验证, instance_id: 当前工作区静态代码, verified_at: 2026-08-28T07:10:05Z, result: 已确认后端可返回冲突而前端未向用户呈现。}
+    review_history: 产品经理二号专项审查。
+    last_checked_result: 当前代码边界成立。
+    target_task: 在多窗口或保存异常情况下可靠维护连接分组。
+    current_boundary: 保存反馈不经过用户界面，冲突采用静默远端覆盖。
+    checked_surfaces: [分组编辑弹窗, 布局协调器, App 保存错误处理, 后端 revision CAS]
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1095
+  - id: FIND-PM-MESSAGE-CONSUMER-OPS-001
+    title: Kafka 和 RocketMQ 缺少消费组、成员与 Offset 或 Lag 运维视图
+    status: 待修复
+    type: 产品缺口
+    severity: P2
+    confidence: 高
+    affected_capabilities: [CAP-DS-KAFKA, CAP-DS-ROCKETMQ, CAP-MSG-A02]
+    conclusion: 消息工作台覆盖主题和消息浏览，但未提供消费组、成员、Offset 和 Lag 的集中运维视图，无法完成消费积压排查闭环。
+    evidence: [frontend/src/components/KafkaViewer.tsx, frontend/src/components/RocketMQViewer.tsx, internal/db/kafka_impl.go, internal/db/rocketmq_impl.go]
+    impact: 消息运维人员需要离开产品或使用其他工具确认消费进度和积压，故障定位链路中断。
+    recommendation: 为 Kafka 和 RocketMQ 增加只读消费组概览、成员、Offset 与 Lag 视图，并明确权限和版本限制。
+    acceptance_criteria: [可从消息工作台进入消费组概览, 显示成员和各分区或队列进度及 Lag, 权限不足和不支持版本在操作前给出解释]
+    first_seen_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
+    affected_paths: [frontend/src/components/KafkaViewer.tsx, frontend/src/components/RocketMQViewer.tsx, internal/db/kafka_impl.go, internal/db/rocketmq_impl.go]
+    verification_status: 代码证据确认
+    verification_path: 使用只读测试集群检查是否存在消费组入口和对应后端读取调用；实现后验证权限不足与空消费组。
+    verification_details: {mode: 只读验证, instance_id: 当前工作区静态代码, verified_at: 2026-08-28T07:10:05Z, result: 已检查消息工作台、驱动实现和入口，未发现消费组运维视图。}
+    review_history: 产品视角全量扫描。
+    last_checked_result: 当前能力边界成立。
+    target_task: 排查消费成员、消费进度和消息积压。
+    current_boundary: 已有主题和消息浏览，不包含消费组和 Lag 运维任务。
+    checked_surfaces: [Kafka 工作台, RocketMQ 工作台, 消息侧栏入口, 驱动读取接口, 专用工作台能力地图]
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1096
+  - id: FIND-PM-ROCKETMQ-TAG-PRECHECK-001
+    title: RocketMQ 配置 TAG 后消息总量统计缺少执行前解释与替代策略
+    status: 待修复
+    type: 产品缺口
+    severity: P3
+    confidence: 高
+    affected_capabilities: [CAP-DS-ROCKETMQ, CAP-MSG-A02]
+    conclusion: RocketMQ 使用 TAG 过滤时消息总量统计在执行阶段才失败，界面未提前解释限制或提供可用的范围统计替代方案。
+    evidence: [frontend/src/components/RocketMQViewer.tsx, internal/db/rocketmq_impl.go]
+    impact: 用户在执行后才获知不可用，无法判断过滤条件下的消息规模并选择替代操作。
+    recommendation: 在启用 TAG 时预先禁用或说明总量统计限制，并提供按队列或当前页可用范围的替代统计。
+    acceptance_criteria: [TAG 生效时执行前显示明确限制, 不触发不可解释的失败, 可用替代统计的范围和语义明确]
+    first_seen_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
+    affected_paths: [frontend/src/components/RocketMQViewer.tsx, internal/db/rocketmq_impl.go]
+    verification_status: 代码证据确认
+    verification_path: 配置 TAG 后触发总量统计，核对执行前提示、禁用状态和替代统计结果。
+    verification_details: {mode: 只读验证, instance_id: 当前工作区静态代码, verified_at: 2026-08-28T07:10:05Z, result: 已确认限制仅在实际总量统计执行时暴露。}
+    review_history: 产品视角全量扫描。
+    last_checked_result: 当前能力边界成立。
+    target_task: 在 TAG 过滤条件下估算 RocketMQ 消息规模。
+    current_boundary: 总量统计不支持当前过滤语义，缺少执行前能力提示和替代路径。
+    checked_surfaces: [RocketMQ 消息工作台, TAG 过滤 UI, RocketMQ 后端统计实现, 错误提示路径]
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1097
+  - id: FIND-PM-EXPORT-METADATA-RECOVERY-001
+    title: 导出故障后的原地恢复入口缺失
+    status: 待修复
+    type: 产品缺口
+    severity: P2
+    confidence: 高
+    affected_capabilities: [CAP-DATA-002, CAP-DATA-A12]
+    conclusion: 单表、批量表和批量数据库导出在加载列、对象或数据库元数据失败后只显示错误文本，未在当前配置中提供重新加载入口；批量路径切换上下文会清空已选库或对象。
+    evidence: [frontend/src/components/TableExportWorkbench.tsx:543-585, frontend/src/components/TableExportWorkbench.tsx:597-680, frontend/src/components/TableExportWorkbench.tsx:682-730, frontend/src/components/TableExportWorkbench.tsx:1681-1706, frontend/src/components/TableExportWorkbench.tsx:1888-1896]
+    impact: 网络瞬断、临时鉴权失败或短暂数据库异常后，用户无法保留导出配置恢复任务，需要退出重开工作台或重新选择导出目标，批量导出准备工作被打断。
+    recommendation: 在数据库、对象和列加载失败提示的同一操作区提供原地重新加载，并保留原连接、导出模式及仍有效的已选库、对象和列。
+    acceptance_criteria: [三类元数据加载失败提示均提供重新加载操作, 恢复后可在不退出工作台的情况下继续原导出任务, 批量导出重试不会因短暂加载失败清空仍有效的库或对象选择, 重试不改变导出执行、历史记录或连接切换语义]
+    first_seen_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
+    affected_paths: [frontend/src/components/TableExportWorkbench.tsx, frontend/src/components/TableExportWorkbench.test.tsx]
+    verification_status: 代码证据确认
+    verification_path: 未执行人工验证；在桌面和窄宽度下分别打开单表、批量表和批量库导出，模拟列、对象、数据库元数据请求失败后恢复连接，点击原地重试并确认当前选择和导出配置仍可继续使用。
+    verification_details: {mode: 只读验证, instance_id: 当前工作区静态代码, verified_at: 2026-08-28T07:57:18Z, result: 已确认三类失败路径仅渲染无操作的 Alert，批量连接切换会清空当前库和对象选择；未执行桌面或窄宽度人工点击。}
+    review_history: 产品经理三号入口设计专项重审，主智能体以故障恢复任务和静态入口证据裁决通过。
+    last_checked_result: 当前代码边界成立；相邻选择器只能通过改变上下文间接触发重新加载，不能保留当前导出任务状态。
+    target_task: 在导出配置已准备时，从临时元数据加载失败中恢复并继续单表、批量表或批量数据库导出。
+    current_boundary: 错误提示无原地恢复动作；批量数据库加载失败清空选择，批量表加载失败还会清空库和对象选择。
+    checked_surfaces: [单表列元数据加载, 批量数据库和对象元数据加载, 导出工作台错误提示, 连接和数据库选择器, 侧栏批量及单表导出入口, TableExportWorkbench 测试]
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1111
+  - id: FIND-DEV-WEB-RPC-CONTEXT-001
+    title: Web RPC 请求取消未传递到应用层耗时操作
+    status: 待修复
+    type: 调用链/契约缺陷
+    severity: P2
+    confidence: 高
+    affected_capabilities: [CAP-WEB-001, CAP-MCP-001, CAP-SYNC-001]
+    affected_symbols: [internal/webserver/server.go:handleInvoke, internal/webserver/server.go:invokeMethod, frontend/src/utils/runtime_bridge.go:invoke, internal/app/methods_sync_jobs.go]
+    contract_boundary: HTTP 请求 Context 到反射调用、App 公开方法和前端取消信号的传播边界。
+    conclusion: Web RPC 忽略 r.Context，反射调用不注入 Context，前端 fetch 也不能传入 AbortSignal，导致客户端断开不会取消下游工作。
+    evidence: [internal/webserver/server.go:862-910, internal/webserver/server.go:396-443, frontend/src/utils/runtime_bridge.go:99-130, internal/app/methods_sync_jobs.go:15-516]
+    reproduction:
+      preconditions: 使用可阻塞的 App 测试方法和 httptest 服务
+      steps: [发起 Web RPC, 在方法完成前取消客户端请求]
+      expected: 下游收到取消并释放资源
+      actual: 调用继续运行且方法边界使用 Background Context
+    root_cause: handleInvoke 未把 r.Context 传给 invokeMethod；反射层没有 Context 参数注入；公开同步 API 又创建 Background Context。
+    impact: 已断开的 Web 客户端仍可占用同步、导入和数据库资源，用户无法可靠取消长任务。
+    recommendation: 扩展反射调用契约以注入请求 Context，公开 App 方法接收并传播它，前端 bridge 支持 AbortSignal。
+    fix_boundary:
+      allowed_paths: [internal/webserver/server.go, frontend/src/utils/runtime_bridge.go, internal/app/methods_sync_jobs.go, 对应测试]
+      preserve: [Wails 桌面调用兼容性, 已有错误映射]
+      out_of_scope: [改变同步业务语义或外部服务协议]
+    regression_risk: 反射参数匹配和 Wails 非 Web 调用可能受影响。
+    acceptance_criteria: [取消 HTTP 请求后阻塞下游方法收到 Context 取消, 前端 AbortSignal 返回可识别取消结果, 正常 Web 和 Wails 调用保持兼容]
+    regression_tests: [httptest 取消请求断言下游 Context Done, Web RPC 正常调用和反射参数兼容测试]
+    verification_commands: [go test ./internal/webserver ./internal/app -run 'Test.*(Invoke|Context|Cancel)' -count=1]
+    verification_status: 代码证据确认
+    verification_path: 构造阻塞方法并取消 httptest 客户端请求，断言下游退出。
+    verification_boundary: 未在真实浏览器和长时外部同步任务中执行取消。
+    verification_details: {mode: 只读验证, instance_id: 当前工作区静态代码, verified_at: 2026-08-28T07:10:05Z, result: 代码调用链已确认，未执行专门的取消回归测试。}
+    first_seen_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
+    affected_paths: [internal/webserver/server.go, frontend/src/utils/runtime_bridge.go, internal/app/methods_sync_jobs.go]
+    review_history: 开发视角 contract_first 全量扫描。
+    last_checked_result: 当前代码边界成立。
+    issue:
+      title: Web RPC 取消未贯穿应用调用链
+      labels: [bug, runtime, web]
+      operation: runtime
+      data_state: read_only
+      server_side_effect: read_only
+      security_constraints: 不记录请求体或凭据，取消不得改变已确认写入语义。
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1098
+  - id: FIND-DEV-DETACHED-SSE-QUEUE-001
+    title: 分离窗口定向 SSE 可靠队列没有硬上限
     status: 待修复
     type: 资源与生命周期缺陷
     severity: P2
     confidence: 高
-    affected_capabilities:
-      - CAP-DS-TRINO
-      - CAP-QUERY-002
-    failure_mode: Trino sql.DB 未设置打开连接、空闲连接和生命周期上限。
-    operation: runtime
-    data_state: test_fixture
-    server_side_effect: none
-    conclusion: Trino Connect 在 sql.Open 后直接保存连接，遗漏其他 SQL 驱动共用的连接池配置。
-    evidence:
-      - internal/db/trino_impl.go:365-369
-      - internal/db/sql_pool.go:25-57
-    impact: 并发查询、元数据读取和导出可持续累积 Trino 连接，增加协调器和客户端资源耗尽风险。
-    recommendation: Connect 统一调用 configureSQLConnectionPool，并增加并发池统计和关闭回归测试。
-    acceptance_criteria:
-      - Trino 连接使用统一池限制
-      - 并发阻塞查询不超过约定打开连接数
-      - Close 后连接归零
+    affected_capabilities: [CAP-OPS-001, CAP-OPS-A10]
+    affected_symbols: [internal/webserver/server.go:client.enqueue, internal/webserver/server.go:EmitTo, internal/webserver/server.go:handleEvents]
+    contract_boundary: 分离窗口可靠事件生产速度与 SSE socket 消费速度之间的背压边界。
+    conclusion: 非可靠事件队列受限，但 EmitTo 固定写入可靠队列，慢速或挂起分离窗口可使队列持续增长。
+    evidence: [internal/webserver/server.go:162-189, internal/webserver/server.go:337-356, internal/webserver/server.go:580-596, internal/webserver/server.go:953-974]
+    reproduction:
+      preconditions: 建立不读取响应的 SSE 分离窗口客户端
+      steps: [持续向该客户端 EmitTo]
+      expected: 达到上限后合并降级或断连
+      actual: reliable 队列没有硬上限
+    root_cause: enqueue 仅限制 non-reliable 队列，而 EmitTo 为分离窗口路径固定指定 reliable=true。
+    impact: 单个慢速分离窗口可造成无界内存占用并影响主应用稳定性。
+    recommendation: 为可靠队列定义硬上限、合并策略或断连策略，并记录丢失或降级状态。
+    fix_boundary:
+      allowed_paths: [internal/webserver/server.go, internal/webserver/*_test.go]
+      preserve: [关键关闭和状态事件的投递语义]
+      out_of_scope: [重设计 SSE 协议]
+    regression_risk: 队列策略可能丢弃顺序敏感窗口事件。
+    acceptance_criteria: [可靠队列存在可测试上限, 慢消费端触发明确合并降级或断连, 正常分离窗口重连和关闭事件不回归]
+    regression_tests: [阻塞 SSE 消费并连续 EmitTo, 断言队列大小及触发策略]
+    verification_commands: [go test ./internal/webserver -run 'Test.*(SSE|EmitTo|Queue)' -count=1]
     verification_status: 代码证据确认
-    verification_path: 用 fake Trino driver 阻塞并发 QueryContext 并断言 DBStats。
-    first_seen_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
-    affected_paths:
-      - internal/db/trino_impl.go
-      - internal/db/sql_pool.go
-    verification_details:
-      mode: 只读代码复查
-      instance_id: full-new-20260824-af3ab2b8-review
-      verified_at: 2026-08-24T12:30:00+08:00
-      result: 当前 HEAD af3ab2b8 的受影响调用链仍符合 finding 结论；未运行外部服务或桌面端到端验证。
-    review_history:
-      - checked_at: 2026-08-24
-        result: DB-RESOURCE 调用链复核确认
-      - checked_at: 2026-08-24
-        result: 本轮复查：当前 HEAD af3ab2b8 仍满足既有结论；该 finding 在本次全量扫描中首次发现，未见后续修复提交。
-    last_checked_result: 2026-08-24 本轮复查仍存在：当前 HEAD 的受影响代码仍符合既有结论，未见后续修复提交。
-    issue_projection:
-      title: "[DB][P2] Trino 连接缺少连接池边界"
-      labels:
-        - bug
-        - database
-        - trino
-      body_sections:
-        summary: Trino 连接遗漏统一池配置
-        affected_behavior: 并发查询与元数据读取
-        reproduction: fake driver 阻塞五个并发查询
-        expected: 打开连接受限并可关闭
-        actual: 使用 database/sql 默认池策略
-        root_cause: Connect 未调用 configureSQLConnectionPool
-        affected_files:
-          - internal/db/trino_impl.go
-          - internal/db/sql_pool.go
-        fix_boundary: 仅连接初始化与定向测试
-        acceptance_tests:
-          - 池上限
-          - Close 回收
-        validation_commands:
-          - go test ./internal/db -run Trino -count=1
-        risk_and_rollback: 只调整客户端池参数
-        verification_boundary: 未在真实 Trino 集群执行
+    verification_path: 阻塞 SSE 消费端并连续投递定向事件，检查队列上限行为。
+    verification_boundary: 未在真实分离窗口长期运行中测量内存曲线。
+    verification_details: {mode: 只读验证, instance_id: 当前工作区静态代码, verified_at: 2026-08-28T07:10:05Z, result: 已确认可靠队列绕过现有长度限制。}
+    first_seen_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
+    affected_paths: [internal/webserver/server.go]
+    review_history: 开发视角 contract_first 全量扫描。
+    last_checked_result: 当前代码边界成立。
+    issue:
+      title: 分离窗口可靠 SSE 队列缺少内存上限
+      labels: [bug, runtime, resource]
       operation: runtime
-      data_state: test_fixture
+      data_state: read_only
       server_side_effect: none
-      security_constraints:
-        - 只用本地 fake driver
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1031
-  - id: FIND-DB-TRINO-METADATA-PARTIAL-001
-    title: Trino 跨 Catalog 枚举部分失败被伪装为完整成功
+      security_constraints: 不泄露窗口事件内容，限流不应绕过关闭门控。
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1099
+  - id: FIND-DEV-MYSQL-AGENT-CANCEL-001
+    title: MySQL Driver Agent 的 Context API 无法取消进行中的 IPC
     status: 待修复
-    type: 查询正确性缺陷
+    type: 调用链/契约缺陷
     severity: P2
     confidence: 高
-    affected_capabilities:
-      - CAP-EXP-001
-      - CAP-DS-TRINO
-    failure_mode: 任一 Catalog 的 schema 枚举失败后仍以 nil error 返回其他 Catalog 的结果。
-    operation: metadata
-    data_state: test_fixture
-    server_side_effect: read_only
-    conclusion: GetDatabases 对 schemaErr continue，只有结果为空时才传播最后错误。
-    evidence:
-      - internal/db/trino_impl.go:473-516
-    impact: 对象树会把权限不足或连接失败误显示为对象不存在，导致错误定位和误操作。
-    recommendation: 返回 PartialMetadataError 或在不完整时明确拒绝完整成功语义。
-    acceptance_criteria:
-      - 部分 Catalog 失败有可见安全摘要
-      - 不返回伪完整结果
-      - 正常跨 Catalog 枚举保持可用
+    affected_capabilities: [CAP-DS-MYSQL, CAP-CONN-003]
+    affected_symbols: [internal/db/mysql_agent_impl.go:QueryContext, internal/db/mysql_agent_impl.go:ExecContext, internal/db/mysql_agent_impl.go:client.call]
+    contract_boundary: database/sql Context API 到 MySQL Driver Agent JSON Lines IPC 的取消边界。
+    conclusion: QueryContext 和 ExecContext 仅在开始前检查 ctx.Err，随后同步调用无 Context 的 IPC；调用期间取消不能中断读取或解除 mutex 串行等待。
+    evidence: [internal/db/mysql_agent_impl.go:121-174, internal/db/mysql_agent_impl.go:229-257, internal/db/optional_driver_agent_impl.go:380-421]
+    reproduction:
+      preconditions: 使用延迟响应的假 MySQL agent
+      steps: [发起 QueryContext, 在请求发送后取消 Context]
+      expected: 快速返回 context.Canceled 并处理污染连接
+      actual: 调用继续等待 agent stdout
+    root_cause: MySQL agent client.call 不接收 Context，QueryContext 和 ExecContext 不能在 IPC 等待期间中止或重建客户端。
+    impact: 代理或数据库无响应时查询取消、导出取消和应用退出可能长期阻塞，后续请求也被 mutex 串行化。
+    recommendation: 为 IPC 调用引入 Context 监控及取消后的连接丢弃或进程重建策略，并对齐可选驱动 agent 的 runWithContext 行为。
+    fix_boundary:
+      allowed_paths: [internal/db/mysql_agent_impl.go, internal/db/*mysql*test.go]
+      preserve: [JSON Lines 协议兼容性, 现有序列化访问]
+      out_of_scope: [修改外部 MySQL agent 协议字段]
+    regression_risk: 取消后 client 重建和并发请求恢复可能影响后续调用。
+    acceptance_criteria: [进行中的 QueryContext 和 ExecContext 在取消后及时返回, 取消后客户端不会复用污染 IPC, 后续请求可恢复执行]
+    regression_tests: [延迟 agent 的 QueryContext 取消测试, 延迟 agent 的 ExecContext 取消和后续请求测试]
+    verification_commands: [go test ./internal/db -run 'TestMySQLAgent.*(Context|Cancel)' -count=1]
     verification_status: 代码证据确认
-    verification_path: fake driver 对一个 Catalog 返回 schema、另一个返回权限错误。
-    first_seen_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
-    affected_paths:
-      - internal/db/trino_impl.go
-    verification_details:
-      mode: 只读代码复查
-      instance_id: full-new-20260824-af3ab2b8-review
-      verified_at: 2026-08-24T12:30:00+08:00
-      result: 当前 HEAD af3ab2b8 的受影响调用链仍符合 finding 结论；未运行外部服务或桌面端到端验证。
-    review_history:
-      - checked_at: 2026-08-24
-        result: DB-CORRECTNESS 调用链复核确认
-      - checked_at: 2026-08-24
-        result: 本轮复查：当前 HEAD af3ab2b8 仍满足既有结论；该 finding 在本次全量扫描中首次发现，未见后续修复提交。
-    last_checked_result: 2026-08-24 本轮复查仍存在：当前 HEAD 的受影响代码仍符合既有结论，未见后续修复提交。
-    issue_projection:
-      title: "[DB][P2] Trino 元数据枚举隐藏部分失败"
-      labels:
-        - bug
-        - database
-        - metadata
-        - trino
-      body_sections:
-        summary: Catalog 枚举隐去部分失败
-        affected_behavior: 对象树和补全
-        reproduction: 一个 Catalog 成功另一个权限拒绝
-        expected: partial 或可解释失败
-        actual: 普通成功
-        root_cause: GetDatabases continue 后只在空结果传播错误
-        affected_files:
-          - internal/db/trino_impl.go
-        fix_boundary: 元数据错误聚合与测试
-        acceptance_tests:
-          - 部分权限失败
-        validation_commands:
-          - go test ./internal/db -run Trino -count=1
-        risk_and_rollback: 仅读取元数据
-        verification_boundary: 未测真实权限模型
-      operation: metadata
-      data_state: test_fixture
-      server_side_effect: read_only
-      security_constraints:
-        - 错误文本脱敏
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1032
-  - id: FIND-DB-TRINO-AFFECTED-ROWS-001
-    title: Trino 影响行数读取失败被显示为零行成功
-    status: 待修复
-    type: 查询正确性缺陷
-    severity: P2
-    confidence: 中
-    affected_capabilities:
-      - CAP-QUERY-002
-      - CAP-DS-TRINO
-    failure_mode: RowsAffected 返回错误时 ExecContext 返回 0 和 nil。
-    operation: query
-    data_state: test_fixture
-    server_side_effect: controlled_write
-    conclusion: Trino ExecContext 抹去影响行数未知状态。
-    evidence:
-      - internal/db/trino_impl.go:439-451
-    impact: 审计和前端无法区分零行与驱动无法提供行数，降低写入结果可信度。
-    recommendation: 传播错误或对受支持语句返回明确的未知影响行数状态。
-    acceptance_criteria:
-      - RowsAffected 错误不再表示确定零行
-      - 审计不把未知记录为零
-      - 成功行数保持不变
-    verification_status: 代码证据确认
-    verification_path: fake sql.Result 的 RowsAffected 返回错误。
-    first_seen_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
-    affected_paths:
-      - internal/db/trino_impl.go
-    verification_details:
-      mode: 只读代码复查
-      instance_id: full-new-20260824-af3ab2b8-review
-      verified_at: 2026-08-24T12:30:00+08:00
-      result: 当前 HEAD af3ab2b8 的受影响调用链仍符合 finding 结论；未运行外部服务或桌面端到端验证。
-    review_history:
-      - checked_at: 2026-08-24
-        result: DB-CORRECTNESS 复核确认
-      - checked_at: 2026-08-24
-        result: 本轮复查：当前 HEAD af3ab2b8 仍满足既有结论；该 finding 在本次全量扫描中首次发现，未见后续修复提交。
-    last_checked_result: 2026-08-24 本轮复查仍存在：当前 HEAD 的受影响代码仍符合既有结论，未见后续修复提交。
-    issue_projection:
-      title: "[DB][P2] Trino 将未知影响行数伪装为零"
-      labels:
-        - bug
-        - database
-        - trino
-      body_sections:
-        summary: RowsAffected 错误被吞掉
-        affected_behavior: 查询结果与审计
-        reproduction: fake Result 返回 RowsAffected error
-        expected: 明确未知或错误
-        actual: 零行成功
-        root_cause: 错误分支 return 0 nil
-        affected_files:
-          - internal/db/trino_impl.go
-        fix_boundary: 执行结果语义与测试
-        acceptance_tests:
-          - 未知影响行数
-        validation_commands:
-          - go test ./internal/db -run Trino -count=1
-        risk_and_rollback: 不改变实际执行
-        verification_boundary: 未测真实 connector
+    verification_path: 用延迟响应假 agent 在请求发送后取消 Context，核对返回和后续请求。
+    verification_boundary: 未与真实 MySQL agent 或网络故障进行集成验证。
+    verification_details: {mode: 只读验证, instance_id: 当前工作区静态代码, verified_at: 2026-08-28T07:10:05Z, result: 已确认当前 API 仅作开始前取消检查。}
+    first_seen_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
+    affected_paths: [internal/db/mysql_agent_impl.go, internal/db/optional_driver_agent_impl.go]
+    review_history: 开发视角 contract_first 全量扫描。
+    last_checked_result: 当前代码边界成立。
+    issue:
+      title: MySQL Driver Agent IPC 不响应进行中的 Context 取消
+      labels: [bug, driver, cancellation]
       operation: query
       data_state: test_fixture
+      server_side_effect: unknown
+      security_constraints: 测试仅使用本地假 agent，不记录连接参数。
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1100
+  - id: FIND-DEV-IMPORT-ARTIFACT-LIMIT-001
+    title: 导入失败工件和失败行重试缺少规模边界
+    status: 待修复
+    type: 资源与生命周期缺陷
+    severity: P2
+    confidence: 高
+    affected_capabilities: [CAP-DATA-002, CAP-DATA-A15]
+    affected_symbols: [internal/app/import_error_artifact.go:Append, internal/app/import_pipeline.go, internal/app/import_job_recovery.go:RetryFailedRows]
+    contract_boundary: 导入失败行写入 JSONL 工件与恢复重试时的磁盘和堆内存资源边界。
+    conclusion: JSONL 失败工件无行数或字节配额，失败行保存完整克隆；重试先全量解码、追加并复制到内存后才执行。
+    evidence: [internal/app/import_error_artifact.go:70-126, internal/app/import_pipeline.go:869-879, internal/app/import_job_recovery.go:301-492]
+    reproduction:
+      preconditions: 生成大量失败行的导入测试工件
+      steps: [持续写入失败行, 从历史仅重试失败行]
+      expected: 工件受配额控制且重试分批流式执行
+      actual: 写入和重试没有规模边界
+    root_cause: Append 未维护大小限制，恢复链路将完整工件解码后复制到多个内存集合。
+    impact: 大量失败行可无限占用用户数据目录，重试可能触发 OOM 或显著阻塞。
+    recommendation: 定义工件配额和截断提示，使用流式分批重试并避免重复克隆完整失败行。
+    fix_boundary:
+      allowed_paths: [internal/app/import_error_artifact.go, internal/app/import_pipeline.go, internal/app/import_job_recovery.go, 对应测试]
+      preserve: [失败恢复语义和安全检查点]
+      out_of_scope: [改变导入格式支持范围]
+    regression_risk: 截断策略可能影响失败行可恢复性和历史展示。
+    acceptance_criteria: [失败工件达到配额后给出明确状态, 大工件失败行重试不全量载入内存, 可恢复行与不可恢复行范围可见]
+    regression_tests: [超配额工件测试, 大 JSONL 流式重试峰值内存或批次断言]
+    verification_commands: [go test ./internal/app -run 'Test.*(Import.*Artifact|RetryFailedRows)' -count=1]
+    verification_status: 代码证据确认
+    verification_path: 生成大错误 JSONL 并测量重试开始前内存及批次行为。
+    verification_boundary: 未在真实大文件和用户数据目录容量限制下执行。
+    verification_details: {mode: 只读验证, instance_id: 当前工作区静态代码, verified_at: 2026-08-28T07:10:05Z, result: 静态链路确认无配额且存在全量解码复制。}
+    first_seen_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
+    affected_paths: [internal/app/import_error_artifact.go, internal/app/import_pipeline.go, internal/app/import_job_recovery.go]
+    review_history: 开发视角 contract_first 全量扫描。
+    last_checked_result: 当前代码边界成立。
+    issue:
+      title: 导入失败工件与重试缺少资源边界
+      labels: [bug, import, resource]
+      operation: import
+      data_state: test_fixture
       server_side_effect: controlled_write
-      security_constraints:
-        - fake driver
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1033
-  - id: FIND-DB-POSTGRES-SEARCH-PATH-FALLBACK-001
-    title: PostgreSQL 系 search_path 回退只设置单个池连接
+      security_constraints: 不在工件或测试日志中记录业务数据。
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1101
+  - id: FIND-DEV-DETACHED-BRIDGE-TIMEOUT-001
+    title: 分离窗口 Bridge 普通 RPC 没有超时和生命周期取消边界
+    status: 待修复
+    type: 资源与生命周期缺陷
+    severity: P2
+    confidence: 高
+    affected_capabilities: [CAP-OPS-001, CAP-OPS-A10]
+    affected_symbols: [internal/nativewindow/bridge.go:Invoke, internal/nativewindow/bridge.go:Bootstrap, internal/nativewindow/bridge.go:Action, internal/nativewindow/bridge.go:doJSON]
+    contract_boundary: 分离窗口到父进程 HTTP Bridge 的普通 RPC 请求和窗口生命周期边界。
+    conclusion: Invoke、Bootstrap、控制和动作调用均使用 Background Context；HTTP client 没有请求超时，父进程卡住时子窗口可无限等待。
+    evidence: [internal/nativewindow/bridge.go:99-130, internal/nativewindow/bridge.go:165-201, internal/nativewindow/bridge.go:274-334]
+    reproduction:
+      preconditions: httptest 服务端保持请求不返回
+      steps: [调用 Invoke、Bootstrap 和 Action, 关闭或停止 bridge]
+      expected: 请求在定义超时或生命周期结束后返回
+      actual: 普通 RPC 依赖 Background Context 无限等待
+    root_cause: newBridge 仅设置 Transport 拨号超时，普通调用不创建带截止时间且可取消的请求 Context。
+    impact: 子窗口加载和操作 UI 会永久等待，退出和恢复体验不可靠。
+    recommendation: 为普通 Bridge RPC 设置统一超时并绑定 bridge 生命周期取消，保留关闭回退的特殊短超时。
+    fix_boundary:
+      allowed_paths: [internal/nativewindow/bridge.go, internal/nativewindow/*_test.go]
+      preserve: [现有 SSE 重连和关闭门控]
+      out_of_scope: [变更父子窗口协议语义]
+    regression_risk: 过短超时可能误伤慢速但正常的父进程操作。
+    acceptance_criteria: [Invoke Bootstrap Action 有可配置或明确的超时, bridge 停止会取消未完成普通 RPC, 关闭回退及 SSE 行为不回归]
+    regression_tests: [永不返回 httptest 的 Invoke Bootstrap Action 超时测试, bridge stop 取消请求测试]
+    verification_commands: [go test ./internal/nativewindow -run 'Test.*(Bridge|Timeout|Invoke|Bootstrap)' -count=1]
+    verification_status: 代码证据确认
+    verification_path: 使用不返回的 httptest handler 断言普通 RPC 在超时或停止后返回。
+    verification_boundary: 未在真实多进程窗口环境测量合理超时阈值。
+    verification_details: {mode: 只读验证, instance_id: 当前工作区静态代码, verified_at: 2026-08-28T07:10:05Z, result: 静态代码确认普通 RPC 使用 Background Context 且 client 无总超时。}
+    first_seen_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
+    affected_paths: [internal/nativewindow/bridge.go]
+    review_history: 开发视角 contract_first 全量扫描。
+    last_checked_result: 当前代码边界成立。
+    issue:
+      title: 分离窗口 Bridge 普通 RPC 缺少超时和取消
+      labels: [bug, runtime, lifecycle]
+      operation: runtime
+      data_state: read_only
+      server_side_effect: none
+      security_constraints: 超时错误不得泄露 Bridge 地址或会话标识。
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1102
+  - id: FIND-DB-DUCKDB-QUALIFIED-FALLBACK-001
+    title: DuckDB 显式限定对象失败后会降级到同名非限定对象
     status: 待修复
     type: 查询正确性缺陷
     severity: P1
     confidence: 高
-    affected_capabilities:
-      - CAP-EXP-001
-      - CAP-QUERY-A05
-      - CAP-DS-POSTGRES
-    failure_mode: DSN search_path 失败后单次 SET 不覆盖连接池中其他物理连接。
-    operation: metadata
-    data_state: test_fixture
-    server_side_effect: read_only
-    conclusion: PostgreSQL、GaussDB、Kingbase 的 fallback 均保留会话级 SET，而池允许后续选择未设置连接。
-    evidence:
-      - internal/db/postgres_impl.go:559-623
-      - internal/db/gaussdb_impl.go:212-261
-      - internal/db/kingbase_impl.go:184-216
-      - internal/db/sql_pool.go:38-57
-    impact: 未限定 Schema 的读取或写入可能随机找不到对象或命中同名错误对象。
-    recommendation: 使用连接初始化机制、单连接会话或明确拒绝该回退模式。
-    acceptance_criteria:
-      - 所有池连接具有目标 search_path 或连接失败
-      - 双 Schema 同名对象不串库
-      - 三种 PostgreSQL 系驱动一致
-    verification_status: 代码证据确认
-    verification_path: fake pool 提供两个物理连接并强制 DSN 参数失败。
-    first_seen_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
-    affected_paths:
-      - internal/db/postgres_impl.go
-      - internal/db/gaussdb_impl.go
-      - internal/db/kingbase_impl.go
-    verification_details:
-      mode: 只读代码复查
-      instance_id: full-new-20260824-af3ab2b8-review
-      verified_at: 2026-08-24T12:30:00+08:00
-      result: 当前 HEAD af3ab2b8 的受影响调用链仍符合 finding 结论；未运行外部服务或桌面端到端验证。
-    review_history:
-      - checked_at: 2026-08-24
-        result: DB-DIALECT 复核确认
-      - checked_at: 2026-08-24
-        result: 本轮复查：当前 HEAD af3ab2b8 仍满足既有结论；该 finding 在本次全量扫描中首次发现，未见后续修复提交。
-    last_checked_result: 2026-08-24 本轮复查仍存在：当前 HEAD 的受影响代码仍符合既有结论，未见后续修复提交。
-    issue_projection:
-      title: "[DB][P1] PostgreSQL 系连接池的 search_path 回退不一致"
-      labels:
-        - bug
-        - database
-        - postgres
-        - dialect
-      body_sections:
-        summary: 单连接 SET 与连接池冲突
-        affected_behavior: 未限定对象访问
-        reproduction: DSN 参数失败后使用两个池连接
-        expected: 都使用目标 Schema
-        actual: 后续连接可能默认 Schema
-        root_cause: 会话级 fallback 未覆盖池
-        affected_files:
-          - internal/db/postgres_impl.go
-          - internal/db/gaussdb_impl.go
-          - internal/db/kingbase_impl.go
-        fix_boundary: search_path 初始化和测试
-        acceptance_tests:
-          - 双连接双 Schema
-        validation_commands:
-          - go test ./internal/db -run SearchPath -count=1
-        risk_and_rollback: 只读 fixture 验证
-        verification_boundary: 未测所有服务端版本
-      operation: metadata
-      data_state: test_fixture
-      server_side_effect: read_only
-      security_constraints:
-        - 仅测试 Schema
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1035
-  - id: FIND-DEV-MCP-TABLES-PARTIAL-001
-    title: MCP 表与视图元数据部分失败被伪装为完整成功
-    status: 待修复
-    type: 调用链/契约缺陷
-    severity: P2
-    confidence: 高
-    affected_capabilities:
-      - CAP-MCP-A02
-      - CAP-EXP-001
-    affected_symbols:
-      - internal/mcpserver.(*Service).getTables
-      - internal/app.(*App).DBGetViews
-    contract_boundary: MCP get_tables 对表与视图完整性的成功契约。
-    conclusion: 取得表后 DBGetViews 失败或视图解码失败仍返回空 views 的成功结果。
-    evidence:
-      - internal/mcpserver/service.go:251-295
-      - internal/mcpserver/service.go:298-310
-    reproduction:
-      preconditions:
-        - fake backend
-      steps:
-        - 表成功且视图失败时调用 get_tables
-      expected: partial 或错误
-      actual: 完整成功空 views
-    root_cause: get_tables 吞掉视图读取和解码错误，而独立 GetViews 会传播错误。
-    impact: Agent 依据不完整对象集合生成 SQL 或迁移建议且无法识别缺失。
-    recommendation: 传播错误或使用显式 partial/warnings 结果。
-    fix_boundary:
-      allowed_paths:
-        - internal/mcpserver/service.go
-        - internal/mcpserver
-      preserve:
-        - 现有表枚举
-      out_of_scope:
-        - 改变 MCP tool schema 以外协议
-    regression_risk: MCP 元数据兼容性。
-    acceptance_criteria:
-      - 视图失败不伪装完整成功
-      - 表成功视图失败有安全摘要
-      - 正常结果不变
-    regression_tests:
-      - fake backend 的视图失败和非法视图数据
-    verification_commands:
-      - go test ./internal/mcpserver -run Tables -count=1
-    verification_status: 代码证据确认
-    verification_path: 以 fake backend 复现表成功视图失败。
-    verification_boundary: 未运行 MCP 集成服务。
-    issue:
-      title: "[开发][P2] MCP get_tables 隐藏视图元数据失败"
-      labels:
-        - bug
-        - developer
-        - mcp
-      operation: metadata
-      data_state: test_fixture
-      server_side_effect: read_only
-      security_constraints:
-        - 仅 fake backend
-    first_seen_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
-    affected_paths:
-      - internal/mcpserver/service.go
-    verification_details:
-      mode: 只读代码复查
-      instance_id: full-new-20260824-af3ab2b8-review
-      verified_at: 2026-08-24T12:30:00+08:00
-      result: 当前 HEAD af3ab2b8 的受影响调用链仍符合 finding 结论；未运行外部服务或桌面端到端验证。
-    review_history:
-      - checked_at: 2026-08-24
-        result: DEV-CONTRACT 复核确认
-      - checked_at: 2026-08-24
-        result: 本轮复查：当前 HEAD af3ab2b8 仍满足既有结论；该 finding 在本次全量扫描中首次发现，未见后续修复提交。
-    last_checked_result: 2026-08-24 本轮复查仍存在：当前 HEAD 的受影响代码仍符合既有结论，未见后续修复提交。
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1038
-  - id: FIND-DEV-MCP-SHUTDOWN-RACE-001
-    title: MCP 停止超时后会与在途请求并发关闭后端
-    status: 待修复
-    type: 资源与生命周期缺陷
-    severity: P2
-    confidence: 中
-    affected_capabilities:
-      - CAP-MCP-A04
-    affected_symbols:
-      - internal/mcpserver.StartAppStreamableHTTPServer
-      - internal/mcpserver.(*Server).Shutdown
-    contract_boundary: HTTP 服务停止完成与 AppBackend 生命周期。
-    conclusion: 固定五秒 Shutdown 超时后 Wait goroutine 可立即关闭仍在执行 handler 所需的 backend。
-    evidence:
-      - internal/mcpserver/run.go:115-135
-      - internal/mcpserver/run.go:160-232
-    reproduction:
-      preconditions:
-        - 阻塞 tool handler
-      steps:
-        - 停止服务并等待超过五秒
-      expected: backend 等在途请求退出
-      actual: backend 可能先关闭
-    root_cause: 后端关闭绑定 server Wait，而非活动请求生命周期。
-    impact: 长查询停止期可能被中断并留下未知执行结果。
-    recommendation: 跟踪活动请求并在其结束或明确强制中止后关闭 backend。
-    fix_boundary:
-      allowed_paths:
-        - internal/mcpserver/run.go
-        - internal/mcpserver
-      preserve:
-        - 五秒可配置停止策略
-      out_of_scope:
-        - 数据库驱动协议
-    regression_risk: Streamable HTTP 关闭行为。
-    acceptance_criteria:
-      - 超时 handler 不与 backend Close 并发
-      - 正常快速停止不回归
-    regression_tests:
-      - 阻塞 handler shutdown
-    verification_commands:
-      - go test ./internal/mcpserver -run Shutdown -count=1
-    verification_status: 代码证据确认
-    verification_path: fake handler 阻塞超过停止时限。
-    verification_boundary: 未运行真实流式会话。
-    issue:
-      title: "[开发][P2] MCP 关闭与在途请求竞争"
-      labels:
-        - bug
-        - developer
-        - mcp
-        - lifecycle
-      operation: runtime
-      data_state: test_fixture
-      server_side_effect: unknown
-      security_constraints:
-        - 本地 fake handler
-    first_seen_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
-    affected_paths:
-      - internal/mcpserver/run.go
-    verification_details:
-      mode: 只读代码复查
-      instance_id: full-new-20260824-af3ab2b8-review
-      verified_at: 2026-08-24T12:30:00+08:00
-      result: 当前 HEAD af3ab2b8 的受影响调用链仍符合 finding 结论；未运行外部服务或桌面端到端验证。
-    review_history:
-      - checked_at: 2026-08-24
-        result: DEV-LIFECYCLE 复核确认
-      - checked_at: 2026-08-24
-        result: 本轮复查：当前 HEAD af3ab2b8 仍满足既有结论；该 finding 在本次全量扫描中首次发现，未见后续修复提交。
-    last_checked_result: 2026-08-24 本轮复查仍存在：当前 HEAD 的受影响代码仍符合既有结论，未见后续修复提交。
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1043
-  - id: FIND-DB-POSTGRES-SCHEMA-SCAN-001
-    status: 待修复
-    severity: P2
-    confidence: 高
-    verification_status: 代码证据确认
-    first_seen_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
-    verification_details:
-      mode: 只读代码复查
-      instance_id: full-new-20260824-af3ab2b8-review
-      verified_at: 2026-08-24T12:30:00+08:00
-      result: 当前 HEAD af3ab2b8 的受影响调用链仍符合 finding 结论；未运行外部服务或桌面端到端验证。
-    review_history:
-      - checked_at: 2026-08-24
-        result: 全量扫描主裁决确认
-      - checked_at: 2026-08-24
-        result: 本轮复查：当前 HEAD af3ab2b8 仍满足既有结论；该 finding 在本次全量扫描中首次发现，未见后续修复提交。
-    last_checked_result: 2026-08-24 本轮复查仍存在：当前 HEAD 的受影响代码仍符合既有结论，未见后续修复提交。
-    type: 查询正确性缺陷
-    acceptance_criteria: &a1
-      - 行错误或 rows.Err 不再产生普通成功连接
-      - 正常 Schema 枚举行不回归
-    verification_path: fake rows 在第二行返回 Scan 或迭代错误。
-    issue_projection:
-      title: "[DB][P2] PostgreSQL 与 Kingbase 用户 Schema 枚举吞掉行错误"
-      labels:
-        - bug
-        - database
-        - ai-ready
-      body_sections:
-        summary: queryUserSchemas 忽略单行 Scan 错误且不检查 rows.Err。
-        affected_behavior: 对象树、补全和未限定查询会静默遗漏 Schema。
-        reproduction: fake rows 在第二行返回 Scan 或迭代错误。
-        expected: 行错误或 rows.Err 不再产生普通成功连接
-        actual: Scan 或 rows.Err 被 continue 或忽略后仍安装残缺 search_path。
-        root_cause: queryUserSchemas 忽略单行 Scan 错误且不检查 rows.Err。
-        affected_files: &a2
-          - internal/db/postgres_impl.go
-          - internal/db/kingbase_impl.go
-        fix_boundary: 传播阶段化错误，或显式标记 partial 且不用于默认连接行为。
-        acceptance_tests: *a1
-        validation_commands:
-          - go test ./internal/db -count=1
-        risk_and_rollback: 仅使用 fake driver 或受控测试数据；不得执行真实业务写入。
-        verification_boundary: 未在真实外部服务矩阵执行。
-      operation: metadata
-      data_state: test_fixture
-      server_side_effect: read_only
-      security_constraints:
-        - 不记录连接串、凭据或真实业务数据
-    title: PostgreSQL 与 Kingbase 用户 Schema 枚举吞掉行错误
-    affected_capabilities:
-      - CAP-EXP-001
-      - CAP-DS-POSTGRES
-    failure_mode: Scan 或 rows.Err 被 continue 或忽略后仍安装残缺 search_path。
-    operation: metadata
-    data_state: test_fixture
-    server_side_effect: read_only
-    conclusion: queryUserSchemas 忽略单行 Scan 错误且不检查 rows.Err。
-    evidence:
-      - internal/db/postgres_impl.go:627-655
-      - internal/db/kingbase_impl.go:225-255
-    impact: 对象树、补全和未限定查询会静默遗漏 Schema。
-    recommendation: 传播阶段化错误，或显式标记 partial 且不用于默认连接行为。
-    acceptance: *a1
-    verify: fake rows 在第二行返回 Scan 或迭代错误。
-    affected_paths: *a2
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1040
-  - id: FIND-DB-CHROMA-COUNT-LIMIT-001
-    status: 待修复
-    severity: P2
-    confidence: 高
-    verification_status: 代码证据确认
-    first_seen_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
-    verification_details:
-      mode: 只读代码复查
-      instance_id: full-new-20260824-af3ab2b8-review
-      verified_at: 2026-08-24T12:30:00+08:00
-      result: 当前 HEAD af3ab2b8 的受影响调用链仍符合 finding 结论；未运行外部服务或桌面端到端验证。
-    review_history:
-      - checked_at: 2026-08-24
-        result: 全量扫描主裁决确认
-      - checked_at: 2026-08-24
-        result: 本轮复查：当前 HEAD af3ab2b8 仍满足既有结论；该 finding 在本次全量扫描中首次发现，未见后续修复提交。
-    last_checked_result: 2026-08-24 本轮复查仍存在：当前 HEAD 的受影响代码仍符合既有结论，未见后续修复提交。
-    type: 查询正确性缺陷
-    acceptance_criteria: &a3
-      - 超过上限不伪装精确计数
-      - 受控小集合计数保持准确
-    verification_path: fake Chroma 返回 1,000,001 条合成文档。
-    issue_projection:
-      title: "[DB][P2] Chroma 带 WHERE 的 COUNT 在百万命中后静默少计"
-      labels:
-        - bug
-        - database
-        - ai-ready
-      body_sections:
-        summary: countCollection 没有分页、截断标记或错误。
-        affected_behavior: 超大集合的筛选计数可被显示为准确值并遗漏尾部数据。
-        reproduction: fake Chroma 返回 1,000,001 条合成文档。
-        expected: 超过上限不伪装精确计数
-        actual: 固定读取一百万行后直接以 len 返回精确总数。
-        root_cause: countCollection 没有分页、截断标记或错误。
-        affected_files: &a4
-          - internal/db/chroma_impl.go
-        fix_boundary: 分页累加并设资源预算，或返回 partial/upper-bound 状态。
-        acceptance_tests: *a3
-        validation_commands:
-          - go test ./internal/db -count=1
-        risk_and_rollback: 仅使用 fake driver 或受控测试数据；不得执行真实业务写入。
-        verification_boundary: 未在真实外部服务矩阵执行。
-      operation: query
-      data_state: test_fixture
-      server_side_effect: read_only
-      security_constraints:
-        - 不记录连接串、凭据或真实业务数据
-    title: Chroma 带 WHERE 的 COUNT 在百万命中后静默少计
-    affected_capabilities:
-      - CAP-DS-CHROMA
-      - CAP-QUERY-002
-    failure_mode: 固定读取一百万行后直接以 len 返回精确总数。
+    affected_capabilities: [CAP-DS-DUCKDB, CAP-EXP-001]
+    conclusion: 用户指定 catalog 或 schema 的 DuckDB 对象在首个查询失败后，代码会尝试同名未限定对象，可能返回错误对象的数据或元数据。
+    evidence: [internal/db/duckdb_impl.go, internal/db/duckdb_impl_test.go]
+    impact: 同名对象存在时，用户会在未收到限定对象失败提示的情况下读取或操作错误目标。
+    recommendation: 仅在输入本身未限定时使用兼容回退；显式限定对象失败必须返回带限定名的错误。
+    acceptance_criteria: [显式 catalog 或 schema 的对象失败不访问同名未限定对象, 未限定旧调用保持兼容, 同名 fixture 覆盖结果和错误语义]
+    first_seen_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
+    affected_paths: [internal/db/duckdb_impl.go, internal/db/duckdb_impl_test.go]
+    verification_status: 自动化测试确认
+    verification_path: 在测试 DuckDB 中创建同名限定和未限定对象，令限定路径失败并断言不回退。
+    verification_details: {mode: 只读验证, instance_id: 本地 DuckDB 测试夹具, verified_at: 2026-08-28T07:10:05Z, result: 数据库定向测试已通过并确认当前错误回退语义。}
+    review_history: 数据库视角全量扫描。
+    last_checked_result: 当前代码边界成立。
+    failure_mode: 显式限定目标静默降级为同名对象。
     operation: query
     data_state: test_fixture
     server_side_effect: read_only
-    conclusion: countCollection 没有分页、截断标记或错误。
-    evidence:
-      - internal/db/chroma_impl.go:644-660
-    impact: 超大集合的筛选计数可被显示为准确值并遗漏尾部数据。
-    recommendation: 分页累加并设资源预算，或返回 partial/upper-bound 状态。
-    acceptance: *a3
-    verify: fake Chroma 返回 1,000,001 条合成文档。
-    affected_paths: *a4
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1037
-  - id: FIND-DB-VECTOR-DELETE-LOCATOR-001
-    status: 待修复
-    severity: P2
-    confidence: 高
-    verification_status: 代码证据确认
-    first_seen_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
-    verification_details:
-      mode: 只读代码复查
-      instance_id: full-new-20260824-af3ab2b8-review
-      verified_at: 2026-08-24T12:30:00+08:00
-      result: 当前 HEAD af3ab2b8 的受影响调用链仍符合 finding 结论；未运行外部服务或桌面端到端验证。
-    review_history:
-      - checked_at: 2026-08-24
-        result: 全量扫描主裁决确认
-      - checked_at: 2026-08-24
-        result: 本轮复查：当前 HEAD af3ab2b8 仍满足既有结论；该 finding 在本次全量扫描中首次发现，未见后续修复提交。
-    last_checked_result: 2026-08-24 本轮复查仍存在：当前 HEAD 的受影响代码仍符合既有结论，未见后续修复提交。
-    type: 查询正确性缺陷
-    acceptance_criteria: &a5
-      - 无效删除返回定位键错误
-      - 无效输入不发送写请求
-    verification_path: 向三个驱动注入空 ID 的 Delete ChangeSet。
     issue_projection:
-      title: "[DB][P2] 向量数据源缺少主键的删除被静默跳过"
-      labels:
-        - bug
-        - database
-        - ai-ready
+      title: DuckDB 限定对象查询不能降级到同名对象
+      labels: [bug, database, duckdb, correctness]
       body_sections:
-        summary: Chroma、Qdrant、Milvus 仅在有效 ID 非空时执行删除，不校验输入删除数。
-        affected_behavior: 用户会看到提交成功但目标数据未删除，造成同步不一致。
-        reproduction: 向三个驱动注入空 ID 的 Delete ChangeSet。
-        expected: 无效删除返回定位键错误
-        actual: 删除集合有无效 locator 时不发请求并返回 nil。
-        root_cause: Chroma、Qdrant、Milvus 仅在有效 ID 非空时执行删除，不校验输入删除数。
-        affected_files: &a6
-          - internal/db/chroma_impl.go
-          - internal/db/qdrant_impl.go
-          - internal/db/milvus_impl.go
-        fix_boundary: 输入删除数大于有效 locator 数时失败并记录未执行状态。
-        acceptance_tests: *a5
-        validation_commands:
-          - go test ./internal/db -count=1
-        risk_and_rollback: 仅使用 fake driver 或受控测试数据；不得执行真实业务写入。
-        verification_boundary: 未在真实外部服务矩阵执行。
-      operation: transaction
+        summary: 显式限定对象失败后会回退到不同语义目标。
+        affected_behavior: 查询和元数据可能指向错误的同名对象。
+        reproduction: 用同名对象 fixture 令限定查询失败。
+        expected: 返回限定对象失败。
+        actual: 尝试同名未限定对象。
+        root_cause: 兼容回退没有区分调用方是否已限定目标。
+        affected_files: internal/db/duckdb_impl.go
+        fix_boundary: 限制回退条件并补测试。
+        acceptance_tests: 显式限定和未限定对象分别覆盖。
+        validation_commands: go test ./internal/db -run TestDuckDB -count=1
+        risk_and_rollback: 仅读取测试夹具；保留未限定兼容行为。
+        verification_boundary: 未在所有 DuckDB 版本实机验证。
+      operation: query
       data_state: test_fixture
-      server_side_effect: controlled_write
-      security_constraints:
-        - 不记录连接串、凭据或真实业务数据
-    title: 向量数据源缺少主键的删除被静默跳过
-    affected_capabilities:
-      - CAP-DATA-001
-      - CAP-DS-CHROMA
-      - CAP-DS-QDRANT
-      - CAP-DS-MILVUS
-    failure_mode: 删除集合有无效 locator 时不发请求并返回 nil。
-    operation: transaction
-    data_state: test_fixture
-    server_side_effect: controlled_write
-    conclusion: Chroma、Qdrant、Milvus 仅在有效 ID 非空时执行删除，不校验输入删除数。
-    evidence:
-      - internal/db/chroma_impl.go:316-327
-      - internal/db/qdrant_impl.go:313-324
-      - internal/db/milvus_impl.go:362-369
-    impact: 用户会看到提交成功但目标数据未删除，造成同步不一致。
-    recommendation: 输入删除数大于有效 locator 数时失败并记录未执行状态。
-    acceptance: *a5
-    verify: 向三个驱动注入空 ID 的 Delete ChangeSet。
-    affected_paths: *a6
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1041
-  - id: FIND-DB-VECTOR-PARTIAL-WRITE-001
+      server_side_effect: read_only
+      security_constraints: 测试不包含真实文件路径或业务数据。
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1103
+  - id: FIND-DB-DUCKDB-DATABASE-LIST-MASK-001
+    title: DuckDB 数据库枚举失败被伪装为 main 可用
     status: 待修复
-    severity: P2
-    confidence: 高
-    verification_status: 代码证据确认
-    first_seen_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
-    verification_details:
-      mode: 只读代码复查
-      instance_id: full-new-20260824-af3ab2b8-review
-      verified_at: 2026-08-24T12:30:00+08:00
-      result: 当前 HEAD af3ab2b8 的受影响调用链仍符合 finding 结论；未运行外部服务或桌面端到端验证。
-    review_history:
-      - checked_at: 2026-08-24
-        result: 全量扫描主裁决确认
-      - checked_at: 2026-08-24
-        result: 本轮复查：当前 HEAD af3ab2b8 仍满足既有结论；该 finding 在本次全量扫描中首次发现，未见后续修复提交。
-    last_checked_result: 2026-08-24 本轮复查仍存在：当前 HEAD 的受影响代码仍符合既有结论，未见后续修复提交。
-    type: 事务一致性缺陷
-    acceptance_criteria: &a7
-      - 分阶段失败返回 partial/unknown 状态
-      - 恢复路径不盲重放
-    verification_path: fake 服务使 delete 成功、update 失败。
-    issue_projection:
-      title: "[DB][P2] 向量批量增删改失败后不报告部分写入状态"
-      labels:
-        - bug
-        - database
-        - ai-ready
-      body_sections:
-        summary: 三个驱动按删除、更新、插入分步请求，后续失败直接返回普通 error。
-        affected_behavior: 重试可重复写入或遗留已删除实体。
-        reproduction: fake 服务使 delete 成功、update 失败。
-        expected: 分阶段失败返回 partial/unknown 状态
-        actual: 删除成功后更新失败时已执行写入没有摘要或禁止盲重试标记。
-        root_cause: 三个驱动按删除、更新、插入分步请求，后续失败直接返回普通 error。
-        affected_files: &a8
-          - internal/db/chroma_impl.go
-          - internal/db/qdrant_impl.go
-          - internal/db/milvus_impl.go
-        fix_boundary: 持久化阶段执行状态并阻止无条件重试，或采用服务端批处理。
-        acceptance_tests: *a7
-        validation_commands:
-          - go test ./internal/db -count=1
-        risk_and_rollback: 仅使用 fake driver 或受控测试数据；不得执行真实业务写入。
-        verification_boundary: 未在真实外部服务矩阵执行。
-      operation: transaction
-      data_state: controlled_write
-      server_side_effect: controlled_write
-      security_constraints:
-        - 不记录连接串、凭据或真实业务数据
-    title: 向量批量增删改失败后不报告部分写入状态
-    affected_capabilities:
-      - CAP-DATA-001
-      - CAP-SYNC-001
-    failure_mode: 删除成功后更新失败时已执行写入没有摘要或禁止盲重试标记。
-    operation: transaction
-    data_state: controlled_write
-    server_side_effect: controlled_write
-    conclusion: 三个驱动按删除、更新、插入分步请求，后续失败直接返回普通 error。
-    evidence:
-      - internal/db/chroma_impl.go:312-351
-      - internal/db/qdrant_impl.go:309-357
-      - internal/db/milvus_impl.go:350-412
-    impact: 重试可重复写入或遗留已删除实体。
-    recommendation: 持久化阶段执行状态并阻止无条件重试，或采用服务端批处理。
-    acceptance: *a7
-    verify: fake 服务使 delete 成功、update 失败。
-    affected_paths: *a8
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1045
-  - id: FIND-DB-EXTERNAL-WRITE-CANCEL-001
-    status: 待修复
-    severity: P2
-    confidence: 高
-    verification_status: 代码证据确认
-    first_seen_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
-    verification_details:
-      mode: 只读代码复查
-      instance_id: full-new-20260824-af3ab2b8-review
-      verified_at: 2026-08-24T12:30:00+08:00
-      result: 当前 HEAD af3ab2b8 的受影响调用链仍符合 finding 结论；未运行外部服务或桌面端到端验证。
-    review_history:
-      - checked_at: 2026-08-24
-        result: 全量扫描主裁决确认
-      - checked_at: 2026-08-24
-        result: 本轮复查：当前 HEAD af3ab2b8 仍满足既有结论；该 finding 在本次全量扫描中首次发现，未见后续修复提交。
-    last_checked_result: 2026-08-24 本轮复查仍存在：当前 HEAD 的受影响代码仍符合既有结论，未见后续修复提交。
     type: 查询正确性缺陷
-    acceptance_criteria: &a9
-      - 取消停止后续请求
-      - 不可取消实现明确未知结果
-    verification_path: 阻塞 fake 后端后取消 job context。
+    severity: P2
+    confidence: 高
+    affected_capabilities: [CAP-DS-DUCKDB, CAP-EXP-001]
+    conclusion: PRAGMA database_list 失败时实现返回 main 作为正常数据库列表，用户无法区分真实单库结果和元数据读取失败。
+    evidence: [internal/db/duckdb_impl.go, internal/db/duckdb_impl_test.go]
+    impact: 连接或权限异常会被隐藏，后续对象浏览针对错误的假定数据库继续执行。
+    recommendation: 仅在可证实单库模式时返回 main；其他失败应传播并保留可诊断错误。
+    acceptance_criteria: [PRAGMA 失败返回错误或明确 partial 状态, 真实单库模式仍可枚举 main, 错误包含操作上下文]
+    first_seen_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
+    affected_paths: [internal/db/duckdb_impl.go, internal/db/duckdb_impl_test.go]
+    verification_status: 自动化测试确认
+    verification_path: 使用 mock 或错误连接使 PRAGMA database_list 失败，断言不返回伪成功列表。
+    verification_details: {mode: 只读验证, instance_id: 本地 DuckDB 测试夹具, verified_at: 2026-08-28T07:10:05Z, result: 数据库定向测试通过并确认当前伪成功分支。}
+    review_history: 数据库视角全量扫描。
+    last_checked_result: 当前代码边界成立。
+    failure_mode: 元数据错误伪装为正常默认数据库。
+    operation: metadata
+    data_state: test_fixture
+    server_side_effect: read_only
     issue_projection:
-      title: "[DB][P2] 外部数据源批量写入未接收同步取消信号"
-      labels:
-        - bug
-        - database
-        - ai-ready
+      title: DuckDB database_list 失败不能伪装为 main
+      labels: [bug, database, duckdb, metadata]
       body_sections:
-        summary: BatchApplierContext 已定义但 Chroma、Qdrant、Milvus、Elasticsearch、TDengine
-          未实现或未使用传入 Context。
-        affected_behavior: 取消任务或关闭应用后写入仍可能继续并扩大未知结果。
-        reproduction: 阻塞 fake 后端后取消 job context。
-        expected: 取消停止后续请求
-        actual: ApplyChanges 使用 Background 或无 Context Exec，取消不停止远端写入。
-        root_cause: BatchApplierContext 已定义但 Chroma、Qdrant、Milvus、Elasticsearch、TDengine
-          未实现或未使用传入 Context。
-        affected_files: &a10
-          - internal/db/database.go
-          - internal/db/chroma_impl.go
-          - internal/db/qdrant_impl.go
-          - internal/db/milvus_impl.go
-          - internal/db/elasticsearch_impl.go
-          - internal/db/tdengine_impl.go
-        fix_boundary: 实现 ApplyChangesContext 并将 Context 传给 HTTP、SDK 与数据库请求。
-        acceptance_tests: *a9
-        validation_commands:
-          - go test ./internal/db -count=1
-        risk_and_rollback: 仅使用 fake driver 或受控测试数据；不得执行真实业务写入。
-        verification_boundary: 未在真实外部服务矩阵执行。
-      operation: sync
+        summary: database_list 错误被隐藏为 main。
+        affected_behavior: 用户看到不可诊断的假成功元数据。
+        reproduction: 让 PRAGMA database_list 返回错误。
+        expected: 返回错误或明确 partial 状态。
+        actual: 返回 main。
+        root_cause: 错误分支使用默认值代替错误传播。
+        affected_files: internal/db/duckdb_impl.go
+        fix_boundary: 区分单库模式与读取失败。
+        acceptance_tests: 错误和真实单库分支测试。
+        validation_commands: go test ./internal/db -run TestDuckDB -count=1
+        risk_and_rollback: 仅读取测试夹具；不改变写操作。
+        verification_boundary: 未覆盖各平台 DuckDB 驱动。
+      operation: metadata
       data_state: test_fixture
-      server_side_effect: controlled_write
-      security_constraints:
-        - 不记录连接串、凭据或真实业务数据
-    title: 外部数据源批量写入未接收同步取消信号
-    affected_capabilities:
-      - CAP-SYNC-001
-      - CAP-DATA-001
-    failure_mode: ApplyChanges 使用 Background 或无 Context Exec，取消不停止远端写入。
-    operation: sync
-    data_state: test_fixture
-    server_side_effect: controlled_write
-    conclusion: BatchApplierContext 已定义但 Chroma、Qdrant、Milvus、Elasticsearch、TDengine
-      未实现或未使用传入 Context。
-    evidence:
-      - internal/db/database.go:1027-1033
-      - internal/db/chroma_impl.go:312-314
-      - internal/db/qdrant_impl.go:309-311
-      - internal/db/milvus_impl.go:350-352
-      - internal/db/elasticsearch_impl.go:1010
-      - internal/db/tdengine_impl.go:434-461
-    impact: 取消任务或关闭应用后写入仍可能继续并扩大未知结果。
-    recommendation: 实现 ApplyChangesContext 并将 Context 传给 HTTP、SDK 与数据库请求。
-    acceptance: *a9
-    verify: 阻塞 fake 后端后取消 job context。
-    affected_paths: *a10
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1046
-  - id: FIND-DB-ELASTIC-BULK-PROTOCOL-001
+      server_side_effect: read_only
+      security_constraints: 错误信息不得包含本地数据库路径。
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1104
+  - id: FIND-DB-CHROMA-DATABASE-LIST-MASK-001
+    title: Chroma v2 数据库枚举 HTTP 失败被伪装为当前数据库可用
     status: 待修复
+    type: 查询正确性缺陷
     severity: P2
     confidence: 高
-    verification_status: 代码证据确认
-    first_seen_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
-    verification_details:
-      mode: 只读代码复查
-      instance_id: full-new-20260824-af3ab2b8-review
-      verified_at: 2026-08-24T12:30:00+08:00
-      result: 当前 HEAD af3ab2b8 的受影响调用链仍符合 finding 结论；未运行外部服务或桌面端到端验证。
-    review_history:
-      - checked_at: 2026-08-24
-        result: 全量扫描主裁决确认
-      - checked_at: 2026-08-24
-        result: 本轮复查：当前 HEAD af3ab2b8 仍满足既有结论；该 finding 在本次全量扫描中首次发现，未见后续修复提交。
-    last_checked_result: 2026-08-24 本轮复查仍存在：当前 HEAD 的受影响代码仍符合既有结论，未见后续修复提交。
-    type: 查询正确性缺陷
-    acceptance_criteria: &a11
-      - 无效 JSON 返回错误和未知结果
-      - 有效 Bulk 行为不变
-    verification_path: fake Bulk 返回 HTTP 200 和无效 JSON。
+    affected_capabilities: [CAP-DS-CHROMA, CAP-EXP-001]
+    conclusion: Chroma v2 枚举数据库的 HTTP 读取失败后返回当前数据库作为可用列表，掩盖认证、网络或服务端错误。
+    evidence: [internal/db/chroma_impl.go, internal/db/chroma_impl_test.go]
+    impact: 用户继续在伪造的数据库上下文中浏览，无法定位实际连接错误。
+    recommendation: 对 HTTP 失败保留操作、状态码和可重试信息；仅在协议保证时使用明确默认值。
+    acceptance_criteria: [数据库枚举 HTTP 失败不返回伪成功当前库, 成功空列表与失败可区分, 错误不泄露认证信息]
+    first_seen_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
+    affected_paths: [internal/db/chroma_impl.go, internal/db/chroma_impl_test.go]
+    verification_status: 自动化测试确认
+    verification_path: 用 httptest 返回枚举失败响应，断言调用方收到可诊断错误。
+    verification_details: {mode: 只读验证, instance_id: 本地 HTTP 测试夹具, verified_at: 2026-08-28T07:10:05Z, result: Chroma 定向测试通过并确认当前回退。}
+    review_history: 数据库视角全量扫描。
+    last_checked_result: 当前代码边界成立。
+    failure_mode: HTTP 枚举错误伪装为当前数据库可用。
+    operation: external
+    data_state: test_fixture
+    server_side_effect: read_only
     issue_projection:
-      title: "[DB][P2] Elasticsearch Bulk 对 2xx 非 JSON 响应伪装成功"
-      labels:
-        - bug
-        - database
-        - ai-ready
+      title: Chroma v2 枚举失败不能返回伪成功数据库
+      labels: [bug, database, chroma, external]
       body_sections:
-        summary: ApplyChanges 仅在 json.Unmarshal 成功时检查 errors 字段。
-        affected_behavior: 代理或网关返回 HTML、截断 JSON 时用户会把未知写入当成功。
-        reproduction: fake Bulk 返回 HTTP 200 和无效 JSON。
-        expected: 无效 JSON 返回错误和未知结果
-        actual: 2xx body 的 JSON 解码失败被忽略并返回 nil。
-        root_cause: ApplyChanges 仅在 json.Unmarshal 成功时检查 errors 字段。
-        affected_files: &a12
-          - internal/db/elasticsearch_impl.go
-        fix_boundary: 2xx Bulk 响应必须可解析，否则返回未知写入错误。
-        acceptance_tests: *a11
-        validation_commands:
-          - go test ./internal/db -count=1
-        risk_and_rollback: 仅使用 fake driver 或受控测试数据；不得执行真实业务写入。
-        verification_boundary: 未在真实外部服务矩阵执行。
+        summary: 枚举数据库 HTTP 错误被隐藏。
+        affected_behavior: 连接问题被展示为可用数据库。
+        reproduction: httptest 返回枚举失败。
+        expected: 返回可诊断错误。
+        actual: 返回当前数据库。
+        root_cause: 失败分支复用当前配置作为结果。
+        affected_files: internal/db/chroma_impl.go
+        fix_boundary: 传播错误并保留安全错误上下文。
+        acceptance_tests: HTTP 失败空结果成功三类测试。
+        validation_commands: go test ./internal/db -run TestChromaGetDatabasesAndTablesV2 -count=1
+        risk_and_rollback: 仅读取测试服务；不记录认证内容。
+        verification_boundary: 未对真实 Chroma 版本验证。
       operation: external
       data_state: test_fixture
-      server_side_effect: unknown
-      security_constraints:
-        - 不记录连接串、凭据或真实业务数据
-    title: Elasticsearch Bulk 对 2xx 非 JSON 响应伪装成功
-    affected_capabilities:
-      - CAP-DS-ELASTICSEARCH
-      - CAP-DATA-001
-    failure_mode: 2xx body 的 JSON 解码失败被忽略并返回 nil。
-    operation: external
+      server_side_effect: read_only
+      security_constraints: 状态错误不得包含 URL 认证信息。
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1105
+  - id: FIND-DB-CLICKHOUSE-SYNC-CANCEL-001
+    title: ClickHouse 批量变更未接入同步取消上下文
+    status: 待修复
+    type: 事务一致性缺陷
+    severity: P2
+    confidence: 高
+    affected_capabilities: [CAP-DS-CLICKHOUSE, CAP-SYNC-001]
+    conclusion: ClickHouse 批量变更执行未贯穿同步 job Context，取消后服务端写入与本地任务状态可能脱节。
+    evidence: [internal/db/clickhouse_impl.go, internal/sync/sync_context.go]
+    impact: 用户取消同步后仍可能继续执行写入，结果需要按未知状态处理但当前路径缺少稳定边界。
+    recommendation: 将 job Context 传入 ClickHouse 变更调用，并在取消后标记结果不确定和阻止不安全重试。
+    acceptance_criteria: [取消同步会中止未开始的 ClickHouse 写入, 进行中取消按未知结果标记, 恢复重试不会覆盖不确定写入]
+    first_seen_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
+    affected_paths: [internal/db/clickhouse_impl.go, internal/sync/sync_context.go]
+    verification_status: 自动化测试确认
+    verification_path: 阻塞 ClickHouse fake 后端后取消同步 Context，检查执行停止和结果标记。
+    verification_details: {mode: 只读验证, instance_id: 本地同步测试夹具, verified_at: 2026-08-28T07:10:05Z, result: internal/sync Context 定向测试通过；当前 ClickHouse 路径未接入取消。}
+    review_history: 数据库视角全量扫描；关联已归档跨驱动取消缺陷的特定驱动回归。
+    last_checked_result: 当前代码边界成立。
+    regression_of: FIND-DB-EXTERNAL-WRITE-CANCEL-001
+    failure_mode: 取消后外部批量写入继续且结果边界不稳定。
+    operation: sync
     data_state: test_fixture
     server_side_effect: unknown
-    conclusion: ApplyChanges 仅在 json.Unmarshal 成功时检查 errors 字段。
-    evidence:
-      - internal/db/elasticsearch_impl.go:1108-1152
-    impact: 代理或网关返回 HTML、截断 JSON 时用户会把未知写入当成功。
-    recommendation: 2xx Bulk 响应必须可解析，否则返回未知写入错误。
-    acceptance: *a11
-    verify: fake Bulk 返回 HTTP 200 和无效 JSON。
-    affected_paths: *a12
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1047
-  - id: FIND-DB-ELASTIC-ALIAS-WRITE-001
-    status: 待修复
-    severity: P2
-    confidence: 高
-    verification_status: 代码证据确认
-    first_seen_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
-    verification_details:
-      mode: 只读代码复查
-      instance_id: full-new-20260824-af3ab2b8-review
-      verified_at: 2026-08-24T12:30:00+08:00
-      result: 当前 HEAD af3ab2b8 的受影响调用链仍符合 finding 结论；未运行外部服务或桌面端到端验证。
-    review_history:
-      - checked_at: 2026-08-24
-        result: 全量扫描主裁决确认
-      - checked_at: 2026-08-24
-        result: 本轮复查：当前 HEAD af3ab2b8 仍满足既有结论；该 finding 在本次全量扫描中首次发现，未见后续修复提交。
-    last_checked_result: 2026-08-24 本轮复查仍存在：当前 HEAD 的受影响代码仍符合既有结论，未见后续修复提交。
-    type: 查询正确性缺陷
-    acceptance_criteria: &a13
-      - archive _index 不会被写入
-      - 正常别名写入保持可用
-    verification_path: fake alias 的 write index 为 live，ChangeSet 写 archive。
     issue_projection:
-      title: "[DB][P2] Elasticsearch 变更行 _index 可绕过别名写索引校验"
-      labels:
-        - bug
-        - database
-        - ai-ready
+      title: ClickHouse 同步写入必须接收取消 Context
+      labels: [bug, database, clickhouse, sync]
       body_sections:
-        summary: ApplyChanges 先 resolveWriteIndex，随后优先采用 ChangeSet 行中的 _index。
-        affected_behavior: 别名编辑可能写入 archive 或其他物理索引并造成数据分裂。
-        reproduction: fake alias 的 write index 为 live，ChangeSet 写 archive。
-        expected: archive _index 不会被写入
-        actual: 已验证 write index 会被未验证的行 _index 覆盖。
-        root_cause: ApplyChanges 先 resolveWriteIndex，随后优先采用 ChangeSet 行中的 _index。
-        affected_files: &a14
-          - internal/db/elasticsearch_impl.go
-        fix_boundary: 插入始终使用解析的 write index，不匹配的行 _index 必须拒绝或校验。
-        acceptance_tests: *a13
-        validation_commands:
-          - go test ./internal/db -count=1
-        risk_and_rollback: 仅使用 fake driver 或受控测试数据；不得执行真实业务写入。
-        verification_boundary: 未在真实外部服务矩阵执行。
-      operation: external
-      data_state: test_fixture
-      server_side_effect: controlled_write
-      security_constraints:
-        - 不记录连接串、凭据或真实业务数据
-    title: Elasticsearch 变更行 _index 可绕过别名写索引校验
-    affected_capabilities:
-      - CAP-DS-ELASTICSEARCH
-      - CAP-DATA-001
-    failure_mode: 已验证 write index 会被未验证的行 _index 覆盖。
-    operation: external
-    data_state: test_fixture
-    server_side_effect: controlled_write
-    conclusion: ApplyChanges 先 resolveWriteIndex，随后优先采用 ChangeSet 行中的 _index。
-    evidence:
-      - internal/db/elasticsearch_impl.go:1022-1085
-    impact: 别名编辑可能写入 archive 或其他物理索引并造成数据分裂。
-    recommendation: 插入始终使用解析的 write index，不匹配的行 _index 必须拒绝或校验。
-    acceptance: *a13
-    verify: fake alias 的 write index 为 live，ChangeSet 写 archive。
-    affected_paths: *a14
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1039
-  - id: FIND-DEV-CLOUD-BACKUP-LIFECYCLE-001
-    status: 待修复
-    severity: P2
-    confidence: 高
-    verification_status: 代码证据确认
-    first_seen_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
-    verification_details:
-      mode: 只读代码复查
-      instance_id: full-new-20260824-af3ab2b8-review
-      verified_at: 2026-08-24T12:30:00+08:00
-      result: 当前 HEAD af3ab2b8 的受影响调用链仍符合 finding 结论；未运行外部服务或桌面端到端验证。
-    review_history:
-      - checked_at: 2026-08-24
-        result: 全量扫描主裁决确认
-      - checked_at: 2026-08-24
-        result: 本轮复查：当前 HEAD af3ab2b8 仍满足既有结论；该 finding 在本次全量扫描中首次发现，未见后续修复提交。
-    last_checked_result: 2026-08-24 本轮复查仍存在：当前 HEAD 的受影响代码仍符合既有结论，未见后续修复提交。
-    type: 调用链/契约缺陷
-    acceptance_criteria: &a15
-      - 连续 dirty 合并为有限同步
-      - 关闭取消即时同步
-    verification_path: 连续触发 dirty 后关闭应用。
-    reproduction:
-      preconditions:
-        - 本地 fake 依赖
-      steps:
-        - 连续触发 dirty 后关闭应用。
-      expected: 连续 dirty 合并为有限同步
-      actual: 每次 dirty 都以 Background 创建同步 goroutine，关闭只取消定时任务。
-    fix_boundary:
-      allowed_paths: &a16
-        - internal/app/cloud_backup.go
-      preserve:
-        - 既有成功路径与公开接口兼容性
-      out_of_scope:
-        - 无关重构
-    regression_risk: 共享运行时与调用方行为。
-    regression_tests:
-      - 连续保存和 shutdown 取消
-    verification_commands:
-      - go test ./internal/app -run CloudBackup -count=1
-    verification_boundary: 未运行真实外部服务或桌面端到端环境。
-    issue:
-      title: "[开发][P2] 云备份即时同步会无界积压并在退出后继续写入"
-      labels:
-        - bug
-        - developer
-        - ai-ready
-      operation: sync
-      data_state: test_fixture
-      server_side_effect: controlled_write
-      security_constraints:
-        - 只使用本地 fake 依赖
-    title: 云备份即时同步会无界积压并在退出后继续写入
-    affected_capabilities:
-      - CAP-OPS-001
-    affected_symbols:
-      - internal/app.(*App).cloudBackupSync
-      - internal/app.(*App).shutdownCloudBackup
-    contract_boundary: 本地保存、异步远端同步与应用关闭生命周期。
-    conclusion: 每次 dirty 都以 Background 创建同步 goroutine，关闭只取消定时任务。
-    evidence:
-      - internal/app/cloud_backup.go:713-777
-      - internal/app/cloud_backup.go:1590-1645
-    impact: 连续保存会积压最长 45 秒的远端请求，应用退出后仍可能写入。
-    recommendation: 合并 dirty 信号，并在 shutdown 取消和等待即时任务。
-    acceptance: *a15
-    verify: 连续触发 dirty 后关闭应用。
-    test: 连续保存和 shutdown 取消
-    command: go test ./internal/app -run CloudBackup -count=1
-    operation: sync
-    side_effect: controlled_write
-    affected_paths: *a16
-    root_cause: 本地保存、异步远端同步与应用关闭生命周期。 与
-      internal/app.(*App).cloudBackupSync、internal/app.(*App).shutdownCloudBackup
-      的生命周期或状态传播未闭环。
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1042
-  - id: FIND-DEV-SYNC-MANAGER-CONTEXT-001
-    status: 待修复
-    severity: P2
-    confidence: 高
-    verification_status: 代码证据确认
-    first_seen_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
-    verification_details:
-      mode: 只读代码复查
-      instance_id: full-new-20260824-af3ab2b8-review
-      verified_at: 2026-08-24T12:30:00+08:00
-      result: 当前 HEAD af3ab2b8 的受影响调用链仍符合 finding 结论；未运行外部服务或桌面端到端验证。
-    review_history:
-      - checked_at: 2026-08-24
-        result: 全量扫描主裁决确认
-      - checked_at: 2026-08-24
-        result: 本轮复查：当前 HEAD af3ab2b8 仍满足既有结论；该 finding 在本次全量扫描中首次发现，未见后续修复提交。
-    last_checked_result: 2026-08-24 本轮复查仍存在：当前 HEAD 的受影响代码仍符合既有结论，未见后续修复提交。
-    type: 调用链/契约缺陷
-    acceptance_criteria: &a17
-      - 取消构造 context 停止循环和 executor
-      - 显式 Shutdown 保持可用
-    verification_path: 以可取消 context 创建阻塞 executor 后取消。
-    reproduction:
-      preconditions:
-        - 本地 fake 依赖
-      steps:
-        - 以可取消 context 创建阻塞 executor 后取消。
-      expected: 取消构造 context 停止循环和 executor
-      actual: NewManager 在初始化后用 Background 创建运行 context。
-    fix_boundary:
-      allowed_paths: &a18
-        - internal/syncjob/manager.go
-      preserve:
-        - 既有成功路径与公开接口兼容性
-      out_of_scope:
-        - 无关重构
-    regression_risk: 共享运行时与调用方行为。
-    regression_tests:
-      - manager context cancel
-    verification_commands:
-      - go test ./internal/syncjob -run Manager -count=1
-    verification_boundary: 未运行真实外部服务或桌面端到端环境。
-    issue:
-      title: "[开发][P2] 同步任务管理器忽略构造 context 的后续取消"
-      labels:
-        - bug
-        - developer
-        - ai-ready
+        summary: ClickHouse 写入绕过同步取消上下文。
+        affected_behavior: 取消后可能继续写入且结果未知。
+        reproduction: 阻塞 fake 后端后取消 job Context。
+        expected: 调用停止或标记未知并阻止错误重试。
+        actual: 当前执行不接收取消上下文。
+        root_cause: ClickHouse 批量变更调用没有使用 job Context。
+        affected_files: internal/db/clickhouse_impl.go
+        fix_boundary: 贯穿 Context 和未知结果处理。
+        acceptance_tests: 取消前、进行中、完成后三种结果测试。
+        validation_commands: go test ./internal/sync -run Test.*Context -count=1
+        risk_and_rollback: 测试夹具可控写入；取消后丢弃不确定连接。
+        verification_boundary: 未对真实 ClickHouse 服务执行写入验证。
       operation: sync
       data_state: test_fixture
       server_side_effect: unknown
-      security_constraints:
-        - 只使用本地 fake 依赖
-    title: 同步任务管理器忽略构造 context 的后续取消
-    affected_capabilities:
-      - CAP-SYNC-001
-    affected_symbols:
-      - internal/syncjob.NewManager
-    contract_boundary: NewManager 传入 context 与调度循环生命周期。
-    conclusion: NewManager 在初始化后用 Background 创建运行 context。
-    evidence:
-      - internal/syncjob/manager.go:95-124
-    impact: 调用者取消后调度循环和已启动 executor 仍继续运行。
-    recommendation: 派生 manager context 于构造 context 并让 executor 接收取消。
-    acceptance: *a17
-    verify: 以可取消 context 创建阻塞 executor 后取消。
-    test: manager context cancel
-    command: go test ./internal/syncjob -run Manager -count=1
-    operation: sync
-    side_effect: unknown
-    affected_paths: *a18
-    root_cause: NewManager 传入 context 与调度循环生命周期。 与 internal/syncjob.NewManager
-      的生命周期或状态传播未闭环。
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1044
-  - id: FIND-DEV-RESULT-DIFF-STALE-001
+      security_constraints: 受控测试不得使用真实连接或业务表。
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1106
+  - id: FIND-DB-MONGO-DECODE-DROP-001
+    title: Mongo 单文档查询 Decode 失败后静默丢弃文档
     status: 待修复
-    severity: P2
+    type: 查询正确性缺陷
+    severity: P1
     confidence: 高
-    verification_status: 代码证据确认
-    first_seen_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
-    verification_details:
-      mode: 只读代码复查
-      instance_id: full-new-20260824-af3ab2b8-review
-      verified_at: 2026-08-24T12:30:00+08:00
-      result: 当前 HEAD af3ab2b8 的受影响调用链仍符合 finding 结论；未运行外部服务或桌面端到端验证。
-    review_history:
-      - checked_at: 2026-08-24
-        result: 全量扫描主裁决确认
-      - checked_at: 2026-08-24
-        result: 本轮复查：当前 HEAD af3ab2b8 仍满足既有结论；该 finding 在本次全量扫描中首次发现，未见后续修复提交。
-    last_checked_result: 2026-08-24 本轮复查仍存在：当前 HEAD 的受影响代码仍符合既有结论，未见后续修复提交。
-    type: 功能缺陷
-    acceptance_criteria: &a19
-      - 旧响应不能覆盖新状态
-      - 加载状态属于当前请求
-    verification_path: mock 两个 deferred 请求并先完成新请求。
-    reproduction:
-      preconditions:
-        - 本地 fake 依赖
-      steps:
-        - mock 两个 deferred 请求并先完成新请求。
-      expected: 旧响应不能覆盖新状态
-      actual: loadPage 没有 request sequence、AbortController 或 effect cleanup。
-    fix_boundary:
-      allowed_paths: &a20
-        - frontend/src/components/resultDiff/ResultDiffPanel.tsx
-      preserve:
-        - 既有成功路径与公开接口兼容性
-      out_of_scope:
-        - 无关重构
-    regression_risk: 共享运行时与调用方行为。
-    regression_tests:
-      - 乱序 fetchResultDiffPage
-    verification_commands:
-      - npm --prefix frontend test -- ResultDiffPanel
-    verification_boundary: 未运行真实外部服务或桌面端到端环境。
-    issue:
-      title: "[开发][P2] 结果差异页乱序响应会覆盖当前筛选数据"
-      labels:
-        - bug
-        - developer
-        - ai-ready
+    affected_capabilities: [CAP-DS-MONGODB, CAP-DATA-001]
+    conclusion: Mongo 单文档查询遇到 Decode 错误后继续处理，调用方获得成功结果但少了文档且无 partial 标识。
+    evidence: [internal/db/mongodb_impl.go, internal/db/mongodb_impl_test.go]
+    impact: 查询结果不完整却被当作正常数据使用，可能导致错误判断或后续错误操作。
+    recommendation: 返回带文档位置上下文的错误，或显式标记 partial 结果并保留失败计数。
+    acceptance_criteria: [Decode 失败不再静默丢文档, 错误或 partial 状态包含可诊断位置, 正常 BSON 文档结果不回归]
+    first_seen_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
+    affected_paths: [internal/db/mongodb_impl.go, internal/db/mongodb_impl_test.go]
+    verification_status: 自动化测试确认
+    verification_path: 使用 Decode 返回错误的 Mongo cursor fixture，断言成功结果不会静默少文档。
+    verification_details: {mode: 只读验证, instance_id: 本地 Mongo 测试夹具, verified_at: 2026-08-28T07:10:05Z, result: Mongo 定向测试通过并确认当前继续分支。}
+    review_history: 数据库视角全量扫描。
+    last_checked_result: 当前代码边界成立。
+    failure_mode: 解码错误导致静默少文档。
+    operation: query
+    data_state: test_fixture
+    server_side_effect: read_only
+    issue_projection:
+      title: Mongo 查询不能在 Decode 错误后静默丢文档
+      labels: [bug, database, mongodb, correctness]
+      body_sections:
+        summary: Decode 错误被 continue 掩盖。
+        affected_behavior: 查询成功结果可能缺少文档。
+        reproduction: 注入返回 Decode 错误的 cursor。
+        expected: 返回错误或明确 partial 状态。
+        actual: 跳过文档并继续。
+        root_cause: 文档迭代错误处理未向调用方传播。
+        affected_files: internal/db/mongodb_impl.go
+        fix_boundary: 传播含位置的错误或 partial 状态。
+        acceptance_tests: Decode 错误与正常 cursor 测试。
+        validation_commands: go test ./internal/db -run TestMongo -count=1
+        risk_and_rollback: 仅读取 fixture，保持 BSON 正常路径。
+        verification_boundary: 未使用真实 Mongo 服务复现畸形文档。
       operation: query
       data_state: test_fixture
-      server_side_effect: none
-      security_constraints:
-        - 只使用本地 fake 依赖
-    title: 结果差异页乱序响应会覆盖当前筛选数据
-    affected_capabilities:
-      - CAP-SYNC-001
-    affected_symbols:
-      - frontend/src/components/resultDiff/ResultDiffPanel.tsx:loadPage
-    contract_boundary: job、筛选和分页请求与页面状态。
-    conclusion: loadPage 没有 request sequence、AbortController 或 effect cleanup。
-    evidence:
-      - frontend/src/components/resultDiff/ResultDiffPanel.tsx:196-225
-    impact: 快速切换条件后用户可能看到前一请求的 rows、total 和 loading。
-    recommendation: 取消旧请求或用序列号拒绝过期响应。
-    acceptance: *a19
-    verify: mock 两个 deferred 请求并先完成新请求。
-    test: 乱序 fetchResultDiffPage
-    command: npm --prefix frontend test -- ResultDiffPanel
-    operation: query
-    side_effect: none
-    affected_paths: *a20
-    root_cause: job、筛选和分页请求与页面状态。 与
-      frontend/src/components/resultDiff/ResultDiffPanel.tsx:loadPage
-      的生命周期或状态传播未闭环。
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1048
-  - id: FIND-PM-SYNC-RUN-TIMELINE-001
+      server_side_effect: read_only
+      security_constraints: 测试仅使用合成 BSON 文档。
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1107
+  - id: FIND-DB-MONGO-INDEX-ERROR-MASK-001
+    title: Mongo 索引枚举吞掉 Decode 和 cursor 终止错误
     status: 待修复
+    type: 查询正确性缺陷
     severity: P2
     confidence: 高
-    verification_status: 代码证据确认
-    first_seen_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
-    verification_details:
-      mode: 只读代码复查
-      instance_id: full-new-20260824-af3ab2b8-review
-      verified_at: 2026-08-24T12:30:00+08:00
-      result: 当前 HEAD af3ab2b8 的受影响调用链仍符合 finding 结论；未运行外部服务或桌面端到端验证。
-    review_history:
-      - checked_at: 2026-08-24
-        result: 全量扫描主裁决确认
-      - checked_at: 2026-08-24
-        result: 本轮复查：当前 HEAD af3ab2b8 仍满足既有结论；该 finding 在本次全量扫描中首次发现，未见后续修复提交。
-    last_checked_result: 2026-08-24 本轮复查仍存在：当前 HEAD 的受影响代码仍符合既有结论，未见后续修复提交。
-    type: 功能缺陷
-    acceptance_criteria: &a21
-      - 运行阶段和终态自动更新
-      - 离开后可读取持久时间线
-    verification_path: 创建运行任务并观察状态推进。
-    target_task: 同步操作者需要在单一运行视图跟踪长任务。
-    current_boundary: 后端已提供 DataSyncRunEventList，前端只展示静态记录。
-    checked_surfaces: &a22
-      - internal/app/methods_sync_jobs.go
-      - frontend/src/components/data-sync/DataSyncOperationalViews.tsx
-    title: 同步运行历史没有自动更新和事件时间线
-    affected_capabilities:
-      - CAP-SYNC-A09
-    evidence:
-      - internal/app/methods_sync_jobs.go:344-356
-      - frontend/src/components/data-sync/DataSyncOperationalViews.tsx:23-219
-    impact: 运行中操作者只能手动刷新，无法连续获得阶段、进度和错误。
-    recommendation: 消费持久运行事件并在运行中自动更新状态。
-    acceptance: *a21
-    verify: 创建运行任务并观察状态推进。
-    task: 同步操作者需要在单一运行视图跟踪长任务。
-    boundary: 后端已提供 DataSyncRunEventList，前端只展示静态记录。
-    affected_paths: *a22
-    conclusion: 后端已提供 DataSyncRunEventList，前端只展示静态记录。
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1049
-  - id: FIND-PM-WORKBENCH-DRAFT-CLOSE-001
+    affected_capabilities: [CAP-DS-MONGODB, CAP-EXP-001]
+    conclusion: Mongo 索引迭代忽略单项 Decode 和 cursor.Err，错误时返回不完整索引列表并伪装成功。
+    evidence: [internal/db/mongodb_impl.go, internal/db/mongodb_impl_test.go]
+    impact: 表结构和索引审阅可能遗漏关键约束，用户无法判断结果是否完整。
+    recommendation: 传播 Decode 和终止错误，或在结果中明确 partial 状态与失败原因。
+    acceptance_criteria: [单项 Decode 和 cursor 终止错误可见, 不完整索引不被标为完整成功, 正常索引顺序不回归]
+    first_seen_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
+    affected_paths: [internal/db/mongodb_impl.go, internal/db/mongodb_impl_test.go]
+    verification_status: 自动化测试确认
+    verification_path: 使用分别触发 Decode 和 cursor.Err 的索引 cursor fixture 验证错误传播。
+    verification_details: {mode: 只读验证, instance_id: 本地 Mongo 测试夹具, verified_at: 2026-08-28T07:10:05Z, result: Mongo 定向测试确认索引枚举当前吞错。}
+    review_history: 数据库视角全量扫描。
+    last_checked_result: 当前代码边界成立。
+    failure_mode: 索引元数据错误伪装为完整列表。
+    operation: metadata
+    data_state: test_fixture
+    server_side_effect: read_only
+    issue_projection:
+      title: Mongo 索引枚举必须报告 cursor 与 Decode 错误
+      labels: [bug, database, mongodb, metadata]
+      body_sections:
+        summary: 索引迭代吞掉错误。
+        affected_behavior: 索引列表可能不完整且无标识。
+        reproduction: 注入 Decode 或 cursor.Err fixture。
+        expected: 返回错误或 partial 状态。
+        actual: 返回截断索引列表。
+        root_cause: 迭代和终止错误未检查或未传播。
+        affected_files: internal/db/mongodb_impl.go
+        fix_boundary: 统一索引 cursor 错误处理。
+        acceptance_tests: Decode、终止错误和正常列表测试。
+        validation_commands: go test ./internal/db -run TestMongo -count=1
+        risk_and_rollback: 仅读取 fixture，不影响索引写入。
+        verification_boundary: 未覆盖所有 Mongo server 版本。
+      operation: metadata
+      data_state: test_fixture
+      server_side_effect: read_only
+      security_constraints: 错误不输出索引业务字段内容。
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1108
+  - id: FIND-DB-MONGO-INDEX-ORDER-001
+    title: Mongo 复合索引列顺序因 Go map 遍历被随机化
     status: 待修复
-    severity: P2
+    type: 查询正确性缺陷
+    severity: P1
     confidence: 高
-    verification_status: 代码证据确认
-    first_seen_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
-    verification_details:
-      mode: 只读代码复查
-      instance_id: full-new-20260824-af3ab2b8-review
-      verified_at: 2026-08-24T12:30:00+08:00
-      result: 当前 HEAD af3ab2b8 的受影响调用链仍符合 finding 结论；未运行外部服务或桌面端到端验证。
-    review_history:
-      - checked_at: 2026-08-24
-        result: 全量扫描主裁决确认
-      - checked_at: 2026-08-24
-        result: 本轮复查：当前 HEAD af3ab2b8 仍满足既有结论；该 finding 在本次全量扫描中首次发现，未见后续修复提交。
-    last_checked_result: 2026-08-24 本轮复查仍存在：当前 HEAD 的受影响代码仍符合既有结论，未见后续修复提交。
-    type: 功能缺陷
-    acceptance_criteria: &a23
-      - 三类草稿关闭均提示
-      - 保存失败不关闭标签
-      - 批量关闭和退出一致
-    verification_path: 分别创建三类 dirty 工作台并尝试关闭。
-    target_task: 用户需要安全关闭或继续未完成工作。
-    current_boundary: 现有关闭保护只覆盖外部 SQL 文件。
-    checked_surfaces: &a24
-      - frontend/src/components/TabManager.tsx
-      - frontend/src/store.ts
-      - frontend/src/components/DataGrid.tsx
-      - frontend/src/components/data-sync/DataSyncWorkbench.tsx
-    title: 关闭工作台标签会静默丢失查询、数据编辑和同步草稿
-    affected_capabilities:
-      - CAP-QUERY-A01
-      - CAP-DATA-A06
-      - CAP-SYNC-001
-    evidence:
-      - frontend/src/components/TabManager.tsx:933-1046
-      - frontend/src/store.ts:4390-4424
-      - frontend/src/components/DataGrid.tsx:2125-2126
-      - frontend/src/components/data-sync/DataSyncWorkbench.tsx:22-26
-    impact: 用户关闭、批量关闭或退出时会无提示丢失未保存 SQL、待提交数据变更或同步定义。
-    recommendation: 将三类 dirty 状态纳入统一关闭保护，并支持保存、放弃和取消。
-    acceptance: *a23
-    verify: 分别创建三类 dirty 工作台并尝试关闭。
-    task: 用户需要安全关闭或继续未完成工作。
-    boundary: 现有关闭保护只覆盖外部 SQL 文件。
-    affected_paths: *a24
-    conclusion: 现有关闭保护只覆盖外部 SQL 文件。
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1036
-  - id: FIND-PM-CONNECTION-HEALTH-PROGRESS-001
+    affected_capabilities: [CAP-DS-MONGODB, CAP-EXP-001]
+    conclusion: Mongo 复合索引键被读入 Go map 后迭代，列顺序不稳定，改变索引定义的语义展示和后续比较结果。
+    evidence: [internal/db/mongodb_impl.go, internal/db/mongodb_impl_test.go]
+    impact: 用户可能看到错误的复合索引顺序，结构同步或导出判断也可能产生误差。
+    recommendation: 使用保持 BSON 元素顺序的数据结构，并增加多次运行的确定性测试。
+    acceptance_criteria: [复合索引列顺序与 Mongo 返回 BSON 顺序一致, 多次枚举结果稳定, 单列索引保持兼容]
+    first_seen_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
+    affected_paths: [internal/db/mongodb_impl.go, internal/db/mongodb_impl_test.go]
+    verification_status: 自动化测试确认
+    verification_path: 用复合索引 fixture 重复枚举，断言列顺序始终与 BSON 输入一致。
+    verification_details: {mode: 只读验证, instance_id: 本地 Mongo 测试夹具, verified_at: 2026-08-28T07:10:05Z, result: Mongo 定向测试确认 map 迭代路径不稳定。}
+    review_history: 数据库视角全量扫描。
+    last_checked_result: 当前代码边界成立。
+    failure_mode: 复合索引键顺序随机化。
+    operation: metadata
+    data_state: test_fixture
+    server_side_effect: read_only
+    issue_projection:
+      title: Mongo 复合索引必须保持 BSON 键顺序
+      labels: [bug, database, mongodb, correctness]
+      body_sections:
+        summary: 复合索引键经过 map 丢失顺序。
+        affected_behavior: 索引定义展示和比较不可靠。
+        reproduction: 多次枚举复合索引 fixture。
+        expected: 顺序始终与 BSON 相同。
+        actual: map 迭代可随机排序。
+        root_cause: 使用无序 Go map 承载索引键。
+        affected_files: internal/db/mongodb_impl.go
+        fix_boundary: 使用有序 BSON 元素结构。
+        acceptance_tests: 重复确定性顺序测试。
+        validation_commands: go test ./internal/db -run TestMongo -count=1
+        risk_and_rollback: 仅读取 fixture；不修改索引。
+        verification_boundary: 未在真实多节点 Mongo 集群验证。
+      operation: metadata
+      data_state: test_fixture
+      server_side_effect: read_only
+      security_constraints: 测试索引名和字段均为合成值。
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1109
+  - id: FIND-DB-MONGO-BATCH-CANCEL-UNKNOWN-001
+    title: Mongo 批量写未接入取消链路且部分写入状态无法稳定标记 unknown
     status: 待修复
-    severity: P2
+    type: 事务一致性缺陷
+    severity: P1
     confidence: 高
-    verification_status: 代码证据确认
-    first_seen_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
-    verification_details:
-      mode: 只读代码复查
-      instance_id: full-new-20260824-af3ab2b8-review
-      verified_at: 2026-08-24T12:30:00+08:00
-      result: 当前 HEAD af3ab2b8 的受影响调用链仍符合 finding 结论；未运行外部服务或桌面端到端验证。
-    review_history:
-      - checked_at: 2026-08-24
-        result: 全量扫描主裁决确认
-      - checked_at: 2026-08-24
-        result: 本轮复查：当前 HEAD af3ab2b8 仍满足既有结论；该 finding 在本次全量扫描中首次发现，未见后续修复提交。
-    last_checked_result: 2026-08-24 本轮复查仍存在：当前 HEAD 的受影响代码仍符合既有结论，未见后续修复提交。
-    type: 产品缺口
-    acceptance_criteria: &a25
-      - 显示当前和总数
-      - 用户可取消
-      - 未完成项状态明确
-    verification_path: 对多个 fake 连接启动健康检查后取消。
-    target_task: 运维人员需要批量定位不可用连接且可中断长检查。
-    current_boundary: 已有报告和下载功能，但仅在顺序检查全部结束后返回。
-    checked_surfaces: &a26
-      - frontend/src/components/ConnectionHealthModal.tsx
-      - internal/app/methods_connection_health.go
-    title: 批量连接健康检查没有增量进度或取消
-    affected_capabilities:
-      - CAP-CONN-A16
-    evidence:
-      - frontend/src/components/ConnectionHealthModal.tsx:94-115
-      - internal/app/methods_connection_health.go:44-61
-    impact: 大量连接检查期间用户无法知道进度或停止剩余请求。
-    recommendation: 提供 run ID、已完成数和取消接口，并明确未完成状态。
-    acceptance: *a25
-    verify: 对多个 fake 连接启动健康检查后取消。
-    task: 运维人员需要批量定位不可用连接且可中断长检查。
-    boundary: 已有报告和下载功能，但仅在顺序检查全部结束后返回。
-    affected_paths: *a26
-    conclusion: 已有报告和下载功能，但仅在顺序检查全部结束后返回。
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1050
-  - id: FIND-PM-WEB-FILE-WORKFLOW-001
-    status: 待修复
-    severity: P2
-    confidence: 高
-    verification_status: 代码证据确认
-    first_seen_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
-    verification_details:
-      mode: 只读代码复查
-      instance_id: full-new-20260824-af3ab2b8-review
-      verified_at: 2026-08-24T12:30:00+08:00
-      result: 当前 HEAD af3ab2b8 的受影响调用链仍符合 finding 结论；未运行外部服务或桌面端到端验证。
-    review_history:
-      - checked_at: 2026-08-24
-        result: 全量扫描主裁决确认
-      - checked_at: 2026-08-24
-        result: 本轮复查：当前 HEAD af3ab2b8 仍满足既有结论；该 finding 在本次全量扫描中首次发现，未见后续修复提交。
-    last_checked_result: 2026-08-24 本轮复查仍存在：当前 HEAD 的受影响代码仍符合既有结论，未见后续修复提交。
-    type: 产品缺口
-    acceptance_criteria: &a27
-      - Web 可上传导入和 SQL 文件
-      - 结果可浏览器下载
-      - 上传有鉴权、限额与清理
-    verification_path: Web Server 登录后完成上传、执行和下载。
-    target_task: 浏览器用户需要完成文件导入、执行 SQL 文件和导出结果。
-    current_boundary: 连接包已有浏览器 file input，其他工作台仍调用 runtime 对话框。
-    checked_surfaces: &a28
-      - frontend/src/components/DataImportWorkbench.tsx
-      - frontend/src/components/SidebarExternalSqlWorkflow.tsx
-      - internal/app/methods_file.go
-      - frontend/src/App.tsx
-    title: Web 工作台缺少文件导入、SQL 执行和结果导出闭环
-    affected_capabilities:
-      - CAP-WEB-A01
-      - CAP-QUERY-A14
-    evidence:
-      - frontend/src/components/DataImportWorkbench.tsx:586-592
-      - frontend/src/components/SidebarExternalSqlWorkflow.tsx:507-567
-      - internal/app/methods_file.go:1265
-      - frontend/src/App.tsx:3122-3150
-    impact: 浏览器用户依赖桌面文件对话框，无法完成文件驱动的核心工作流。
-    recommendation: Web 使用受控上传和浏览器下载，桌面保留原生对话框。
-    acceptance: *a27
-    verify: Web Server 登录后完成上传、执行和下载。
-    task: 浏览器用户需要完成文件导入、执行 SQL 文件和导出结果。
-    boundary: 连接包已有浏览器 file input，其他工作台仍调用 runtime 对话框。
-    affected_paths: *a28
-    conclusion: 连接包已有浏览器 file input，其他工作台仍调用 runtime 对话框。
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1051
-  - id: FIND-PM-RABBIT-PREVIEW-WARNING-001
-    status: 待修复
-    severity: P2
-    confidence: 高
-    verification_status: 代码证据确认
-    first_seen_commit: af3ab2b889d6dd27c0882fdc556819fe677044cb
-    verification_details:
-      mode: 只读代码复查
-      instance_id: full-new-20260824-af3ab2b8-review
-      verified_at: 2026-08-24T12:30:00+08:00
-      result: 当前 HEAD af3ab2b8 的受影响调用链仍符合 finding 结论；未运行外部服务或桌面端到端验证。
-    review_history:
-      - checked_at: 2026-08-24
-        result: 全量扫描主裁决确认
-      - checked_at: 2026-08-24
-        result: 本轮复查：当前 HEAD af3ab2b8 仍满足既有结论；该 finding 在本次全量扫描中首次发现，未见后续修复提交。
-    last_checked_result: 2026-08-24 本轮复查仍存在：当前 HEAD 的受影响代码仍符合既有结论，未见后续修复提交。
-    type: 产品缺口
-    acceptance_criteria: &a29
-      - 预览前显示副作用提示
-      - 用户可取消
-      - 提示不妨碍正常预览
-    verification_path: 从 RabbitMQ 对象入口发起预览并检查确认提示。
-    target_task: 消息运维人员需要在不误解副作用的前提下预览消息。
-    current_boundary: 后端固定 ack_requeue_true，前端没有操作前提示。
-    checked_surfaces: &a30
-      - internal/db/rabbitmq_impl.go
-      - frontend/src/components
-    title: RabbitMQ 预览未在操作前说明 requeue 副作用
-    affected_capabilities:
-      - CAP-DS-RABBITMQ
-    evidence:
-      - internal/db/rabbitmq_impl.go:211-249
-      - internal/db/rabbitmq_impl.go:795-804
-    impact: 用户把预览当无副作用读取，实际可能造成 redelivered 标记或顺序扰动。
-    recommendation: 在操作前说明 requeue 语义和影响，并允许取消。
-    acceptance: *a29
-    verify: 从 RabbitMQ 对象入口发起预览并检查确认提示。
-    task: 消息运维人员需要在不误解副作用的前提下预览消息。
-    boundary: 后端固定 ack_requeue_true，前端没有操作前提示。
-    affected_paths: *a30
-    conclusion: 后端固定 ack_requeue_true，前端没有操作前提示。
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1052
+    affected_capabilities: [CAP-DS-MONGODB, CAP-DATA-001, CAP-SYNC-001]
+    conclusion: Mongo 批量写没有稳定接收同步取消 Context；发生取消或网络中断时，已提交子集与未知结果边界无法可靠传递到恢复逻辑。
+    evidence: [internal/db/mongodb_impl.go, internal/sync/sync_context.go, internal/db/mongodb_impl_test.go]
+    impact: 用户可能把部分成功当作可安全重试，造成重复写入或覆盖未知状态。
+    recommendation: 贯穿 Context、收集已确认写入范围，并将取消中或连接中断的结果标记为 unknown 且阻止自动重试。
+    acceptance_criteria: [取消信号到达 Mongo 批量写调用, 部分成功和未知结果可区分, unknown 结果阻止恢复自动重试]
+    first_seen_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
+    affected_paths: [internal/db/mongodb_impl.go, internal/sync/sync_context.go, internal/db/mongodb_impl_test.go]
+    verification_status: 自动化测试确认
+    verification_path: 用受控 Mongo fake 在批量中途阻塞或断开，取消 Context 后断言结果分类。
+    verification_details: {mode: 只读验证, instance_id: 本地 Mongo 同步测试夹具, verified_at: 2026-08-28T07:10:05Z, result: 定向 Context 测试通过并确认 Mongo 写入路径边界不足。}
+    review_history: 数据库视角全量扫描；关联已归档未知写入结果处理的 Mongo 特定回归。
+    last_checked_result: 当前代码边界成立。
+    regression_of: FIND-DB-BATCH-UNKNOWN-001
+    failure_mode: 批量写取消后部分成功与未知结果无法稳定区分。
+    operation: sync
+    data_state: test_fixture
+    server_side_effect: unknown
+    issue_projection:
+      title: Mongo 批量写需要取消链路和未知结果标记
+      labels: [bug, database, mongodb, sync]
+      body_sections:
+        summary: Mongo 批量写取消后结果边界不稳定。
+        affected_behavior: 恢复重试可能重复写入未知子集。
+        reproduction: 在批量中途阻塞或断开并取消 Context。
+        expected: 明确已确认、失败和未知范围并阻止不安全重试。
+        actual: 当前调用不稳定传播取消和未知状态。
+        root_cause: 批量写没有完整 Context 与结果分类契约。
+        affected_files: internal/db/mongodb_impl.go
+        fix_boundary: 贯穿 Context 和 WriteOutcomeUnknown。
+        acceptance_tests: 取消、断开、部分成功三种 fixture。
+        validation_commands: go test ./internal/sync -run Test.*ApplyChanges -count=1
+        risk_and_rollback: 仅受控 fixture 写入；未知时丢弃连接并禁止重试。
+        verification_boundary: 未对真实 Mongo 服务执行批量写验证。
+      operation: sync
+      data_state: test_fixture
+      server_side_effect: unknown
+      security_constraints: 测试只写入合成文档，不包含真实集合信息。
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1110
+
 
