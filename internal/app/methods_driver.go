@@ -4102,6 +4102,8 @@ func buildOptionalDriverFallbackProgressMessage(text func(string, map[string]any
 
 var downloadOptionalDriverAgentBinaryForInstall = downloadOptionalDriverAgentBinaryWithMetadata
 
+var fetchMirrorDriverReleaseByTagForDriverDownload = fetchMirrorDriverReleaseByTag
+
 func ensureOptionalDriverAgentBinary(a *App, definition driverDefinition, executablePath string, downloadURL string, selectedVersion string) (string, string, error) {
 	driverType := normalizeDriverType(definition.Type)
 	displayName := resolveDriverDisplayName(definition)
@@ -4127,11 +4129,19 @@ func ensureOptionalDriverAgentBinary(a *App, definition driverDefinition, execut
 		if expandErr != nil {
 			return "", "", newLocalizedDriverBackendError("driver_manager.backend.error.download_failed", nil, expandErr)
 		}
+		preferredSource := DownloadSourceCst
+		if a != nil {
+			preferredSource = a.preferredDownloadSource()
+		}
+		downloadCandidates = reorderOptionalDriverDownloadCandidates(downloadCandidates, preferredSource)
 		downloadURLs = make([]string, 0, len(downloadCandidates))
 		for _, candidate := range downloadCandidates {
 			downloadURLs = append(downloadURLs, candidate.URL)
 		}
 		if shouldUseOptionalDriverBundleFallback(driverType, restrictToExplicitArtifact, len(downloadURLs)) {
+			// Bundle candidates keep the Dispatcher URL first. The preferred source is
+			// applied inside its gated candidate resolution, while the direct GitHub
+			// URL remains the final fallback if the dispatcher is unavailable.
 			bundleURLs = resolveOptionalDriverBundleDownloadURLs()
 		}
 	}
@@ -4376,7 +4386,7 @@ func downloadOptionalDriverAgentBinaryWithMetadata(a *App, definition driverDefi
 		tempPath := executablePath + ".download.zip"
 		_ = os.Remove(tempPath)
 
-		downloadHash, err := downloadFileWithHash(trimmedURL, tempPath, func(downloaded, total int64) {
+		downloadHash, err := downloadFileWithHashPreferredForApp(a, trimmedURL, tempPath, func(downloaded, total int64) {
 			if a == nil {
 				return
 			}
@@ -4434,7 +4444,7 @@ func downloadOptionalDriverAgentBinaryWithMetadata(a *App, definition driverDefi
 	tempPath := executablePath + ".tmp"
 	_ = os.Remove(tempPath)
 
-	hash, err := downloadFileWithHash(trimmedURL, tempPath, func(downloaded, total int64) {
+	hash, err := downloadFileWithHashPreferredForApp(a, trimmedURL, tempPath, func(downloaded, total int64) {
 		if a == nil {
 			return
 		}
@@ -4486,7 +4496,11 @@ func downloadOptionalDriverAgentFromBundle(a *App, definition driverDefinition, 
 		return "", "", newLocalizedDriverBackendError("driver_manager.backend.error.bundle_url_empty", nil, nil)
 	}
 
-	bundlePath, err := acquireOptionalDriverBundlePath(trimmedURL, func(downloaded, total int64) {
+	preferredSource := DownloadSourceCst
+	if a != nil {
+		preferredSource = a.preferredDownloadSource()
+	}
+	bundlePath, err := acquireOptionalDriverBundlePathPreferred(trimmedURL, func(downloaded, total int64) {
 		if a == nil {
 			return
 		}
@@ -4497,7 +4511,7 @@ func downloadOptionalDriverAgentFromBundle(a *App, definition driverDefinition, 
 			return
 		}
 		a.emitDriverDownloadProgress(driverType, "downloading", 20, 100, a.appText("driver_manager.progress.wait_bundle", map[string]any{"name": displayName}))
-	})
+	}, preferredSource)
 	if err != nil {
 		return "", "", newLocalizedDriverBackendError("driver_manager.backend.error.bundle_download_failed", nil, err)
 	}

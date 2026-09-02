@@ -764,6 +764,49 @@ describe('QueryEditorAiAssist', () => {
         expect(service.AIGetActiveProvider).not.toHaveBeenCalled();
     });
 
+    it('uses an alias without AS after a manually entered Oracle table name', async () => {
+        const service = readyService('SELECT * FROM system_user su;');
+        await expect(requestQueryEditorInlineCompletion({
+            service,
+            aiContext: {
+                connectionName: 'Local Oracle',
+                sourceType: 'oracle',
+                currentDb: 'ORCL',
+                tables: [{ dbName: 'ORCL', tableName: 'system_user' }],
+                columns: [],
+            },
+            editorSnapshot: {
+                prefix: 'SELECT * FROM system_user ',
+                suffix: '',
+                currentLineBeforeCursor: 'SELECT * FROM system_user ',
+                currentLineAfterCursor: '',
+            },
+        })).resolves.toBe('su');
+        expect(service.AIChatSend).not.toHaveBeenCalled();
+    });
+
+    it('uses the resolved OceanBase Oracle dialect for table aliases', async () => {
+        const service = readyService('SELECT * FROM system_user su;');
+        await expect(requestQueryEditorInlineCompletion({
+            service,
+            aiContext: {
+                connectionName: 'OceanBase Oracle',
+                sourceType: 'oceanbase',
+                sqlDialect: 'oracle',
+                currentDb: 'ORCL',
+                tables: [{ dbName: 'ORCL', tableName: 'system_user' }],
+                columns: [],
+            },
+            editorSnapshot: {
+                prefix: 'SELECT * FROM system_user ',
+                suffix: '',
+                currentLineBeforeCursor: 'SELECT * FROM system_user ',
+                currentLineAfterCursor: '',
+            },
+        })).resolves.toBe('su');
+        expect(service.AIChatSend).not.toHaveBeenCalled();
+    });
+
     it('does not suggest an alias after a manually completed table source when disabled', async () => {
         const service = readyService('SELECT * FROM system_user su;');
         await expect(requestQueryEditorInlineCompletion({

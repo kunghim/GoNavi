@@ -52,6 +52,8 @@ if (
         revision: 0,
         connectionTags: [],
         sidebarRootOrder: [],
+        rootSortMode: 'manual',
+        rootConnectionSortMode: 'createdAt',
     };
     const mockSavedQueries: any[] = [];
     const mockSavedQueryGroups: any[] = [];
@@ -214,6 +216,7 @@ if (
     };
     let mockSkills: any[] = [];
     let mockGlobalProxy: any = { enabled: false, type: 'socks5', host: '', port: 1080, user: '', password: '', hasPassword: false };
+    let mockDownloadSource: 'cst' | 'bero' | 'github' = 'cst';
     let mockUpdateChannel: 'latest' | 'dev' = 'latest';
     const mockReleasePublishedAt = '2026-07-08T11:15:00Z';
     const buildMockUpdateInfo = () => ({
@@ -519,6 +522,8 @@ if (
                             revision: 1,
                             connectionTags: cloneBrowserMockValue(input.connectionTags),
                             sidebarRootOrder: cloneBrowserMockValue(input.sidebarRootOrder || []),
+                            rootSortMode: 'manual',
+                            rootConnectionSortMode: input?.rootConnectionSortMode === 'name' ? 'name' : 'createdAt',
                         };
                     }
                     return cloneBrowserMockValue(mockConnectionSidebarLayout);
@@ -536,12 +541,15 @@ if (
                         revision: Number(mockConnectionSidebarLayout.revision) + 1,
                         connectionTags: cloneBrowserMockValue(layout.connectionTags || []),
                         sidebarRootOrder: cloneBrowserMockValue(layout.sidebarRootOrder || []),
+                        rootSortMode: 'manual',
+                        rootConnectionSortMode: layout.rootConnectionSortMode === 'name' ? 'name' : 'createdAt',
                     };
                     return {
                         conflict: false,
                         layout: cloneBrowserMockValue(mockConnectionSidebarLayout),
                     };
                 },
+                LoadConnectionSidebarLayout: async () => cloneBrowserMockValue(mockConnectionSidebarLayout),
                 GetEditableSavedConnection: async (id: string) => {
                     const existing = mockConnections.find((item) => item.id === id);
                     if (!existing) {
@@ -569,6 +577,17 @@ if (
                         mockConnections.splice(index, 1);
                     }
                     mockConnectionSecrets.delete(id);
+                    return null;
+                },
+                DeleteConnections: async (ids: string[]) => {
+                    const requested = new Set((Array.isArray(ids) ? ids : []).map((id) => String(id).trim()).filter(Boolean));
+                    for (let index = mockConnections.length - 1; index >= 0; index -= 1) {
+                        if (requested.has(String(mockConnections[index]?.id || ''))) {
+                            mockConnectionSecrets.delete(mockConnections[index].id);
+                            mockConnections.splice(index, 1);
+                        }
+                    }
+                    requested.forEach((id) => mockConnectionSecrets.delete(id));
                     return null;
                 },
                 DuplicateConnection: async (id: string) => {
@@ -852,6 +871,12 @@ if (
                 }) => ({ success: false, message: t('app.browser_mock.export_connection_package_unsupported') }),
                 ExportData: async () => ({ success: false }),
                 GetGlobalProxyConfig: async () => ({ success: true, data: cloneBrowserMockValue(mockGlobalProxy) }),
+                GetDownloadSourceConfig: async () => ({ source: mockDownloadSource }),
+                SaveDownloadSourceConfig: async (source: string) => {
+                    const normalized = String(source || '').trim().toLowerCase();
+                    mockDownloadSource = normalized === 'bero' || normalized === 'github' ? normalized : 'cst';
+                    return { source: mockDownloadSource };
+                },
                 SetUpdateChannel: async (channel: string) => {
                     mockUpdateChannel = String(channel || '').trim().toLowerCase() === 'dev' ? 'dev' : 'latest';
                     return { success: true, data: { channel: mockUpdateChannel } };
@@ -950,9 +975,12 @@ if (
                 },
                 AIGetActiveProvider: async () => mockActiveProviderId,
                 AISetActiveProvider: async (id: string) => {
+                    if (!mockProviders.some((item) => item.id === id)) throw new Error(`provider not found: ${id}`);
                     mockActiveProviderId = id;
-                    return null;
                 },
+                AIGetCLICapabilities: async () => [],
+                AIGetCLIModelCatalog: async () => ({ models: [], source: 'none', stale: false }),
+                AIListCLIModels: async () => [],
                 AIGetSafetyLevel: async () => mockAISafetyLevel,
                 AIGetContextLevel: async () => mockAIContextLevel,
                 AIGetBuiltinPrompts: async () => ({}),
@@ -1134,11 +1162,11 @@ if (
                     mockSkills = mockSkills.filter((item) => item.id !== id);
                     return null;
                 },
-                AITestProvider: async (input: any) => ({
-                    success: String(input?.apiKey || '').trim() !== '',
-                    message: String(input?.apiKey || '').trim() !== ''
-                        ? t('app.browser_mock.provider.test_success')
-                        : t('app.browser_mock.provider.test_failed_detail', { detail: 'missing api key' }),
+                AITestProvider: async () => ({
+                    success: false,
+                    checkKind: 'none',
+                    modelVerified: false,
+                    message: t('ai_settings.message.preview_check_unavailable'),
                 }),
                 AISetSafetyLevel: async (level: string) => {
                     mockAISafetyLevel = String(level || 'readonly');
