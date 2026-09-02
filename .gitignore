@@ -44,3 +44,4 @@ docs/*
 .agents/skills/gonavi-scan/config/connections.local.yaml
 # 迁移兼容：旧路径上的本地连接文件也不得提交
 .agents/skills/gonavi-scan/connections.local.yaml
+/.claude/gonavi-scan/scan-runs/full-new-*/
