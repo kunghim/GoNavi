@@ -1,22 +1,22 @@
 artifact_schema: 2
 manifest_path: scan-manifest.yaml
 coverage_path: coverage.yaml
-scan_id: full-new-20260828-b4a9c71
-head_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
+scan_id: full-new-20260902-pm-alias-retry
+head_commit: 04977a127798de85bc5339fdfbe49f7f116f0395
 baseline_status: ok
 scan_mode: 全量新问题扫描
-review_views: [product, db, developer]
-developer_scan_mode: contract_first
+review_views: [product]
+developer_scan_mode: null
 execution: parallel
 scan_scope: full_repository
 history_recheck: not_applicable
 history_recheck_status: not_applicable
 full_scan_status: completed
-coverage_units_total: 60
-coverage_units_completed: 60
-started_at: 2026-08-28T07:19:06Z
-completed_at: 2026-08-28T07:19:06Z
-start_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
+coverage_units_total: 22
+coverage_units_completed: 22
+started_at: 2026-09-02T13:10:19+08:00
+completed_at: 2026-09-02T13:18:39+08:00
+start_commit: 04977a127798de85bc5339fdfbe49f7f116f0395
 workspace_status: 有未提交改动
-included_scope: [全仓产品入口, 前端 React, Wails 应用层, 数据库驱动, Web MCP CLI 与交付入口]
-excluded_scope: [真实数据库写入, 真实消息发布或消费确认, 多平台人工界面验证]
+included_scope: [全仓产品入口, 前端 React, Wails 应用层, 数据源与工作台, SQL 编辑器自动表别名专项]
+excluded_scope: [真实数据库写入, 真实消息发布或消费确认, 多平台人工界面验证, 数据库工程与开发视角]

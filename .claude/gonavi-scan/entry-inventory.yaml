@@ -1,6 +1,6 @@
 version: 1
-scan_id: full-new-20260828-b4a9c71
-head_commit: 14d1fc5e01e66454e23521cb3bf3c1902ff09604
+scan_id: full-new-20260902-pm-alias-retry
+head_commit: 04977a127798de85bc5339fdfbe49f7f116f0395
 entries:
   - {id: ENTRY-WORKBENCH-TABS, category: 工作台与标签类型, code_locations: [frontend/src/types.ts, frontend/src/components/TabManager.tsx, frontend/src/App.tsx], capability_ids: [CAP-QUERY-001, CAP-DATA-001, CAP-SYNC-001], coverage_status: 已映射}
   - {id: ENTRY-MENUS-ACTIONS, category: 标题栏侧栏右键与快捷动作, code_locations: [frontend/src/App.tsx, frontend/src/components/Sidebar.tsx, frontend/src/components/sidebar/useSidebarV2ContextMenu.tsx], capability_ids: [CAP-CONN-A01, CAP-EXP-001, CAP-DATA-002], coverage_status: 已映射}

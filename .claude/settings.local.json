@@ -3,7 +3,10 @@
     "allow": [
       "Bash(git check-ignore *)",
       "Bash(powershell *)",
-      "PowerShell(& 'C:\\\\Users\\\\admin\\\\.claude\\\\skills\\\\gonavi-issue\\\\scripts\\\\list_submit_candidates.ps1' -RepoRoot 'E:\\\\Project\\\\Github\\\\GoNavi')"
+      "PowerShell(& 'C:\\\\Users\\\\admin\\\\.claude\\\\skills\\\\gonavi-issue\\\\scripts\\\\list_submit_candidates.ps1' -RepoRoot 'E:\\\\Project\\\\Github\\\\GoNavi')",
+      "PowerShell(& 'C:\\\\Users\\\\admin\\\\.claude\\\\skills\\\\gonavi-issue\\\\scripts\\\\submit_issue.ps1' -FindingId 'FIND-PM-ROCKETMQ-CONSUMER-OPS-001' -Confirm)",
+      "PowerShell(& 'C:\\\\Users\\\\admin\\\\.claude\\\\skills\\\\gonavi-issue\\\\scripts\\\\submit_issue.ps1' -FindingId 'FIND-DEV-MCP-SHUTDOWN-WAIT-001' -Confirm)",
+      "PowerShell(& 'C:\\\\Users\\\\admin\\\\.claude\\\\skills\\\\gonavi-issue\\\\scripts\\\\submit_issue.ps1' -FindingId 'FIND-DEV-WEB-SHUTDOWN-RACE-001' -Confirm)"
     ]
   }
 }
