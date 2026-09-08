@@ -100,6 +100,29 @@ func TestBuildClaudeCLIEnv_LocalAuthRemovesAPIOverrides(t *testing.T) {
 	}
 }
 
+func TestClaudeCLIProviderCustomEnvironmentCannotRestoreLocalAuthOverrides(t *testing.T) {
+	provider := &ClaudeCLIProvider{config: ai.ProviderConfig{
+		AuthMode: "local-cli",
+		CLIEnv: map[string]string{
+			"GONAVI_CLAUDE_CUSTOM": "configured",
+			"ANTHROPIC_API_KEY":    "must-stay-blocked",
+			"ANTHROPIC_BASE_URL":   "https://must-stay-blocked.invalid",
+		},
+	}}
+	command := exec.Command(os.Args[0])
+	if err := provider.setEnv(command); err != nil {
+		t.Fatal(err)
+	}
+	if got := envValue(command.Env, "GONAVI_CLAUDE_CUSTOM"); got != "configured" {
+		t.Fatalf("custom environment = %q, want configured", got)
+	}
+	for _, key := range []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"} {
+		if got := envValue(command.Env, key); got != "" {
+			t.Fatalf("%s was restored after subscription isolation: %q", key, got)
+		}
+	}
+}
+
 func TestBuildClaudeCLIArgs_LocalAuthKeepsPromptOutOfArgvAndDisablesTools(t *testing.T) {
 	args := buildClaudeCLIArgs(ai.ProviderConfig{AuthMode: "local-cli"}, "private prompt", true)
 	if strings.Contains(strings.Join(args, " "), "private prompt") {
@@ -669,8 +692,7 @@ func TestClaudeCLIProvider_ChatTimesOutWhenCommandDoesNotFinish(t *testing.T) {
 }
 
 func TestClaudeCLIProvider_ChatStreamUsesRequestTimeoutWhenNoMeaningfulResponseArrives(t *testing.T) {
-	fakeClaude := writeFakeClaudeScript(t, "#!/bin/sh\necho '{\"type\":\"system\",\"subtype\":\"init\"}'\nexec sleep 5\n")
-	restore := overrideClaudeCLIForTest(t, fakeClaude)
+	restore := overrideClaudeCLIWithTestProcess(t, "hang-after-init")
 	defer restore()
 
 	originalRequestTimeout := claudeCLIRequestTimeout
@@ -1017,6 +1039,10 @@ func TestClaudeCLIHelperProcess(t *testing.T) {
 		time.Sleep(200 * time.Millisecond)
 		_, _ = os.Stdout.WriteString("{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"OK\"}]}}\n")
 		_, _ = os.Stdout.WriteString("{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"OK\"}\n")
+		os.Exit(0)
+	case "hang-after-init":
+		_, _ = os.Stdout.WriteString("{\"type\":\"system\",\"subtype\":\"init\"}\n")
+		time.Sleep(5 * time.Second)
 		os.Exit(0)
 	case "sleep":
 		time.Sleep(5 * time.Second)

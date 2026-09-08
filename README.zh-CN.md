@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/readme-logo.png" width="128" alt="GoNavi Logo" />
+  <img src="https://origin-download.syngnat.top:8443/gonavi/brand-assets/v1/03-ribbon-graphite-glow.svg" width="128" alt="GoNavi Logo" />
 </p>
 
 <h1 align="center">GoNavi</h1>
@@ -25,6 +25,10 @@
   <a href="https://wails.io"><img src="https://img.shields.io/badge/Wails-v2-red?style=flat-square" alt="Wails" /></a>
   <a href="https://reactjs.org"><img src="https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=white" alt="React" /></a>
   <a href="https://github.com/Syngnat/GoNavi/actions"><img src="https://img.shields.io/github/actions/workflow/status/Syngnat/GoNavi/release.yml?style=flat-square&label=Build" alt="Build" /></a>
+</p>
+
+<p align="center">
+  <a href="https://mcpvault.io/servers/gonavi/health?utm_source=external_badge&utm_medium=referral&utm_campaign=mcp_health_report"><img src="https://mcpvault.io/badge/gonavi.svg" alt="MCPVault: claimed" /></a>
 </p>
 
 <p align="center">

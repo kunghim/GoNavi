@@ -16,6 +16,7 @@ __pycache__/
 *.py[cod]
 
 dist/
+frontend/dist.zip
 .DS_Store
 .gemini-clipboard
 .env
@@ -45,3 +46,4 @@ docs/*
 # 迁移兼容：旧路径上的本地连接文件也不得提交
 .agents/skills/gonavi-scan/connections.local.yaml
 /.claude/gonavi-scan/scan-runs/full-new-*/
+.gonavi-dev-signing-identity

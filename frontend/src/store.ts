@@ -47,6 +47,24 @@ import {
   sanitizeBrandIconId,
 } from "./brand/brandIcons";
 
+export interface AIChatSessionSummary {
+  id: string;
+  title: string;
+  updatedAt: number;
+  /** Ledger revision used by metadata mutations as a CAS guard. */
+  revision?: number;
+  generation?: number;
+  /** Archived Ledger sessions must never reappear in the chat history UI. */
+  archived?: boolean;
+}
+
+type ActiveContext = {
+  connectionId: string;
+  dbName: string;
+  schemaName?: string;
+  tableName?: string;
+};
+
 const sanitizeBrandIconIdLocal = (value: unknown): string =>
   sanitizeBrandIconId(value) || DEFAULT_BRAND_ICON_ID;
 import { toPersistedGlobalProxy } from "./utils/globalProxyDraft";
@@ -157,8 +175,11 @@ import {
   sanitizeToolbarButtonColorOverrides,
   type ToolbarButtonColorOverrides,
 } from "./utils/toolbarAppearance";
+import { normalizeTableAliasPrefix } from "./utils/tableAliasPrefix";
 
 export type TableDoubleClickAction = "open-data" | "open-design";
+/** SQL 编辑器中按住 Ctrl/Cmd 点击表名时执行的动作。 */
+export type QueryTableCtrlClickAction = "open-design" | "locate";
 export type ThemeMode = "light" | "dark";
 export type ThemePreference = ThemeMode | "system";
 /** AI 聊天默认打开形态：侧栏 / 独立浮动窗 */
@@ -171,6 +192,7 @@ export interface AppearanceSettings
   opacity: number;
   blur: number;
   tableDoubleClickAction: TableDoubleClickAction;
+  queryTableCtrlClickAction: QueryTableCtrlClickAction;
   v2SidebarSearchMode: "command" | "filter";
   v2SidebarPersistedFilter: string;
   v2SidebarRailScale: number;
@@ -182,6 +204,8 @@ export interface AppearanceSettings
   customMonoFontFamily: string | null;
   newQuerySqlTemplate: string | null;
   autoAddTableAlias: boolean;
+  customTableAliasPrefixEnabled: boolean;
+  customTableAliasPrefix: string;
   tabDisplay: TabDisplaySettings;
   redisDbAliases: RedisDbAliasMap;
 }
@@ -199,6 +223,7 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   opacity: 1.0,
   blur: 0,
   tableDoubleClickAction: "open-data",
+  queryTableCtrlClickAction: "open-design",
   v2SidebarSearchMode: "command",
   v2SidebarPersistedFilter: "",
   v2SidebarRailScale: DEFAULT_V2_SIDEBAR_RAIL_SCALE,
@@ -210,6 +235,8 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   customMonoFontFamily: null,
   newQuerySqlTemplate: null,
   autoAddTableAlias: true,
+  customTableAliasPrefixEnabled: false,
+  customTableAliasPrefix: '',
   tabDisplay: DEFAULT_TAB_DISPLAY_SETTINGS,
   redisDbAliases: DEFAULT_REDIS_DB_ALIASES,
   ...DEFAULT_DATA_GRID_DISPLAY_SETTINGS,
@@ -246,6 +273,12 @@ const sanitizeTableDoubleClickAction = (
   value: unknown,
 ): TableDoubleClickAction => {
   return value === "open-design" ? "open-design" : DEFAULT_APPEARANCE.tableDoubleClickAction;
+};
+
+const sanitizeQueryTableCtrlClickAction = (
+  value: unknown,
+): QueryTableCtrlClickAction => {
+  return value === "locate" ? "locate" : DEFAULT_APPEARANCE.queryTableCtrlClickAction;
 };
 
 const sanitizeV2SidebarPersistedFilter = (value: unknown): string => {
@@ -299,7 +332,6 @@ const MAX_DIAGNOSTIC_TIMEOUT_SECONDS = 300;
 const PERSIST_VERSION = 21;
 const SQL_EDITOR_FONT_SIZE_SPLIT_VERSION = 19;
 const TAB_DISPLAY_DEFAULT_MIGRATION_VERSION = 20;
-const UI_VERSION_V2_MIGRATION_VERSION = 14;
 const SIDEBAR_SEARCH_SHORTCUT_MIGRATION_VERSION = 18;
 const PERSIST_STORAGE_KEY = "lite-db-storage";
 const PERSIST_WRITE_DEBOUNCE_MS = 160;
@@ -1846,7 +1878,7 @@ interface AppState {
   /** AI 独立窗上次尺寸/位置（持久化，再次打开时复用） */
   aiChatDetachedBoundsMemory: AIChatDetachedBoundsMemory | null;
   activeTabId: string | null;
-  activeContext: { connectionId: string; dbName: string; tableName?: string } | null;
+  activeContext: ActiveContext | null;
   savedQueries: SavedQuery[];
   savedQueryGroups: SavedQueryGroup[];
   externalSQLDirectories: ExternalSQLDirectory[];
@@ -1892,13 +1924,13 @@ interface AppState {
   windowState: "normal" | "fullscreen" | "maximized";
   sidebarWidth: number;
 
-  // AI 运行时与持久化状态
+  // AI 运行时投影。会话和消息的持久化由 Agent Run Harness Ledger 管理。
   aiPanelVisible: boolean;
   /** 打开 AI 时的默认形态：侧栏 dock 或独立窗口 detached（持久化） */
   aiChatOpenMode: AIChatOpenMode;
   aiChatHistory: Record<string, AIChatMessage[]>; // sessionId -> messages
   replaceAIChatHistory: (sessionId: string, messages: AIChatMessage[]) => void;
-  aiChatSessions: { id: string; title: string; updatedAt: number }[]; // 历史会话列表
+  aiChatSessions: AIChatSessionSummary[]; // 历史会话列表
   aiActiveSessionId: string | null;
   updateAISessionTitle: (sessionId: string, title: string) => void;
 
@@ -1989,7 +2021,7 @@ interface AppState {
   closeAllTabs: () => void;
   setActiveTab: (id: string) => void;
   setActiveContext: (
-    context: { connectionId: string; dbName: string; tableName?: string } | null,
+    context: ActiveContext | null,
   ) => void;
   detachWorkbenchTab: (
     tabId: string,
@@ -2590,6 +2622,35 @@ const sanitizeQueryTabs = (value: unknown): TabData[] => {
     }
     seenIds.add(id);
 
+    // object-edit 身份字段必须随 tab 持久化，否则重启/刷新后
+    // 侧栏定位按钮会因解析不到对象身份而禁用。
+    const isObjectEditTab = raw.queryMode === "object-edit";
+    const asViewKind = (value: unknown): TabData["viewKind"] =>
+      value === "view" || value === "materialized" ? value : undefined;
+    const asObjectType = (value: unknown): TabData["objectType"] =>
+      value === "view" || value === "materialized-view" || value === "table"
+        ? value
+        : undefined;
+    const objectEditIdentity = isObjectEditTab
+      ? {
+          routineName: toTrimmedString(raw.routineName).slice(0, 256) || undefined,
+          routineType: toTrimmedString(raw.routineType).slice(0, 64) || undefined,
+          viewName: toTrimmedString(raw.viewName).slice(0, 256) || undefined,
+          viewKind: asViewKind(raw.viewKind),
+          objectType: asObjectType(raw.objectType),
+          sequenceName: toTrimmedString(raw.sequenceName).slice(0, 256) || undefined,
+          packageName: toTrimmedString(raw.packageName).slice(0, 256) || undefined,
+          triggerName: toTrimmedString(raw.triggerName).slice(0, 256) || undefined,
+          triggerTableName:
+            toTrimmedString(raw.triggerTableName).slice(0, 256) || undefined,
+          eventName: toTrimmedString(raw.eventName).slice(0, 256) || undefined,
+          sidebarLocateKey:
+            toTrimmedString(raw.sidebarLocateKey).slice(0, 512) || undefined,
+          returnToTabId:
+            toTrimmedString(raw.returnToTabId).slice(0, 256) || undefined,
+        }
+      : undefined;
+
     result.push({
       id,
       title:
@@ -2613,6 +2674,8 @@ const sanitizeQueryTabs = (value: unknown): TabData[] => {
         typeof raw.resultPanelVisible === "boolean"
           ? raw.resultPanelVisible
           : undefined,
+      queryMode: isObjectEditTab ? "object-edit" : undefined,
+      ...(objectEditIdentity || {}),
       filePath: filePath || undefined,
       savedQueryId: savedQueryId || undefined,
       readOnly: raw.readOnly === true || persistedDraft?.readOnly === true,
@@ -2676,10 +2739,11 @@ const resolveCloseTabActiveTabId = (
 
 const resolveActiveContextFromTab = (
   tab: TabData | null | undefined,
-): { connectionId: string; dbName: string; tableName?: string } | null => {
+): ActiveContext | null => {
   if (!tab) return null;
   const connectionId = toTrimmedString(tab.connectionId);
   if (!connectionId) return null;
+  const schemaName = toTrimmedString(tab.schemaName);
   const tableName = toTrimmedString(
     tab.tableName
     || tab.viewName
@@ -2692,15 +2756,30 @@ const resolveActiveContextFromTab = (
   return {
     connectionId,
     dbName: toTrimmedString(tab.dbName),
+    ...(schemaName ? { schemaName } : {}),
     ...(tableName ? { tableName } : {}),
   };
+};
+
+const activeContextMatchesTab = (
+  context: ActiveContext | null | undefined,
+  tab: TabData | null | undefined,
+): boolean => {
+  const tabContext = resolveActiveContextFromTab(tab);
+  if (!context || !tabContext) return false;
+  return (
+    context.connectionId === tabContext.connectionId
+    && context.dbName === tabContext.dbName
+    && toTrimmedString(context.schemaName) === toTrimmedString(tabContext.schemaName)
+    && toTrimmedString(context.tableName) === toTrimmedString(tabContext.tableName)
+  );
 };
 
 const resolveActiveContextForTabId = (
   tabs: TabData[],
   activeTabId: string | null | undefined,
-  fallbackContext: { connectionId: string; dbName: string; tableName?: string } | null,
-): { connectionId: string; dbName: string; tableName?: string } | null => {
+  fallbackContext: ActiveContext | null,
+): ActiveContext | null => {
   const normalizedActiveTabId = toTrimmedString(activeTabId);
   if (normalizedActiveTabId) {
     const activeTab = tabs.find((tab) => tab.id === normalizedActiveTabId);
@@ -3123,10 +3202,7 @@ const sanitizeAppearance = (
     ? migrateLegacySqlEditorTypographySettings(dataGridDisplaySettings)
     : sanitizeSqlEditorTypographySettings(appearance);
   const nextAppearance = {
-    uiVersion:
-      appearance.uiVersion === "v2" || appearance.uiVersion === "legacy"
-        ? appearance.uiVersion
-        : DEFAULT_APPEARANCE.uiVersion,
+    uiVersion: DEFAULT_APPEARANCE.uiVersion,
     enabled:
       typeof appearance.enabled === "boolean"
         ? appearance.enabled
@@ -3141,6 +3217,9 @@ const sanitizeAppearance = (
         : DEFAULT_APPEARANCE.blur,
     tableDoubleClickAction: sanitizeTableDoubleClickAction(
       appearance.tableDoubleClickAction,
+    ),
+    queryTableCtrlClickAction: sanitizeQueryTableCtrlClickAction(
+      appearance.queryTableCtrlClickAction,
     ),
     v2SidebarSearchMode: sanitizeV2SidebarSearchMode(
       appearance.v2SidebarSearchMode,
@@ -3169,6 +3248,11 @@ const sanitizeAppearance = (
       typeof appearance.autoAddTableAlias === "boolean"
         ? appearance.autoAddTableAlias
         : DEFAULT_APPEARANCE.autoAddTableAlias,
+    customTableAliasPrefixEnabled:
+      appearance.customTableAliasPrefixEnabled === true,
+    customTableAliasPrefix: normalizeTableAliasPrefix(
+      appearance.customTableAliasPrefix,
+    ),
     tabDisplay: version < TAB_DISPLAY_DEFAULT_MIGRATION_VERSION
       && isLegacyDefaultTabDisplaySettings(appearance.tabDisplay)
       ? sanitizeTabDisplaySettings(DEFAULT_TAB_DISPLAY_SETTINGS)
@@ -3438,141 +3522,6 @@ export const updateSidebarDatabasePinKeys = (
   return Array.from(current);
 };
 
-// --- AI 会话文件持久化辅助函数 ---
-
-/** 每个 session 独立防抖定时器（2秒） */
-const _persistTimers: Record<string, ReturnType<typeof setTimeout>> = {};
-const _persistGenerations: Record<string, number> = {};
-const _persistDirtySessions = new Set<string>();
-const _persistInFlight: Partial<Record<string, Promise<void>>> = {};
-
-const _persistSessionNow = async (sessionId: string): Promise<void> => {
-  const state = useStore.getState();
-  const messages = state.aiChatHistory[sessionId];
-  const sessionMeta = state.aiChatSessions.find((s) => s.id === sessionId);
-  if (!messages && !sessionMeta) return;
-  const title = sessionMeta?.title || translate("ai_chat.panel.session.default_title");
-  const updatedAt = sessionMeta?.updatedAt || Date.now();
-  const Service = typeof window === "undefined"
-    ? undefined
-    : (window as any).go?.aiservice?.Service;
-  if (typeof Service?.AISaveSession !== "function") return;
-  await Service.AISaveSession(sessionId, title, updatedAt, JSON.stringify(messages || []));
-};
-
-function _debouncedPersistSession(sessionId: string) {
-  if (_persistTimers[sessionId]) clearTimeout(_persistTimers[sessionId]);
-  const generation = (_persistGenerations[sessionId] || 0) + 1;
-  _persistGenerations[sessionId] = generation;
-  _persistDirtySessions.add(sessionId);
-  _persistTimers[sessionId] = setTimeout(() => {
-    delete _persistTimers[sessionId];
-    const inFlight = _persistSessionNow(sessionId);
-    _persistInFlight[sessionId] = inFlight;
-    void inFlight.then(() => {
-      if (_persistGenerations[sessionId] === generation) {
-        _persistDirtySessions.delete(sessionId);
-      }
-    }).catch((e: unknown) => {
-      console.error("[AI Session Persist] 持久化失败:", sessionId, e);
-    }).finally(() => {
-      if (_persistInFlight[sessionId] === inFlight) {
-        delete _persistInFlight[sessionId];
-      }
-    });
-  }, 2000);
-}
-
-/** Flush pending AI session writes before a native child process exits. */
-export async function flushAIChatSessionPersistence(
-  sessionIds?: string[],
-): Promise<void> {
-  const ids = Array.from(new Set(
-    (sessionIds ?? Array.from(_persistDirtySessions))
-      .map((id) => String(id || "").trim())
-      .filter(Boolean),
-  ));
-  for (let index = 0; index < ids.length; index += 1) {
-    try {
-      const id = ids[index];
-      for (;;) {
-        if (_persistTimers[id]) {
-          clearTimeout(_persistTimers[id]);
-          delete _persistTimers[id];
-        }
-        const inFlight = _persistInFlight[id];
-        if (inFlight) {
-          await inFlight.catch(() => undefined);
-        }
-        const generation = _persistGenerations[id] || 0;
-        await _persistSessionNow(id);
-        if (_persistGenerations[id] === generation) {
-          _persistDirtySessions.delete(id);
-          break;
-        }
-      }
-    } catch (error) {
-      for (const id of ids.slice(index)) {
-        _debouncedPersistSession(id);
-      }
-      throw error;
-    }
-  }
-}
-
-/** 从后端加载会话列表（仅元数据，不含消息体） */
-export async function loadAISessionsFromBackend(): Promise<
-  { id: string; title: string; updatedAt: number }[]
-> {
-  const Service = (window as any).go?.aiservice?.Service;
-  if (!Service?.AIGetSessions) return [];
-  try {
-    const sessions = await Service.AIGetSessions();
-    if (Array.isArray(sessions)) {
-      useStore.setState({ aiChatSessions: sessions });
-      return sessions;
-    }
-  } catch (e) {
-    console.error("[AI Session] 加载会话列表失败:", e);
-  }
-  return [];
-}
-
-/** 从后端加载指定会话的消息数据到内存 */
-export async function loadAISessionFromBackend(
-  sessionId: string,
-): Promise<boolean> {
-  const state = useStore.getState();
-  // 如果内存中已有消息，跳过重复加载
-  if (state.aiChatHistory[sessionId]?.length > 0) return true;
-
-  const Service = (window as any).go?.aiservice?.Service;
-  if (!Service?.AILoadSession) return false;
-  try {
-    const result = await Service.AILoadSession(sessionId);
-    if (result?.success) {
-      let messages = result.messages;
-      // messages 可能是 JSON string 或已解析的数组
-      if (typeof messages === "string") {
-        try {
-          messages = JSON.parse(messages);
-        } catch {
-          messages = [];
-        }
-      }
-      if (Array.isArray(messages)) {
-        useStore.setState((prev) => ({
-          aiChatHistory: { ...prev.aiChatHistory, [sessionId]: messages },
-        }));
-        return true;
-      }
-    }
-  } catch (e) {
-    console.error("[AI Session] 加载会话消息失败:", sessionId, e);
-  }
-  return false;
-}
-
 const PERSISTED_STATE_DEPENDENCY_KEYS = [
   "tabs",
   "activeTabId",
@@ -3788,7 +3737,7 @@ export const useStore = create<AppState>()(
       pinnedConnectionTypes: [],
       theme: "light",
       themePreference: "light",
-      brandIconId: "02",
+      brandIconId: "03",
       languagePreference: DEFAULT_LANGUAGE_PREFERENCE,
       appearance: { ...DEFAULT_APPEARANCE },
       uiScale: DEFAULT_UI_SCALE,
@@ -4467,6 +4416,7 @@ export const useStore = create<AppState>()(
                 t.type === incomingTab.type &&
                 t.connectionId === incomingTab.connectionId &&
                 t.dbName === incomingTab.dbName &&
+                toTrimmedString(t.schemaName) === toTrimmedString(incomingTab.schemaName) &&
                 t.tableName === incomingTab.tableName,
             );
             if (semanticIndex !== -1) {
@@ -4535,6 +4485,7 @@ export const useStore = create<AppState>()(
           const tabId = toTrimmedString(id);
           if (!tabId) return state;
 
+          const previousTab = state.tabs.find((tab) => tab.id === tabId);
           let changed = false;
           let contextChangedTab: TabData | null = null;
           const nextTabs = state.tabs.map((tab) => {
@@ -4618,10 +4569,20 @@ export const useStore = create<AppState>()(
           });
 
           if (!changed) return state;
+          const nextActiveTab = nextTabs.find((tab) => tab.id === tabId);
+          const shouldSyncActiveContext = state.activeTabId === tabId
+            && Boolean(nextActiveTab)
+            && (
+              !state.activeContext
+              || activeContextMatchesTab(state.activeContext, previousTab)
+            );
           return {
             tabs: nextTabs,
             ...(contextChangedTab
               ? resolveRecentWorkbenchEntries(state, contextChangedTab)
+              : {}),
+            ...(shouldSyncActiveContext
+              ? { activeContext: resolveActiveContextFromTab(nextActiveTab) }
               : {}),
           };
         }),
@@ -5993,8 +5954,6 @@ export const useStore = create<AppState>()(
 
           return { aiChatHistory: history, aiChatSessions: newSessions };
         });
-        // 异步持久化到文件（fire-and-forget，防抖由外层控制）
-        _debouncedPersistSession(sessionId);
       },
       updateAIChatMessage: (sessionId, messageId, updates) => {
         set((state) => {
@@ -6024,8 +5983,6 @@ export const useStore = create<AppState>()(
           }
           return { aiChatHistory: history };
         });
-        // 流式打字高频调用，防抖 2 秒后才写磁盘
-        _debouncedPersistSession(sessionId);
       },
       deleteAIChatMessage: (sessionId, messageId) => {
         set((state) => {
@@ -6037,7 +5994,6 @@ export const useStore = create<AppState>()(
           }
           return { aiChatHistory: history };
         });
-        _debouncedPersistSession(sessionId);
       },
       truncateAIChatMessages: (sessionId, upToMessageId) => {
         set((state) => {
@@ -6051,7 +6007,6 @@ export const useStore = create<AppState>()(
           }
           return { aiChatHistory: history };
         });
-        _debouncedPersistSession(sessionId);
       },
       clearAIChatHistory: (sessionId) => {
         set((state) => {
@@ -6059,7 +6014,6 @@ export const useStore = create<AppState>()(
           delete history[sessionId];
           return { aiChatHistory: history };
         });
-        _debouncedPersistSession(sessionId);
       },
       replaceAIChatHistory: (sessionId, messages) => {
         set((state) => {
@@ -6067,7 +6021,6 @@ export const useStore = create<AppState>()(
           history[sessionId] = messages;
           return { aiChatHistory: history };
         });
-        _debouncedPersistSession(sessionId);
       },
       deleteAISession: (sessionId) => {
         set((state) => {
@@ -6086,9 +6039,6 @@ export const useStore = create<AppState>()(
             aiActiveSessionId: newActive,
           };
         });
-        // 删除文件
-        const Service = (window as any).go?.aiservice?.Service;
-        Service?.AIDeleteSession?.(sessionId).catch(() => {});
       },
       createNewAISession: () =>
         set(() => {
@@ -6106,7 +6056,6 @@ export const useStore = create<AppState>()(
           }
           return { aiChatSessions: newSessions };
         });
-        _debouncedPersistSession(sessionId);
       },
       addAIContext: (connectionKey, context) =>
         set((state) => {
@@ -6239,13 +6188,7 @@ export const useStore = create<AppState>()(
         nextState.languagePreference = sanitizeLanguagePreference(
           state.languagePreference,
         );
-        const appearance = sanitizeAppearance(state.appearance, version);
-        // 旧版界面在窄布局下可能遮挡 SQL 编辑器。仅在本次版本升级时
-        // 将已保存的选择迁移至 V2，之后用户仍可自行切换并保留偏好。
-        nextState.appearance =
-          version < UI_VERSION_V2_MIGRATION_VERSION
-            ? { ...appearance, uiVersion: "v2" }
-            : appearance;
+        nextState.appearance = sanitizeAppearance(state.appearance, version);
         nextState.uiScale = sanitizeUiScale(state.uiScale);
         nextState.fontSize = sanitizeFontSize(state.fontSize);
         nextState.startupFullscreen = sanitizeStartupFullscreen(

@@ -334,6 +334,10 @@ describe("i18n catalog", () => {
       "app.theme.data_table.table_double_click_action.open_data",
       "app.theme.data_table.table_double_click_action.open_design",
       "app.theme.data_table.table_double_click_action_hint",
+      "app.theme.data_table.query_ctrl_click_action",
+      "app.theme.data_table.query_ctrl_click_action.open_design",
+      "app.theme.data_table.query_ctrl_click_action.locate",
+      "app.theme.data_table.query_ctrl_click_action_hint",
       "app.theme.instant_apply_hint",
       "app.theme.nav.appearance.description",
       "app.theme.nav.appearance.title",
@@ -349,18 +353,16 @@ describe("i18n catalog", () => {
       "app.theme.query_template.reset_default",
       "app.theme.query_template.title",
       "app.theme.table_alias.description",
+      "app.theme.table_alias.custom_prefix.description",
+      "app.theme.table_alias.custom_prefix.placeholder",
+      "app.theme.table_alias.custom_prefix.title",
       "app.theme.table_alias.title",
       "app.theme.theme_settings_description",
       "app.theme.theme_settings_title",
-      "app.theme.ui_version.beta_warning",
-      "app.theme.ui_version.description",
-      "app.theme.ui_version.legacy.badge",
-      "app.theme.ui_version.legacy.description",
-      "app.theme.ui_version.legacy.label",
-      "app.theme.ui_version.platform_hint",
-      "app.theme.ui_version.title",
-      "app.theme.ui_version.v2.description",
-      "app.theme.ui_version.v2.label",
+      "app.theme.ui_version.sidebar_search.title",
+      "app.theme.ui_version.sidebar_search.command",
+      "app.theme.ui_version.sidebar_search.filter",
+      "app.theme.ui_version.sidebar_search.hint",
     ] as const;
 
     for (const language of SUPPORTED_LANGUAGES) {
@@ -371,24 +373,22 @@ describe("i18n catalog", () => {
     }
   });
 
-  it("renders the table alias setting in both theme setting variants", () => {
+  it("renders the table alias setting in theme settings", () => {
     const source = readAppSource();
     const v2Source = sliceBetween(
       source,
-      "const renderThemeSettingsContentV2 = () =>",
-      "const renderThemeSettingsContentLegacy = () =>",
-    );
-    const legacySource = sliceBetween(
-      source,
-      "const renderThemeSettingsContentLegacy = () =>",
-      "const renderThemeSettingsContent = () =>",
+      "const renderThemeSettingsContentV2 =",
+      "const renderThemeSettingsContent =",
     );
 
-    for (const settingsSource of [v2Source, legacySource]) {
-      expect(settingsSource).toContain("app.theme.table_alias.title");
-      expect(settingsSource).toContain("app.theme.table_alias.description");
-      expect(settingsSource).toContain("setAppearance({ autoAddTableAlias: checked })");
-    }
+    expect(v2Source).toContain("app.theme.table_alias.title");
+    expect(v2Source).toContain("app.theme.table_alias.description");
+    expect(v2Source).toContain("setAppearance({ autoAddTableAlias: checked })");
+    expect(v2Source).toContain("app.theme.table_alias.custom_prefix.title");
+    expect(v2Source).toContain("app.theme.table_alias.custom_prefix.description");
+    expect(v2Source).toContain("app.theme.table_alias.custom_prefix.placeholder");
+    expect(v2Source).toContain("setAppearance({ customTableAliasPrefixEnabled: checked })");
+    expect(v2Source).toContain("setAppearance({ customTableAliasPrefix: event.target.value })");
   });
 
   it("includes App shortcut modal keys required by every supported language", () => {
@@ -559,6 +559,9 @@ describe("i18n catalog", () => {
       "data_grid.pagination.result_set",
       "data_grid.pagination.page_size_aria",
       "data_grid.pagination.page_size_option",
+      "data_grid.pagination.page_size_custom",
+      "data_grid.pagination.page_size_custom_label",
+      "data_grid.pagination.page_size_custom_invalid",
       "data_grid.pagination.first_page",
       "data_grid.pagination.last_page",
       "data_grid.pagination.jump_label",
@@ -932,7 +935,7 @@ describe("i18n catalog", () => {
     const source = readQueryEditorSource();
     const handleRunSource = sliceBetween(
       source,
-      "const handleRun = async () => {",
+      "const handleRun = async (runScope: QueryEditorRunScope = 'default') => {",
       "  const handleCancel = async () => {",
     );
     const handleCancelSource = sliceBetween(
@@ -962,7 +965,7 @@ describe("i18n catalog", () => {
     const source = readQueryEditorSource();
     const handleRunSource = sliceBetween(
       source,
-      "const handleRun = async () => {",
+      "const handleRun = async (runScope: QueryEditorRunScope = 'default') => {",
       "  const handleCancel = async () => {",
     );
 
@@ -988,7 +991,7 @@ describe("i18n catalog", () => {
     const source = readQueryEditorSource();
     const handleRunSource = sliceBetween(
       source,
-      "const handleRun = async () => {",
+      "const handleRun = async (runScope: QueryEditorRunScope = 'default') => {",
       "  const handleCancel = async () => {",
     );
 
@@ -1009,7 +1012,7 @@ describe("i18n catalog", () => {
     const handleReloadSource = sliceBetween(
       source,
       "  const handleReloadResult = async (resultKey: string, sql: string) => {",
-      "  const handleRun = async () => {",
+      "  const handleRun = async (runScope: QueryEditorRunScope = 'default') => {",
     );
 
     for (const language of SUPPORTED_LANGUAGES) {
@@ -1060,6 +1063,7 @@ describe("i18n catalog", () => {
     const hoverKeys = [
       "query_editor.hover.switch_database_with_shortcut",
       "query_editor.hover.open_table_with_shortcut",
+      "query_editor.hover.locate_table_with_shortcut",
       "query_editor.hover.open_view_with_shortcut",
       "query_editor.hover.open_materialized_view_with_shortcut",
       "query_editor.hover.open_trigger_with_shortcut",
@@ -1809,6 +1813,8 @@ describe("i18n catalog", () => {
       "app.shortcuts.action.saveQuery.label",
       "app.shortcuts.action.saveQueryAs.label",
       "query_editor.action.show_object_info",
+      "query_editor.action.run_selected_sql",
+      "query_editor.action.run_all_sql",
     ] as const;
     const source = readQueryEditorSource();
     const actionLabelSource = [

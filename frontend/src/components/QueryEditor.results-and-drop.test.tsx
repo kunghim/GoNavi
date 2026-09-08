@@ -368,6 +368,11 @@ vi.mock('@monaco-editor/react', () => ({
           }),
           registerHoverProvider: vi.fn((_language: string, provider: any) => {
             editorState.hoverProviders.push(provider);
+            editorState.hoverProviders.sort((left, right) => {
+              const leftRank = left?.__gonaviHoverProviderKind === 'metadata' ? 0 : 1;
+              const rightRank = right?.__gonaviHoverProviderKind === 'metadata' ? 0 : 1;
+              return leftRank - rightRank;
+            });
             return { dispose: vi.fn() };
           }),
         },
@@ -1064,6 +1069,73 @@ describe('QueryEditor external SQL save', () => {
       status: 'success',
     }));
     renderer?.unmount();
+  });
+
+  it('runs a connection-scoped SQLite query without requiring a database name', async () => {
+    storeState.connections[0].config.type = 'sqlite';
+    storeState.connections[0].config.database = '';
+    const sql = 'SELECT id FROM users';
+    editorState.value = sql;
+    backendApp.DBQueryMulti.mockResolvedValueOnce({
+      success: true,
+      data: [{ columns: ['id'], rows: [{ id: 1 }] }],
+    });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ dbName: '', query: sql })} />);
+    });
+    await act(async () => {
+      await findButton(renderer, '运行').props.onClick();
+      for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    });
+
+    expect(backendApp.DBQueryMulti).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'sqlite' }),
+      '',
+      `${sql} LIMIT 5000`,
+      'query-1',
+    );
+    renderer.unmount();
+  });
+
+  it('places the Dameng row limit before a trailing WITH UR clause', async () => {
+    storeState.connections[0].config.type = 'dameng';
+    storeState.connections[0].config.database = 'GXCM';
+    storeState.queryOptions.maxRows = 500;
+    const sql = [
+      'SELECT DISTINCT v.emp_id, v.emp_name, s.stru_order',
+      'FROM pub_stru s, pub_emp_view_all v',
+      'WHERE s.organ_id = v.emp_id',
+      '  AND v.emp_id IN (',
+      '    SELECT b.organ_id',
+      '    FROM pub_organ_view a, pub_organ_role b',
+      "    WHERE locate(',' || a.organ_id || ',', ',' || b.range_ids || ',') > 0",
+      '  )',
+      'ORDER BY s.stru_order WITH ur;',
+    ].join('\n');
+    editorState.value = sql;
+    backendApp.DBQueryMulti.mockResolvedValueOnce({
+      success: true,
+      data: [{ columns: ['emp_id'], rows: [{ emp_id: '1' }] }],
+    });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ dbName: 'GXCM', query: sql })} />);
+    });
+    await act(async () => {
+      await findButton(renderer, '运行').props.onClick();
+      for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    });
+
+    expect(backendApp.DBQueryMulti).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'dameng' }),
+      'GXCM',
+      sql.replace(' WITH ur;', ' LIMIT 500 OFFSET 0 WITH ur'),
+      'query-1',
+    );
+    renderer.unmount();
   });
 
   it('executes a long commented Oracle anonymous block without blocking the UI thread', async () => {
@@ -2077,6 +2149,47 @@ describe('QueryEditor external SQL save', () => {
     expect(storeState.addSqlLog).toHaveBeenCalledWith(expect.objectContaining({
       sql: expect.stringContaining('select 2 as two'),
     }));
+  });
+
+  it('executes only the statement body when the cursor is on a semicolon after leading comments', async () => {
+    const sql = [
+      '-- 1856887305879470081',
+      '-- 3257969823961465780',
+      '-- 3257963896428446491',
+      "SELECT * FROM contract WHERE contract_code = 'YEC202608039';",
+    ].join('\n');
+    backendApp.DBQueryMulti.mockResolvedValueOnce({
+      success: true,
+      data: [{
+        columns: ['id', 'contract_code'],
+        rows: [{ id: 1, contract_code: 'YEC202608039' }],
+      }],
+    });
+    backendApp.DBGetColumns.mockResolvedValueOnce({
+      success: true,
+      data: [{ name: 'id', key: 'PRI' }, { name: 'contract_code', key: '' }],
+    });
+
+    let renderer: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ dbName: 'main', query: sql })} />);
+    });
+    editorState.position = { lineNumber: 4, column: sql.split('\n')[3].length + 1 };
+
+    await act(async () => {
+      const runButton = findButton(renderer!, '运行');
+      runButton.props.onMouseDown?.();
+      await runButton.props.onClick();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(backendApp.DBQueryMulti.mock.calls[0]?.[2]).toBe(
+      "SELECT * FROM contract WHERE contract_code = 'YEC202608039' LIMIT 5000",
+    );
+    renderer!.unmount();
   });
 
   it('keeps cursor statement execution available in v2 UI', async () => {
@@ -4053,6 +4166,94 @@ describe('QueryEditor external SQL save', () => {
     renderer.unmount();
   });
 
+  it('passes max rows only to paginated SQL result grids', async () => {
+    const pagedResultSets = [{
+        key: 'paged-result',
+        sql: 'select id from users',
+        rows: [{ id: 1 }],
+        columns: ['id'],
+        pkColumns: [],
+        readOnly: true,
+        page: { baseSql: 'select id from users', current: 1, pageSize: 100, total: 1, totalKnown: true },
+      }];
+    const localResultSets = [{
+        key: 'local-result',
+        sql: 'select 1 as value',
+        rows: [{ value: 1 }],
+        columns: ['value'],
+        pkColumns: [],
+        readOnly: true,
+      }];
+    let renderer!: ReactTestRenderer;
+
+    await act(async () => {
+      renderer = create(
+        <QueryEditorResultsPanel
+          resultSets={pagedResultSets}
+          activeResultKey="paged-result"
+          isActive
+          loading={false}
+          executionError=""
+          sqlLogCount={0}
+          darkMode={false}
+          isV2Ui
+          currentDb="main"
+          currentConnectionId="conn-1"
+          maxRows={750}
+          toggleShortcutLabel=""
+          onActiveResultKeyChange={vi.fn()}
+          onHide={vi.fn()}
+          onCloseResult={vi.fn()}
+          onCloseOtherResultTabs={vi.fn()}
+          onCloseResultTabsToLeft={vi.fn()}
+          onCloseResultTabsToRight={vi.fn()}
+          onCloseAllResultTabs={vi.fn()}
+          onResultPinnedChange={vi.fn()}
+          onReloadResult={vi.fn()}
+          onResultPageChange={vi.fn()}
+          onResultSort={vi.fn()}
+          onDiagnoseExecutionError={vi.fn()}
+        />,
+      );
+    });
+
+    expect(dataGridState.latestProps?.queryMaxRows).toBe(750);
+
+    await act(async () => {
+      renderer.update(
+        <QueryEditorResultsPanel
+          resultSets={localResultSets}
+          activeResultKey="local-result"
+          isActive
+          loading={false}
+          executionError=""
+          sqlLogCount={0}
+          darkMode={false}
+          isV2Ui
+          currentDb="main"
+          currentConnectionId="conn-1"
+          maxRows={750}
+          toggleShortcutLabel=""
+          onActiveResultKeyChange={vi.fn()}
+          onHide={vi.fn()}
+          onCloseResult={vi.fn()}
+          onCloseOtherResultTabs={vi.fn()}
+          onCloseResultTabsToLeft={vi.fn()}
+          onCloseResultTabsToRight={vi.fn()}
+          onCloseAllResultTabs={vi.fn()}
+          onResultPinnedChange={vi.fn()}
+          onReloadResult={vi.fn()}
+          onResultPageChange={vi.fn()}
+          onResultSort={vi.fn()}
+          onDiagnoseExecutionError={vi.fn()}
+        />,
+      );
+    });
+
+    expect(dataGridState.latestProps?.queryMaxRows).toBeUndefined();
+    renderer.unmount();
+  });
+
   it('activates shortcuts only for the visible result grid in the active query editor', async () => {
     const resultSets = [
       {
@@ -4235,6 +4436,47 @@ describe('QueryEditor external SQL save', () => {
     renderer.unmount();
   });
 
+  it('loads all SQL result rows without a page LIMIT when the page size is unlimited', async () => {
+    storeState.queryOptions.maxRows = 2;
+    const query = 'select id from users;';
+    backendApp.DBQueryMulti
+      .mockResolvedValueOnce({
+        success: true,
+        data: [{
+          columns: ['id'],
+          rows: [{ id: 1 }, { id: 2 }],
+        }],
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: [{
+          columns: ['id'],
+          rows: [{ id: 1 }, { id: 2 }, { id: 3 }],
+        }],
+      });
+    let renderer!: ReactTestRenderer;
+
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ dbName: 'main', query })} />);
+    });
+    await act(async () => {
+      await findButton(renderer, '运行').props.onClick();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await dataGridState.latestProps.onPageChange(2, 0);
+    });
+
+    const unlimitedPageSql = String(backendApp.DBQueryMulti.mock.calls[1][2]);
+    expect(unlimitedPageSql).not.toContain('LIMIT');
+    expect(unlimitedPageSql).not.toContain('OFFSET');
+    expect(dataGridState.latestProps?.pagination).toMatchObject({ current: 1, pageSize: 0, total: 3, totalKnown: true });
+    expect(dataGridState.latestProps?.data.map((row: any) => row.id)).toEqual([1, 2, 3]);
+    renderer.unmount();
+  });
+
   it('does not render the embedded sql execution log tab in legacy UI', () => {
     const renderResultsPanel = (isV2Ui: boolean, sqlLogCount = 1) => create(
       <QueryEditorResultsPanel
@@ -4368,7 +4610,7 @@ describe('QueryEditor external SQL save', () => {
     expect(css).toContain('max-width: 760px;');
     expect(css).toContain('width: 140px !important;');
     expect(css).toContain('width: 166px !important;');
-    expect(css).toContain('width: 132px !important;');
+    expect(css).toContain('width: 80px !important;');
     expect(css).toContain('width: 34px !important;');
     expect(css).toContain('@media (max-width: 900px)');
     expect(css).not.toContain('body[data-ui-version="v2"] .gn-v2-query-toolbar-transaction-row {');
@@ -5148,6 +5390,50 @@ describe('QueryEditor external SQL save', () => {
     });
     expect(dataGridState.latestProps?.readOnly).toBe(false);
     expect(dataGridState.latestProps?.columnPinScope).toBeUndefined();
+    renderer!.unmount();
+  });
+
+  it.each([
+    ['leading line comments', '-- 1856887305879470081\n-- 3257969823961465780\nSELECT * FROM contract WHERE contract_code = \'YEC202608039\';'],
+    ['leading block comments', '/* export batch: 3257963896428446491 */\nSELECT * FROM contract WHERE contract_code = \'YEC202608039\';'],
+    ['leading hash comments', '# exported query\nSELECT * FROM contract WHERE contract_code = \'YEC202608039\';'],
+    ['comments containing SQL join keywords', '/* JOIN notes from the previous export */\nSELECT * FROM contract WHERE contract_code = \'YEC202608039\';'],
+    ['a comment between FROM and the table', 'SELECT * FROM /* primary contract source */ contract WHERE contract_code = \'YEC202608039\';'],
+  ])('keeps a single-table result editable with %s', async (_label, sql) => {
+    backendApp.DBQueryMulti.mockResolvedValueOnce({
+      success: true,
+      data: [{
+        columns: ['id', 'contract_code'],
+        rows: [{ id: 1, contract_code: 'YEC202608039' }],
+      }],
+    });
+    backendApp.DBGetColumns.mockResolvedValueOnce({
+      success: true,
+      data: [
+        { name: 'id', key: 'PRI' },
+        { name: 'contract_code', key: '' },
+      ],
+    });
+
+    let renderer: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ dbName: 'main', query: sql })} />);
+    });
+    await act(async () => {
+      await findButton(renderer!, '运行').props.onClick();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(dataGridState.latestProps?.tableName).toBe('contract');
+    expect(dataGridState.latestProps?.editLocator).toMatchObject({
+      strategy: 'primary-key',
+      columns: ['id'],
+      readOnly: false,
+    });
+    expect(dataGridState.latestProps?.readOnly).toBe(false);
     renderer!.unmount();
   });
 

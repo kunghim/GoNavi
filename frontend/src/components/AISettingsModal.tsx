@@ -21,6 +21,7 @@ import {
     isProviderSecretRequirementSatisfied,
     resolveProviderSecretDraft,
 } from '../utils/providerSecretDraft';
+import { recordFromRows, rowsFromRecord } from '../utils/aiProviderKeyValue';
 import { buildAddProviderEditorSession, buildClosedProviderEditorSession, buildEditProviderEditorSession, type ProviderEditorSession } from '../utils/aiProviderEditorState';
 import type { OverlayWorkbenchTheme } from '../utils/overlayWorkbenchTheme';
 import { useI18n } from '../i18n/provider';
@@ -31,9 +32,19 @@ import type { AIMCPHTTPServerDraft } from './ai/AIMCPHTTPServerPanel';
 import AISettingsSidebar, { AI_SETTINGS_NAV_ITEMS, type AISettingsSectionKey } from './ai/AISettingsSidebar';
 import AISettingsSafetySection from './ai/AISettingsSafetySection';
 import AISettingsContextSection from './ai/AISettingsContextSection';
+import AISettingsRunPolicySection from './ai/AISettingsRunPolicySection';
 import AISettingsProvidersSection from './ai/AISettingsProvidersSection';
 import AISettingsPromptsSection from './ai/AISettingsPromptsSection';
 import AISettingsSkillsSection from './ai/AISettingsSkillsSection';
+import {
+    DEFAULT_AI_RUN_POLICY,
+    DEFAULT_AI_RUN_RUNTIME_CONFIG,
+    isValidAIRunRuntimeConfig,
+    normalizeAIRunPolicySnapshot,
+    type AIRunPolicy,
+    type AIRunRuntimeConfig,
+} from './ai/aiRunPolicy';
+import { normalizeAgentLedgerState, type AgentLedgerState } from './ai/aiRunHarnessClient';
 import { useAIMCPClientInstaller } from './ai/useAIMCPClientInstaller';
 import {
     EMPTY_AI_USER_PROMPT_SETTINGS,
@@ -61,6 +72,12 @@ export interface AISettingsContentProps {
     darkMode: boolean;
     overlayTheme: OverlayWorkbenchTheme;
     focusProviderId?: string;
+    hideSidebar?: boolean;
+    section?: AISettingsSectionKey;
+    onSectionChange?: (section: AISettingsSectionKey) => void;
+    providersView?: 'workspace' | 'connected';
+    onProvidersViewChange?: (view: 'workspace' | 'connected') => void;
+    onCloseHost?: () => void;
     onBeforeExternalMCPUse?: () => Promise<void>;
     onLeaveGuardChange?: (guard: AISettingsLeaveGuard | null) => void;
     confirmationZIndex?: number;
@@ -109,7 +126,7 @@ const normalizeMCPHTTPAuthorizationToken = (value: string): string => {
     return withoutHeaderName.replace(/^Bearer\s+/i, '').trim();
 };
 
-export const AISettingsContent: React.FC<AISettingsContentProps> = ({ active, darkMode, overlayTheme, focusProviderId, onBeforeExternalMCPUse, onLeaveGuardChange, confirmationZIndex = APP_STATIC_FEEDBACK_Z_INDEX_BASE }) => {
+export const AISettingsContent: React.FC<AISettingsContentProps> = ({ active, darkMode, overlayTheme, focusProviderId, hideSidebar = false, section, onSectionChange, providersView = 'workspace', onProvidersViewChange, onCloseHost, onBeforeExternalMCPUse, onLeaveGuardChange, confirmationZIndex = APP_STATIC_FEEDBACK_Z_INDEX_BASE }) => {
     const { t } = useI18n();
     const defaultMCPHTTPServerStatus = useMemo<AIMCPHTTPServerStatus>(() => ({
         ...DEFAULT_MCP_HTTP_SERVER_STATUS,
@@ -122,6 +139,13 @@ export const AISettingsContent: React.FC<AISettingsContentProps> = ({ active, da
     const [providersLoadError, setProvidersLoadError] = useState('');
     const [safetyLevel, setSafetyLevel] = useState<AISafetyLevel>('readonly');
     const [contextLevel, setContextLevel] = useState<AIContextLevel>('schema_only');
+    const [runPolicy, setRunPolicy] = useState<AIRunPolicy>(DEFAULT_AI_RUN_POLICY);
+    const [runRuntime, setRunRuntime] = useState<AIRunRuntimeConfig>(DEFAULT_AI_RUN_RUNTIME_CONFIG);
+    const [runPolicyRevision, setRunPolicyRevision] = useState<number>(0);
+    const [runPolicyLoading, setRunPolicyLoading] = useState(false);
+    const [runPolicySaving, setRunPolicySaving] = useState(false);
+    const [runPolicyError, setRunPolicyError] = useState('');
+    const [ledgerState, setLedgerState] = useState<AgentLedgerState>('unavailable');
     const [mcpServers, setMCPServers] = useState<AIMCPServerConfig[]>([]);
     const [mcpTools, setMCPTools] = useState<AIMCPToolDescriptor[]>([]);
     const [mcpHTTPServerStatus, setMCPHTTPServerStatus] = useState<AIMCPHTTPServerStatus>(() => defaultMCPHTTPServerStatus);
@@ -139,7 +163,15 @@ export const AISettingsContent: React.FC<AISettingsContentProps> = ({ active, da
     const [providerDirty, setProviderDirty] = useState(false);
     const [builtinPrompts, setBuiltinPrompts] = useState<Record<string, string>>({});
     const [userPromptSettings, setUserPromptSettings] = useState<AIUserPromptSettings>(EMPTY_AI_USER_PROMPT_SETTINGS);
-    const [activeSection, setActiveSection] = useState<AISettingsSectionKey>('providers');
+    const isSectionControlled = section !== undefined;
+    const [internalSection, setInternalSection] = useState<AISettingsSectionKey>('providers');
+    const activeSection = isSectionControlled ? section : internalSection;
+    const applySection = useCallback((next: AISettingsSectionKey) => {
+        onSectionChange?.(next);
+        if (!isSectionControlled) {
+            setInternalSection(next);
+        }
+    }, [isSectionControlled, onSectionChange]);
     const [primaryPasswordVisible, setPrimaryPasswordVisible] = useState(false);
     const [form] = Form.useForm();
     const modalBodyRef = useRef<HTMLDivElement>(null);
@@ -342,6 +374,45 @@ export const AISettingsContent: React.FC<AISettingsContentProps> = ({ active, da
                 if (isCurrent()) setContextLevel(value);
                 break;
             }
+            case 'run_policy': {
+                // Keep the health projection independent from policy loading:
+                // a locked ledger must still be visible when policy reads fail.
+                void (async () => {
+                    try {
+                        const status = typeof Service.AIGetAgentLedgerStatus === 'function'
+                            ? await Service.AIGetAgentLedgerStatus()
+                            : undefined;
+                        if (isCurrent()) setLedgerState(normalizeAgentLedgerState(status));
+                    } catch {
+                        if (isCurrent()) setLedgerState('unavailable');
+                    }
+                })();
+                if (typeof Service.AIGetRunPolicy !== 'function') {
+                    if (isCurrent()) setRunPolicyError(t('ai_settings.run_policy.error.unavailable'));
+                    break;
+                }
+                if (isCurrent()) {
+                    setRunPolicyLoading(true);
+                    setRunPolicyError('');
+                }
+                try {
+                    const value = await Service.AIGetRunPolicy();
+                    const snapshot = normalizeAIRunPolicySnapshot(value);
+                    if (snapshot.revision < 1) {
+                        throw new Error('run policy snapshot is missing a revision');
+                    }
+                    if (isCurrent()) {
+                        setRunPolicy(snapshot.policy);
+                        setRunRuntime(snapshot.runtime);
+                        setRunPolicyRevision(snapshot.revision);
+                    }
+                } catch (error: any) {
+                    if (isCurrent()) setRunPolicyError(error?.message || t('ai_settings.run_policy.error.load_failed'));
+                } finally {
+                    if (isCurrent()) setRunPolicyLoading(false);
+                }
+                break;
+            }
             case 'prompts': {
                 const [builtin, user] = await Promise.all([
                     callOrFallback(() => Service.AIGetBuiltinPrompts?.(), {}),
@@ -411,8 +482,8 @@ export const AISettingsContent: React.FC<AISettingsContentProps> = ({ active, da
         if (!providers.some((provider) => provider.id === focusProviderId)) {
             return;
         }
-        setActiveSection('providers');
-    }, [active, focusProviderId, providers]);
+        applySection('providers');
+    }, [active, applySection, focusProviderId, providers]);
 
     const applyProviderEditorSession = useCallback((session: ProviderEditorSession) => {
         editorSessionRef.current++;
@@ -532,6 +603,9 @@ export const AISettingsContent: React.FC<AISettingsContentProps> = ({ active, da
                     presetKey: matchedPreset.key,
                     apiFormat: resolvedTransport.apiFormat || (resolvedTransport.type === 'custom' ? editableProvider.apiFormat || 'openai' : resolvedTransport.type),
                     authMode: matchedPreset.authMode || editableProvider.authMode || 'api-key',
+                    headerRows: rowsFromRecord(editableProvider.headers),
+                    cliEnvRows: rowsFromRecord(editableProvider.cliEnv),
+                    cliPath: editableProvider.cliPath || '',
                 },
             }));
         } catch (e: any) {
@@ -568,9 +642,12 @@ export const AISettingsContent: React.FC<AISettingsContentProps> = ({ active, da
         // validateFields only returns mounted fields. Preserve stored options
         // that have no editor control (for example maxTokens and temperature).
         values = { ...form.getFieldsValue(true), ...values };
+        const { headerRows, cliEnvRows, ...formFields } = values;
         const presetKey = values.presetKey || 'openai';
         const preset = findPreset(presetKey);
-        const authMode = preset.authMode || 'api-key';
+        const authMode = preset.authMode === 'local-cli'
+            ? 'local-cli'
+            : (formFields.authMode === 'bearer' ? 'bearer' : 'api-key');
         const { model, models } = resolvePresetModelSelection({
             presetKey,
             presetDefaultModel: preset.defaultModel,
@@ -604,7 +681,7 @@ export const AISettingsContent: React.FC<AISettingsContentProps> = ({ active, da
         });
         const payload = {
             ...editingProvider,
-            ...values,
+            ...formFields,
             ...transport,
             name: String(values.name || '').trim() ? values.name : localizeProviderPreset(preset, t).label,
             apiKey: secret.apiKey,
@@ -619,6 +696,10 @@ export const AISettingsContent: React.FC<AISettingsContentProps> = ({ active, da
             inlineCompletionModel: String(values.inlineCompletionModel || '').trim(),
             maxTokens: Number.isFinite(Number(values.maxTokens)) ? Number(values.maxTokens) : 4096,
             temperature: Number.isFinite(Number(values.temperature)) ? Number(values.temperature) : 0.7,
+            contextWindow: Number(values.contextWindow) > 0 ? Number(values.contextWindow) : 0,
+            headers: recordFromRows(headerRows),
+            cliPath: String(values.cliPath || '').trim(),
+            cliEnv: recordFromRows(cliEnvRows),
         } as AIProviderConfig;
         if (payload.disabledModels?.includes(model) || (payload.inlineCompletionModel && payload.disabledModels?.includes(payload.inlineCompletionModel))) {
             throw new Error(t('ai_settings.models.required_disabled'));
@@ -754,6 +835,52 @@ export const AISettingsContent: React.FC<AISettingsContentProps> = ({ active, da
             await Service?.AISetContextLevel?.(level);
             setContextLevel(level);
         } catch (e) { /* ignore */ }
+    };
+
+    const handleReloadRunPolicy = () => {
+        setRunPolicyError('');
+        void loadConfig();
+    };
+
+    const handleSaveRunPolicy = async () => {
+        if (runPolicySaving) return;
+        setRunPolicySaving(true);
+        setRunPolicyError('');
+        try {
+            const Service = await resolveAIService();
+            if (typeof Service?.AISaveRunPolicy !== 'function') {
+                throw new Error(t('ai_settings.run_policy.error.unavailable'));
+            }
+            if (runPolicyRevision < 1) {
+                throw new Error('run policy snapshot is missing a revision');
+            }
+            if (!isValidAIRunRuntimeConfig(runRuntime)) {
+                throw new Error(t('ai_settings.run_policy.runtime.invalid'));
+            }
+            const saved = await Service.AISaveRunPolicy({
+                expectedRevision: runPolicyRevision,
+                policy: runPolicy,
+                runtime: runRuntime,
+            });
+            const snapshot = normalizeAIRunPolicySnapshot(saved);
+            if (snapshot.revision < 1) {
+                throw new Error('run policy save returned an invalid revision');
+            }
+            if (!mountedRef.current || !activeRef.current) return;
+            setRunPolicy(snapshot.policy);
+            setRunRuntime(snapshot.runtime);
+            setRunPolicyRevision(snapshot.revision);
+            void messageApi.success(t('ai_settings.run_policy.message.saved'));
+            window.dispatchEvent(new CustomEvent('gonavi:ai:config-changed'));
+        } catch (error: any) {
+            const detail = error?.message || t('ai_settings.run_policy.error.save_failed');
+            if (mountedRef.current) {
+                setRunPolicyError(detail);
+                void messageApi.error(detail);
+            }
+        } finally {
+            if (mountedRef.current) setRunPolicySaving(false);
+        }
     };
 
     const handleSaveUserPromptSettings = async () => {
@@ -1035,7 +1162,12 @@ export const AISettingsContent: React.FC<AISettingsContentProps> = ({ active, da
             inlineCompletionModel: '',
             effort: undefined,
             authMode,
-            ...(authMode === 'local-cli' ? { apiKey: '' } : {}),
+            apiKey: '',
+            headerRows: [],
+            cliEnvRows: [],
+            cliPath: '',
+            contextWindow: undefined,
+            maxTokens: 4096,
         });
         refreshProviderDirty();
     };
@@ -1046,8 +1178,8 @@ export const AISettingsContent: React.FC<AISettingsContentProps> = ({ active, da
             <section
                 key={sectionKey}
                 id={`gonavi-ai-settings-panel-${sectionKey}`}
-                role="tabpanel"
-                aria-labelledby={`gonavi-ai-settings-tab-${sectionKey}`}
+                role={hideSidebar ? undefined : 'tabpanel'}
+                aria-labelledby={hideSidebar ? undefined : `gonavi-ai-settings-tab-${sectionKey}`}
                 hidden={activeSection !== sectionKey}
                 className={sectionKey === 'providers' ? 'gonavi-ai-settings-panel-providers' : undefined}
             >
@@ -1065,14 +1197,16 @@ export const AISettingsContent: React.FC<AISettingsContentProps> = ({ active, da
         <div ref={modalBodyRef} className="ai-settings-body gonavi-ai-settings-flat" style={{ display: 'flex', gap: 16, padding: '0', height: '100%', minHeight: 0, overflow: 'hidden', position: 'relative', boxSizing: 'border-box' }}>
             {messageContextHolder}
             {modalContextHolder}
+            {hideSidebar ? null : (
             <AISettingsSidebar
                 activeSection={activeSection}
                 darkMode={darkMode}
                 overlayTheme={overlayTheme}
-                onSelectSection={(section) => {
-                    if (section !== activeSection) withAISettingsLeaveGuard(confirmProviderLeave, () => setActiveSection(section));
+                onSelectSection={(nextSection) => {
+                    if (nextSection !== activeSection) withAISettingsLeaveGuard(confirmProviderLeave, () => applySection(nextSection));
                 }}
             />
+            )}
             <div
                 ref={settingsContentScrollRef}
                 className="gonavi-ai-settings-content"
@@ -1080,6 +1214,9 @@ export const AISettingsContent: React.FC<AISettingsContentProps> = ({ active, da
             >
                 {renderSectionPanel('providers', (
                     <AISettingsProvidersSection
+                        treeHostedView={hideSidebar ? providersView : undefined}
+                        onOpenWorkspaceView={hideSidebar ? () => onProvidersViewChange?.('workspace') : undefined}
+                        onCloseHost={hideSidebar ? onCloseHost : undefined}
                         providers={providers}
                         activeProviderId={activeProviderId}
                         pendingProviderId={pendingProviderId}
@@ -1148,6 +1285,22 @@ export const AISettingsContent: React.FC<AISettingsContentProps> = ({ active, da
                                     : t('ai_settings.open_mode.message.dock'),
                             );
                         }}
+                    />
+                ))}
+                {renderSectionPanel('run_policy', (
+                    <AISettingsRunPolicySection
+                        policy={runPolicy}
+                        runtime={runRuntime}
+                        loading={runPolicyLoading}
+                        saving={runPolicySaving}
+                        error={runPolicyError}
+                        ledgerState={ledgerState}
+                        overlayTheme={overlayTheme}
+                        inputBg={inputBg}
+                        onChange={setRunPolicy}
+                        onRuntimeChange={setRunRuntime}
+                        onReload={handleReloadRunPolicy}
+                        onSave={() => void handleSaveRunPolicy()}
                     />
                 ))}
                 {renderSectionPanel('mcp', (

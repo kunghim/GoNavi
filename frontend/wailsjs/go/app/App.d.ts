@@ -693,13 +693,15 @@ export function SelectSavedQueryDirectory(arg1:string):Promise<connection.QueryR
 
 export function SetApplicationBrandIcon(arg1:string):Promise<connection.QueryResult>;
 
+export function GetBrandIconDataURL(arg1:string):Promise<string>;
+
 export function SetLanguage(arg1:string):Promise<void>;
 
 export function SetMacNativeWindowControls(arg1:boolean):Promise<void>;
 
 export function SetUpdateChannel(arg1:string):Promise<connection.QueryResult>;
 
-export function SetWindowTranslucency(arg1:number,arg2:number):Promise<void>;
+export function SetWindowTranslucency(arg1:number,arg2:number,arg3:boolean):Promise<void>;
 
 export function Shutdown():Promise<void>;
 

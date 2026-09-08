@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { HINT_TOOLTIP_ENTER_DELAY, HINT_TOOLTIP_LEAVE_DELAY, hintTooltipTiming } from './tooltipTiming';
+import {
+  HINT_TOOLTIP_ENTER_DELAY, HINT_TOOLTIP_INTERACTIVE_LEAVE_DELAY, HINT_TOOLTIP_INTERACTIVE_OVERLAY_CLASS,
+  HINT_TOOLTIP_LEAVE_DELAY, HINT_TOOLTIP_OVERLAY_CLASS,
+  hintTooltipTiming, interactiveHintTooltip, passThroughHintTooltip,
+} from './tooltipTiming';
 
 /** antd Tooltip ships 0.1s in and 0.1s out; both felt twitchy on dense button rows. */
 const ANTD_DEFAULT_DELAY = 0.1;
@@ -21,5 +25,25 @@ describe('hover hint timing', () => {
       mouseEnterDelay: HINT_TOOLTIP_ENTER_DELAY,
       mouseLeaveDelay: HINT_TOOLTIP_LEAVE_DELAY,
     });
+  });
+
+  it('lets provider-settings hints close as soon as the pointer leaves the trigger', () => {
+    expect(passThroughHintTooltip).toEqual({
+      mouseEnterDelay: HINT_TOOLTIP_ENTER_DELAY,
+      mouseLeaveDelay: 0,
+      overlayClassName: HINT_TOOLTIP_OVERLAY_CLASS,
+    });
+  });
+
+  it('keeps an interactive heading hint clickable without inventing a local delay', () => {
+    expect(HINT_TOOLTIP_INTERACTIVE_LEAVE_DELAY).toBeGreaterThan(HINT_TOOLTIP_LEAVE_DELAY);
+    expect(HINT_TOOLTIP_INTERACTIVE_LEAVE_DELAY).toBeLessThanOrEqual(0.45);
+    expect(interactiveHintTooltip).toEqual({
+      mouseEnterDelay: HINT_TOOLTIP_ENTER_DELAY,
+      mouseLeaveDelay: HINT_TOOLTIP_INTERACTIVE_LEAVE_DELAY,
+      overlayClassName: HINT_TOOLTIP_INTERACTIVE_OVERLAY_CLASS,
+      getPopupContainer: expect.any(Function),
+    });
+    expect(HINT_TOOLTIP_INTERACTIVE_OVERLAY_CLASS).not.toBe(HINT_TOOLTIP_OVERLAY_CLASS);
   });
 });

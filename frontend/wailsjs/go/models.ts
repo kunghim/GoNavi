@@ -28,24 +28,6 @@ export namespace ai {
 	        this.defaultEffort = source["defaultEffort"];
 	    }
 	}
-	export class ChatSendOptions {
-	    model?: string;
-	    temperature?: number;
-	    maxTokens?: number;
-	    thinkingIntensity?: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new ChatSendOptions(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.model = source["model"];
-	        this.temperature = source["temperature"];
-	        this.maxTokens = source["maxTokens"];
-	        this.thinkingIntensity = source["thinkingIntensity"];
-	    }
-	}
 	export class MCPClientInstallResult {
 	    success: boolean;
 	    client?: string;
@@ -226,94 +208,6 @@ export namespace ai {
 	        this.inputSchema = source["inputSchema"];
 	    }
 	}
-	export class ToolCallFunction {
-	    name: string;
-	    arguments: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new ToolCallFunction(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.arguments = source["arguments"];
-	    }
-	}
-	export class ToolCall {
-	    id: string;
-	    type: string;
-	    function: ToolCallFunction;
-	
-	    static createFrom(source: any = {}) {
-	        return new ToolCall(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.type = source["type"];
-	        this.function = this.convertValues(source["function"], ToolCallFunction);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	export class Message {
-	    role: string;
-	    content: string;
-	    images?: string[];
-	    tool_call_id?: string;
-	    tool_calls?: ToolCall[];
-	    reasoning_content?: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new Message(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.role = source["role"];
-	        this.content = source["content"];
-	        this.images = source["images"];
-	        this.tool_call_id = source["tool_call_id"];
-	        this.tool_calls = this.convertValues(source["tool_calls"], ToolCall);
-	        this.reasoning_content = source["reasoning_content"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
 	export class ProviderConfig {
 	    id: string;
 	    type: string;
@@ -331,6 +225,9 @@ export namespace ai {
 	    apiFormat?: string;
 	    headers?: Record<string, string>;
 	    maxTokens: number;
+	    contextWindow?: number;
+	    cliPath?: string;
+	    cliEnv?: Record<string, string>;
 	    temperature: number;
 	    thinkingIntensity?: string;
 	    effort?: string;
@@ -357,6 +254,9 @@ export namespace ai {
 	        this.apiFormat = source["apiFormat"];
 	        this.headers = source["headers"];
 	        this.maxTokens = source["maxTokens"];
+	        this.contextWindow = source["contextWindow"];
+	        this.cliPath = source["cliPath"];
+	        this.cliEnv = source["cliEnv"];
 	        this.temperature = source["temperature"];
 	        this.thinkingIntensity = source["thinkingIntensity"];
 	        this.effort = source["effort"];
@@ -404,57 +304,6 @@ export namespace ai {
 	        this.requiredTools = source["requiredTools"];
 	    }
 	}
-	export class ToolFunction {
-	    name: string;
-	    description: string;
-	    parameters: any;
-	
-	    static createFrom(source: any = {}) {
-	        return new ToolFunction(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.description = source["description"];
-	        this.parameters = source["parameters"];
-	    }
-	}
-	export class Tool {
-	    type: string;
-	    function: ToolFunction;
-	
-	    static createFrom(source: any = {}) {
-	        return new Tool(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.type = source["type"];
-	        this.function = this.convertValues(source["function"], ToolFunction);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	
-	
-	
 	export class UserPromptSettings {
 	    global: string;
 	    database: string;
@@ -2321,11 +2170,11 @@ export namespace connection {
 	    currentConnectionId?: string;
 	    remainingConnectionIds: string[];
 	    cancelRequested: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ConnectionHealthRun(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.runId = source["runId"];
@@ -2337,7 +2186,7 @@ export namespace connection {
 	        this.remainingConnectionIds = source["remainingConnectionIds"];
 	        this.cancelRequested = source["cancelRequested"];
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -2356,51 +2205,7 @@ export namespace connection {
 		    return a;
 		}
 	}
-	export class ConnectionHealthRun {
-	    runId: string;
-	    status: string;
-	    total: number;
-	    completed: number;
-	    reports: ConnectionHealthReport[];
-	    currentConnectionId?: string;
-	    remainingConnectionIds: string[];
-	    cancelRequested: boolean;
-
-	    static createFrom(source: any = {}) {
-	        return new ConnectionHealthRun(source);
-	    }
-
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.runId = source["runId"];
-	        this.status = source["status"];
-	        this.total = source["total"];
-	        this.completed = source["completed"];
-	        this.reports = this.convertValues(source["reports"], ConnectionHealthReport);
-	        this.currentConnectionId = source["currentConnectionId"];
-	        this.remainingConnectionIds = source["remainingConnectionIds"];
-	        this.cancelRequested = source["cancelRequested"];
-	    }
-
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-
+	
 	export class ConnectionTag {
 	    id: string;
 	    name: string;
@@ -2410,7 +2215,7 @@ export namespace connection {
 	    childOrder?: string[];
 	    sortMode?: string;
 	    connectionSortMode?: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ConnectionTag(source);
 	    }
@@ -2434,7 +2239,7 @@ export namespace connection {
 	    sidebarRootOrder: string[];
 	    rootSortMode?: string;
 	    rootConnectionSortMode?: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ConnectionSidebarLayout(source);
 	    }
@@ -2472,7 +2277,7 @@ export namespace connection {
 	    sidebarRootOrder: string[];
 	    rootSortMode?: string;
 	    rootConnectionSortMode?: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ConnectionSidebarLayoutInput(source);
 	    }
@@ -2561,11 +2366,11 @@ export namespace connection {
 	export class DeleteConnectionGroupInput {
 	    tagId: string;
 	    expectedRevision: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new DeleteConnectionGroupInput(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.tagId = source["tagId"];
@@ -3354,6 +3159,803 @@ export namespace resultdiff {
 
 }
 
+export namespace runharness {
+	
+	export class AgentInputReceipt {
+	    requestId: string;
+	    sessionId: string;
+	    runId: string;
+	    disposition: string;
+	    revision: number;
+	    state: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AgentInputReceipt(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.requestId = source["requestId"];
+	        this.sessionId = source["sessionId"];
+	        this.runId = source["runId"];
+	        this.disposition = source["disposition"];
+	        this.revision = source["revision"];
+	        this.state = source["state"];
+	    }
+	}
+	export class Attachment {
+	    name?: string;
+	    mediaType?: string;
+	    data?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Attachment(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.mediaType = source["mediaType"];
+	        this.data = source["data"];
+	    }
+	}
+	export class AgentInputRequest {
+	    requestId: string;
+	    sessionId?: string;
+	    branchFromMessageId?: string;
+	    content: string;
+	    attachments?: Attachment[];
+	    dispatchMode?: string;
+	    contextSourceId?: string;
+	    contextSourceInstanceId?: string;
+	    provider?: string;
+	    model?: string;
+	    thinking?: string;
+	    temperature?: number;
+	    maxTokens?: number;
+	    taskKind?: string;
+	    allowTools?: boolean;
+	    expectedRevision?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AgentInputRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.requestId = source["requestId"];
+	        this.sessionId = source["sessionId"];
+	        this.branchFromMessageId = source["branchFromMessageId"];
+	        this.content = source["content"];
+	        this.attachments = this.convertValues(source["attachments"], Attachment);
+	        this.dispatchMode = source["dispatchMode"];
+	        this.contextSourceId = source["contextSourceId"];
+	        this.contextSourceInstanceId = source["contextSourceInstanceId"];
+	        this.provider = source["provider"];
+	        this.model = source["model"];
+	        this.thinking = source["thinking"];
+	        this.temperature = source["temperature"];
+	        this.maxTokens = source["maxTokens"];
+	        this.taskKind = source["taskKind"];
+	        this.allowTools = source["allowTools"];
+	        this.expectedRevision = source["expectedRevision"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class CLIWorkspaceContext {
+	    cwd?: string;
+	    contextFiles?: string[];
+	    connectionId?: string;
+	    database?: string;
+	    command?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CLIWorkspaceContext(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.cwd = source["cwd"];
+	        this.contextFiles = source["contextFiles"];
+	        this.connectionId = source["connectionId"];
+	        this.database = source["database"];
+	        this.command = source["command"];
+	    }
+	}
+	export class LedgerStatus {
+	    state: string;
+	    message?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LedgerStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.state = source["state"];
+	        this.message = source["message"];
+	    }
+	}
+	export class Message {
+	    id: string;
+	    sessionId: string;
+	    runId?: string;
+	    sequence: number;
+	    role: string;
+	    content: string;
+	    images?: string[];
+	    attachments?: Attachment[];
+	    reasoning?: string;
+	    toolCallId?: string;
+	    toolCalls?: number[];
+	    metadata?: number[];
+	    createdAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Message(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.sessionId = source["sessionId"];
+	        this.runId = source["runId"];
+	        this.sequence = source["sequence"];
+	        this.role = source["role"];
+	        this.content = source["content"];
+	        this.images = source["images"];
+	        this.attachments = this.convertValues(source["attachments"], Attachment);
+	        this.reasoning = source["reasoning"];
+	        this.toolCallId = source["toolCallId"];
+	        this.toolCalls = source["toolCalls"];
+	        this.metadata = source["metadata"];
+	        this.createdAt = source["createdAt"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RunControlRequest {
+	    requestId: string;
+	    runId: string;
+	    sessionId?: string;
+	    action: string;
+	    callId?: string;
+	    approvalId?: string;
+	    argsHash?: string;
+	    content?: string;
+	    expectedRevision?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new RunControlRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.requestId = source["requestId"];
+	        this.runId = source["runId"];
+	        this.sessionId = source["sessionId"];
+	        this.action = source["action"];
+	        this.callId = source["callId"];
+	        this.approvalId = source["approvalId"];
+	        this.argsHash = source["argsHash"];
+	        this.content = source["content"];
+	        this.expectedRevision = source["expectedRevision"];
+	    }
+	}
+	export class RunEvent {
+	    schemaVersion: number;
+	    runId: string;
+	    sessionId: string;
+	    sessionGeneration: number;
+	    sequence: number;
+	    runRevision: number;
+	    attempt: number;
+	    timestamp: string;
+	    kind: string;
+	    resultingState: string;
+	    payload?: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new RunEvent(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.schemaVersion = source["schemaVersion"];
+	        this.runId = source["runId"];
+	        this.sessionId = source["sessionId"];
+	        this.sessionGeneration = source["sessionGeneration"];
+	        this.sequence = source["sequence"];
+	        this.runRevision = source["runRevision"];
+	        this.attempt = source["attempt"];
+	        this.timestamp = source["timestamp"];
+	        this.kind = source["kind"];
+	        this.resultingState = source["resultingState"];
+	        this.payload = source["payload"];
+	    }
+	}
+	export class RunPolicy {
+	    defaultDispatchMode: string;
+	    softToolRoundLimit: number;
+	    maxToolRounds: number;
+	    maxConsecutiveFailedToolRounds: number;
+	    maxToolNudges: number;
+	    maxModelRetriesPerTurn: number;
+	    maxActiveDuration: number;
+	    modelTurnTimeout: number;
+	    modelIdleTimeout: number;
+	    defaultToolTimeout: number;
+	    maxTotalTokens: number;
+	    maxToolResultBytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new RunPolicy(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.defaultDispatchMode = source["defaultDispatchMode"];
+	        this.softToolRoundLimit = source["softToolRoundLimit"];
+	        this.maxToolRounds = source["maxToolRounds"];
+	        this.maxConsecutiveFailedToolRounds = source["maxConsecutiveFailedToolRounds"];
+	        this.maxToolNudges = source["maxToolNudges"];
+	        this.maxModelRetriesPerTurn = source["maxModelRetriesPerTurn"];
+	        this.maxActiveDuration = source["maxActiveDuration"];
+	        this.modelTurnTimeout = source["modelTurnTimeout"];
+	        this.modelIdleTimeout = source["modelIdleTimeout"];
+	        this.defaultToolTimeout = source["defaultToolTimeout"];
+	        this.maxTotalTokens = source["maxTotalTokens"];
+	        this.maxToolResultBytes = source["maxToolResultBytes"];
+	    }
+	}
+	export class RunRuntimeConfig {
+	    controlPollInterval: number;
+	    workspaceSnapshotRenewInterval: number;
+	    workspaceSnapshotLeaseDuration: number;
+	    policyWatchInterval: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new RunRuntimeConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.controlPollInterval = source["controlPollInterval"];
+	        this.workspaceSnapshotRenewInterval = source["workspaceSnapshotRenewInterval"];
+	        this.workspaceSnapshotLeaseDuration = source["workspaceSnapshotLeaseDuration"];
+	        this.policyWatchInterval = source["policyWatchInterval"];
+	    }
+	}
+	export class RunPolicyMutationRequest {
+	    expectedRevision: number;
+	    policy: RunPolicy;
+	    runtime: RunRuntimeConfig;
+	
+	    static createFrom(source: any = {}) {
+	        return new RunPolicyMutationRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.expectedRevision = source["expectedRevision"];
+	        this.policy = this.convertValues(source["policy"], RunPolicy);
+	        this.runtime = this.convertValues(source["runtime"], RunRuntimeConfig);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RunPolicySnapshot {
+	    schemaVersion: number;
+	    revision: number;
+	    policy: RunPolicy;
+	    runtime: RunRuntimeConfig;
+	
+	    static createFrom(source: any = {}) {
+	        return new RunPolicySnapshot(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.schemaVersion = source["schemaVersion"];
+	        this.revision = source["revision"];
+	        this.policy = this.convertValues(source["policy"], RunPolicy);
+	        this.runtime = this.convertValues(source["runtime"], RunRuntimeConfig);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RunReadRequest {
+	    runId: string;
+	    afterSequence?: number;
+	    limit?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new RunReadRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.runId = source["runId"];
+	        this.afterSequence = source["afterSequence"];
+	        this.limit = source["limit"];
+	    }
+	}
+	export class RunSnapshot {
+	    runId: string;
+	    sessionId: string;
+	    requestId?: string;
+	    sessionGeneration: number;
+	    state: string;
+	    revision: number;
+	    attempt: number;
+	    nextSequence: number;
+	    ownerExpiresAt?: string;
+	    checkpointId?: string;
+	    terminalReason?: string;
+	    createdAt: string;
+	    updatedAt: string;
+	    activeDurationMs: number;
+	    policy: RunPolicy;
+	    provider?: string;
+	    model?: string;
+	    thinking?: string;
+	    temperature?: number;
+	    maxTokens?: number;
+	    taskKind: string;
+	    allowTools: boolean;
+	    contextSourceId?: string;
+	    contextSourceInstanceId?: string;
+	    toolCatalogHash?: string;
+	    toolCatalogRevision?: number;
+	    promptTokens: number;
+	    completionTokens: number;
+	    totalTokens: number;
+	    reservedTokens: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new RunSnapshot(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.runId = source["runId"];
+	        this.sessionId = source["sessionId"];
+	        this.requestId = source["requestId"];
+	        this.sessionGeneration = source["sessionGeneration"];
+	        this.state = source["state"];
+	        this.revision = source["revision"];
+	        this.attempt = source["attempt"];
+	        this.nextSequence = source["nextSequence"];
+	        this.ownerExpiresAt = source["ownerExpiresAt"];
+	        this.checkpointId = source["checkpointId"];
+	        this.terminalReason = source["terminalReason"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	        this.activeDurationMs = source["activeDurationMs"];
+	        this.policy = this.convertValues(source["policy"], RunPolicy);
+	        this.provider = source["provider"];
+	        this.model = source["model"];
+	        this.thinking = source["thinking"];
+	        this.temperature = source["temperature"];
+	        this.maxTokens = source["maxTokens"];
+	        this.taskKind = source["taskKind"];
+	        this.allowTools = source["allowTools"];
+	        this.contextSourceId = source["contextSourceId"];
+	        this.contextSourceInstanceId = source["contextSourceInstanceId"];
+	        this.toolCatalogHash = source["toolCatalogHash"];
+	        this.toolCatalogRevision = source["toolCatalogRevision"];
+	        this.promptTokens = source["promptTokens"];
+	        this.completionTokens = source["completionTokens"];
+	        this.totalTokens = source["totalTokens"];
+	        this.reservedTokens = source["reservedTokens"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RunReadResult {
+	    run: RunSnapshot;
+	    events: RunEvent[];
+	    nextSequence: number;
+	    hasMore: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new RunReadResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.run = this.convertValues(source["run"], RunSnapshot);
+	        this.events = this.convertValues(source["events"], RunEvent);
+	        this.nextSequence = source["nextSequence"];
+	        this.hasMore = source["hasMore"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	export class SessionListRequest {
+	    limit?: number;
+	    offset?: number;
+	    activeOnly?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SessionListRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.limit = source["limit"];
+	        this.offset = source["offset"];
+	        this.activeOnly = source["activeOnly"];
+	    }
+	}
+	export class SessionProjection {
+	    sessionId: string;
+	    title?: string;
+	    revision: number;
+	    generation: number;
+	    parentSessionId?: string;
+	    branchFromMessageId?: string;
+	    branchFromSequence?: number;
+	    archived: boolean;
+	    createdAt: string;
+	    updatedAt: string;
+	    runs?: RunSnapshot[];
+	    messages?: Message[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SessionProjection(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessionId = source["sessionId"];
+	        this.title = source["title"];
+	        this.revision = source["revision"];
+	        this.generation = source["generation"];
+	        this.parentSessionId = source["parentSessionId"];
+	        this.branchFromMessageId = source["branchFromMessageId"];
+	        this.branchFromSequence = source["branchFromSequence"];
+	        this.archived = source["archived"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	        this.runs = this.convertValues(source["runs"], RunSnapshot);
+	        this.messages = this.convertValues(source["messages"], Message);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SessionListResult {
+	    sessions: SessionProjection[];
+	    total: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SessionListResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessions = this.convertValues(source["sessions"], SessionProjection);
+	        this.total = source["total"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SessionMutationRequest {
+	    sessionId: string;
+	    expectedRevision?: number;
+	    title?: string;
+	    archived?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SessionMutationRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessionId = source["sessionId"];
+	        this.expectedRevision = source["expectedRevision"];
+	        this.title = source["title"];
+	        this.archived = source["archived"];
+	    }
+	}
+	
+	export class SessionReadRequest {
+	    sessionId: string;
+	    afterSequence?: number;
+	    limit?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SessionReadRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessionId = source["sessionId"];
+	        this.afterSequence = source["afterSequence"];
+	        this.limit = source["limit"];
+	    }
+	}
+	export class SnapshotAck {
+	    sourceId: string;
+	    sourceInstanceId: string;
+	    revision: number;
+	    contentHash: string;
+	    accepted: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SnapshotAck(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sourceId = source["sourceId"];
+	        this.sourceInstanceId = source["sourceInstanceId"];
+	        this.revision = source["revision"];
+	        this.contentHash = source["contentHash"];
+	        this.accepted = source["accepted"];
+	    }
+	}
+	export class WorkspaceQuery {
+	    id?: string;
+	    name?: string;
+	    content?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkspaceQuery(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.content = source["content"];
+	    }
+	}
+	export class WorkspaceSQLActivity {
+	    id?: string;
+	    statement?: string;
+	    status?: string;
+	    createdAt?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkspaceSQLActivity(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.statement = source["statement"];
+	        this.status = source["status"];
+	        this.createdAt = source["createdAt"];
+	    }
+	}
+	export class WorkspaceTab {
+	    id: string;
+	    title?: string;
+	    kind?: string;
+	    connectionId?: string;
+	    database?: string;
+	    object?: string;
+	    draft?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkspaceTab(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.kind = source["kind"];
+	        this.connectionId = source["connectionId"];
+	        this.database = source["database"];
+	        this.object = source["object"];
+	        this.draft = source["draft"];
+	    }
+	}
+	export class WorkspaceSnapshot {
+	    schemaVersion: number;
+	    sourceKind: string;
+	    sourceId: string;
+	    sourceInstanceId: string;
+	    revision: number;
+	    capturedAt: string;
+	    contentHash: string;
+	    activeContext?: Record<string, any>;
+	    tabs?: WorkspaceTab[];
+	    activeTabId?: string;
+	    sqlActivity?: WorkspaceSQLActivity[];
+	    savedQueries?: WorkspaceQuery[];
+	    snippets?: WorkspaceQuery[];
+	    externalSqlDirectories?: string[];
+	    shortcuts?: Record<string, string>;
+	    transactionState?: Record<string, any>;
+	    diagnostics?: Record<string, any>;
+	    cliContext?: CLIWorkspaceContext;
+	    capabilities?: Record<string, boolean>;
+	    availability?: Record<string, string>;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkspaceSnapshot(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.schemaVersion = source["schemaVersion"];
+	        this.sourceKind = source["sourceKind"];
+	        this.sourceId = source["sourceId"];
+	        this.sourceInstanceId = source["sourceInstanceId"];
+	        this.revision = source["revision"];
+	        this.capturedAt = source["capturedAt"];
+	        this.contentHash = source["contentHash"];
+	        this.activeContext = source["activeContext"];
+	        this.tabs = this.convertValues(source["tabs"], WorkspaceTab);
+	        this.activeTabId = source["activeTabId"];
+	        this.sqlActivity = this.convertValues(source["sqlActivity"], WorkspaceSQLActivity);
+	        this.savedQueries = this.convertValues(source["savedQueries"], WorkspaceQuery);
+	        this.snippets = this.convertValues(source["snippets"], WorkspaceQuery);
+	        this.externalSqlDirectories = source["externalSqlDirectories"];
+	        this.shortcuts = source["shortcuts"];
+	        this.transactionState = source["transactionState"];
+	        this.diagnostics = source["diagnostics"];
+	        this.cliContext = this.convertValues(source["cliContext"], CLIWorkspaceContext);
+	        this.capabilities = source["capabilities"];
+	        this.availability = source["availability"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace sqlaudit {
 	
 	export class Filter {
@@ -3888,6 +4490,7 @@ export namespace syncjob {
 	    targetSchema?: string;
 	    targetTable: string;
 	    targetTableStrategy?: string;
+	    targetTableStrategyExplicit?: boolean;
 	    filter?: string;
 	    keyColumns?: string[];
 	    columns?: ColumnMapping[];
@@ -3905,6 +4508,7 @@ export namespace syncjob {
 	        this.targetSchema = source["targetSchema"];
 	        this.targetTable = source["targetTable"];
 	        this.targetTableStrategy = source["targetTableStrategy"];
+	        this.targetTableStrategyExplicit = source["targetTableStrategyExplicit"];
 	        this.filter = source["filter"];
 	        this.keyColumns = source["keyColumns"];
 	        this.columns = this.convertValues(source["columns"], ColumnMapping);

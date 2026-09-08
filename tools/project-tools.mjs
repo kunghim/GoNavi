@@ -10,7 +10,7 @@ const projectRoot = path.resolve(scriptDir, '..');
 const toolBin = path.join(projectRoot, '.tools', 'bin');
 const wailsName = process.platform === 'win32' ? 'wails.exe' : 'wails';
 const wailsPath = path.join(toolBin, wailsName);
-const wailsModule = 'github.com/wailsapp/wails/v2/cmd/wails@v2.11.0';
+const wailsModule = 'github.com/wailsapp/wails/v2/cmd/wails@v2.15.0';
 const [command, ...args] = process.argv.slice(2);
 
 const usage = `Usage:

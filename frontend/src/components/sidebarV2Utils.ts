@@ -112,12 +112,12 @@ export const dedupeSidebarTreeNodesByKey = (
     if (objectRecord) return objectRecord;
 
     const key = getNodeKey(node);
-    const record = (key && recordsByKey.get(key)) || {
+    const record = recordsByKey.get(key) || {
       source: node,
       children: [],
     };
     recordsByObject.set(node, record);
-    if (key && !recordsByKey.has(key)) recordsByKey.set(key, record);
+    if (!recordsByKey.has(key)) recordsByKey.set(key, record);
     return record;
   };
 
@@ -208,6 +208,60 @@ export const dedupeSidebarTreeNodesByKey = (
   }
 
   return result;
+};
+
+/**
+ * Replaces one node's children while preserving the tree's global key
+ * invariant. Canonicalize before the replacement so stale children from a
+ * duplicate target cannot be merged back after a metadata refresh.
+ */
+export const replaceSidebarTreeNodeChildren = (
+  nodes: SidebarTreeNode[],
+  targetKey: Key,
+  children: SidebarTreeNode[] | undefined,
+  dataRef?: unknown,
+): SidebarTreeNode[] => {
+  const canonicalTree = dedupeSidebarTreeNodesByKey(nodes);
+  const result: SidebarTreeNode[] = [];
+  const normalizedTargetKey = targetKey == null ? '' : String(targetKey).trim();
+  let replaced = false;
+  type CopyFrame = {
+    source: SidebarTreeNode;
+    output: SidebarTreeNode[];
+  };
+  const pending: CopyFrame[] = [];
+
+  for (let index = canonicalTree.length - 1; index >= 0; index -= 1) {
+    pending.push({ source: canonicalTree[index], output: result });
+  }
+
+  while (pending.length > 0) {
+    const frame = pending.pop();
+    if (!frame) continue;
+
+    const { source, output } = frame;
+    if (!replaced && String(source.key == null ? '' : source.key).trim() === normalizedTargetKey) {
+      replaced = true;
+      output.push({
+        ...source,
+        children,
+        ...(dataRef === undefined ? {} : { dataRef }),
+      });
+      continue;
+    }
+
+    const clonedNode: SidebarTreeNode = { ...source };
+    output.push(clonedNode);
+    if (!Array.isArray(source.children) || source.children.length === 0) continue;
+
+    const childOutput: SidebarTreeNode[] = [];
+    clonedNode.children = childOutput;
+    for (let index = source.children.length - 1; index >= 0; index -= 1) {
+      pending.push({ source: source.children[index], output: childOutput });
+    }
+  }
+
+  return dedupeSidebarTreeNodesByKey(result);
 };
 
 // Keep these values aligned with the V2 explorer tree layout in v2-theme.css.
@@ -932,13 +986,20 @@ const V2_TREE_HORIZONTAL_SCROLL_COMMENT_MAX_CHARS = 32;
 const V2_TREE_HORIZONTAL_SCROLL_VIEWPORT_BUFFER = 48;
 export const V2_TREE_HORIZONTAL_SCROLL_BOTTOM_RESERVE = 32;
 
+/**
+ * 层层（可见层）估算横滚宽度：
+ * - 只统计当前展开路径上可见的节点（含超长连接名/分组名）
+ * - 不统计折叠子树里的长表名
+ */
 export const estimateV2TreeHorizontalScrollWidth = (
   nodes: SidebarTreeNode[],
   viewportWidth: number,
   sidebarTableMetadataFields: SidebarTableMetadataField[] = [],
+  expandedKeys: ReadonlyArray<Key> = [],
 ): number | undefined => {
   const safeViewportWidth = Math.max(0, Math.ceil(viewportWidth || 0));
   let estimatedContentWidth = safeViewportWidth;
+  const expandedKeySet = new Set(expandedKeys.map((key) => String(key)));
 
   const visit = (items: SidebarTreeNode[], depth: number) => {
     items.forEach((node) => {
@@ -968,7 +1029,8 @@ export const estimateV2TreeHorizontalScrollWidth = (
         + ((title.length + metaText.length) * V2_TREE_HORIZONTAL_SCROLL_AVG_CHAR_WIDTH)
         + (metaItemCount * V2_TREE_HORIZONTAL_SCROLL_ITEM_GAP_WIDTH);
       estimatedContentWidth = Math.max(estimatedContentWidth, nodeWidth);
-      if (node.children?.length) {
+      // 仅进入已展开节点的子层
+      if (node.children?.length && expandedKeySet.has(String(node.key))) {
         visit(node.children, depth + 1);
       }
     });
@@ -978,9 +1040,10 @@ export const estimateV2TreeHorizontalScrollWidth = (
   if (estimatedContentWidth <= safeViewportWidth + 8) {
     return undefined;
   }
+  // 只按内容宽度给 scrollWidth，避免 viewport+buffer 造出“假空白”可滚区间
   const scrollWidth = Math.min(
     V2_TREE_HORIZONTAL_SCROLL_MAX_WIDTH,
-    Math.max(safeViewportWidth + V2_TREE_HORIZONTAL_SCROLL_VIEWPORT_BUFFER, Math.ceil(estimatedContentWidth)),
+    Math.ceil(estimatedContentWidth),
   );
   return scrollWidth;
 };

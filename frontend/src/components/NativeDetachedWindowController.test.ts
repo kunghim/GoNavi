@@ -307,6 +307,74 @@ describe('NativeDetachedWindowController', () => {
     expect(onHostEvent).toHaveBeenCalledWith(event.payload?.hostEvent);
   });
 
+  it.each([
+    'gonavi:open-global-proxy-settings',
+    'gonavi:open-download-source-settings',
+  ] as const)('raises the main window before forwarding %s from a detached workbench', (eventName) => {
+    const previousWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    const calls: string[] = [];
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        runtime: {
+          Show: vi.fn(() => calls.push('show-app')),
+          WindowShow: vi.fn(() => calls.push('show-window')),
+        },
+      },
+    });
+    const event: NativeDetachedWindowEvent = {
+      id: 'workbench:driver-manager',
+      kind: 'workbench',
+      action: 'host-event',
+      payload: {
+        hostEvent: {
+          id: `workbench:driver-manager:${eventName}`,
+          name: eventName,
+        },
+      },
+    };
+
+    try {
+      applyNativeDetachedWindowEvent(event, undefined, {
+        onHostEvent: () => calls.push('open-settings'),
+      });
+
+      expect(calls).toEqual(['show-app', 'show-window', 'open-settings']);
+    } finally {
+      if (previousWindowDescriptor) {
+        Object.defineProperty(globalThis, 'window', previousWindowDescriptor);
+      } else {
+        Reflect.deleteProperty(globalThis, 'window');
+      }
+    }
+  });
+
+  it('accepts sidebar locate host events from a detached workbench', () => {
+    const onHostEvent = vi.fn();
+    const event: NativeDetachedWindowEvent = {
+      id: 'workbench:query-a',
+      kind: 'workbench',
+      action: 'host-event',
+      payload: {
+        hostEvent: {
+          id: 'workbench:query-a:locate-1',
+          name: 'gonavi:locate-sidebar-object',
+          detail: {
+            connectionId: 'conn-1',
+            dbName: 'main',
+            tableName: 'users',
+            objectGroup: 'tables',
+          },
+        },
+      },
+    };
+
+    applyNativeDetachedWindowEvent(event, undefined, { onHostEvent });
+
+    expect(onHostEvent).toHaveBeenCalledOnce();
+    expect(onHostEvent).toHaveBeenCalledWith(event.payload?.hostEvent);
+  });
+
   it('toggles only the main-window AI panel for a shortcut forwarded by a result child', () => {
     expect(useStore.getState().aiPanelVisible).toBe(false);
 

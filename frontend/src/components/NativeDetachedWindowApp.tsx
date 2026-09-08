@@ -6,7 +6,7 @@ import { EventsOn } from '../../wailsjs/runtime';
 import { t as defaultTranslate } from '../i18n';
 import { getAntdLocale } from '../i18n/frameworkLocale';
 import { useOptionalI18n } from '../i18n/provider';
-import { flushAIChatSessionPersistence, type SqlLog, useStore } from '../store';
+import { type SqlLog, useStore } from '../store';
 import type { TabData } from '../types';
 import type { DetachedQueryResultWindow } from '../utils/detachedWindow';
 import {
@@ -62,6 +62,7 @@ import {
   isShortcutMatch,
   resolveShortcutBinding,
 } from '../utils/shortcuts';
+import { useAIWorkspaceSnapshot } from './ai/useAIWorkspaceSnapshot';
 const AIChatPanel = React.lazy(() => import('./AIChatPanel'));
 const DataGrid = React.lazy(() => import('./DataGrid'));
 const WorkbenchTabContent = React.lazy(() => import('./WorkbenchTabContent'));
@@ -100,7 +101,7 @@ export const applyNativeDetachedDocumentAppearance = (
   );
   const rootStyle = documentRef.documentElement?.style;
   documentRef.body.setAttribute('data-theme', resolvedTheme);
-  documentRef.body.setAttribute('data-ui-version', uiVersion);
+  documentRef.body.setAttribute('data-ui-version', 'v2');
   documentRef.body.setAttribute('data-gonavi-detached', 'true');
   documentRef.body.style.backgroundColor = 'transparent';
   documentRef.body.style.color = resolvedTheme === 'dark' ? '#ffffff' : '#000000';
@@ -298,7 +299,7 @@ const NativeDetachedQueryResult: React.FC<{
             readOnly
             connectionId={result.executionConnectionId || windowState.connectionId}
             connectionParamsOverride={result.executionConnectionParams}
-            dbName={result.metadataDbName || result.executionDbName || windowState.dbName || ''}
+            dbName={result.metadataDbName ?? result.executionDbName ?? windowState.dbName ?? ''}
             resultSql={result.sql}
             exportScope="queryResult"
             isActive
@@ -334,7 +335,7 @@ const NativeDetachedQueryResult: React.FC<{
       readOnly={result.readOnly !== false}
       connectionId={result.executionConnectionId || windowState.connectionId}
       connectionParamsOverride={result.executionConnectionParams}
-      dbName={result.metadataDbName || result.executionDbName || windowState.dbName || ''}
+      dbName={result.metadataDbName ?? result.executionDbName ?? windowState.dbName ?? ''}
       ddlDbName={result.ddlDbName}
       ddlTableName={result.ddlTableName}
       resultSql={result.exportSql || result.sql}
@@ -377,7 +378,14 @@ const NativeDetachedWindowContent: React.FC<{
 
   if (bootstrap.kind === 'workbench') {
     return tab
-      ? <WorkbenchTabContent tab={tab} isActive onContentReady={onContentReady} />
+      ? (
+          <WorkbenchTabContent
+            tab={tab}
+            isActive
+            onContentReady={onContentReady}
+            onRequestClose={onClose}
+          />
+        )
       : null;
   }
   if (bootstrap.kind === 'query-result') {
@@ -437,6 +445,10 @@ const NativeDetachedWindowApp: React.FC<NativeDetachedWindowAppProps> = ({
   const [contentMounted, setContentMounted] = useState(true);
   const [contentReady, setContentReady] = useState(false);
   const [controllerEnabled, setControllerEnabled] = useState(false);
+  // A detached AI WebView is its own desktop snapshot source. Keep its lease
+  // alive for the lifetime of the detached window, independent of panel UI
+  // visibility or terminal actions.
+  useAIWorkspaceSnapshot({ enabled: bootstrap?.kind === 'ai-chat' });
   // A detached WebView has an independent custom-theme store. The host sends
   // the resolved definition so it cannot fall back to a different local copy.
   const [customThemeOverride, setCustomThemeOverride] = useState<
@@ -645,7 +657,12 @@ const NativeDetachedWindowApp: React.FC<NativeDetachedWindowAppProps> = ({
           'gonavi:jvm-apply-ai-plan',
           'gonavi:jvm-apply-diagnostic-plan',
         ]
-      : ['gonavi:ai:inject-prompt'];
+      : [
+          'gonavi:ai:inject-prompt',
+          'gonavi:open-download-source-settings',
+          'gonavi:open-global-proxy-settings',
+          ...(bootstrap.kind === 'workbench' ? ['gonavi:locate-sidebar-object' as const] : []),
+        ];
     const forwardToHost = (event: Event) => {
       hostEventSequenceRef.current += 1;
       const hostEvent: NativeDetachedHostEvent = {
@@ -718,7 +735,7 @@ const NativeDetachedWindowApp: React.FC<NativeDetachedWindowAppProps> = ({
   useEffect(() => {
     if (typeof document === 'undefined') return;
     document.body.setAttribute('data-theme', effectiveThemeMode === 'dark' ? 'dark' : 'light');
-    document.body.setAttribute('data-ui-version', uiVersion);
+    document.body.setAttribute('data-ui-version', 'v2');
     document.body.style.color = effectiveThemeMode === 'dark' ? '#ffffff' : '#111827';
     document.body.style.fontSize = `${Math.max(10, Number(fontSize) || 14)}px`;
     document.documentElement.style.colorScheme = effectiveThemeMode === 'dark' ? 'dark' : 'light';
@@ -1121,8 +1138,6 @@ const NativeDetachedWindowApp: React.FC<NativeDetachedWindowAppProps> = ({
           if (canTerminate === false) {
             throw new Error('AI stream did not stop before the detached window handoff');
           }
-          await flushAIChatSessionPersistence();
-          if (!isCurrentTerminalAction()) return;
         }
         actionToRun = closePreemptionRequestedRef.current ? 'close' : terminalAction;
         if (actionToRun === 'attach' && bootstrap.kind === 'workbench') {

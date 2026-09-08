@@ -522,8 +522,8 @@ func (a *App) startup(ctx context.Context) {
 // SetWindowTranslucency 动态调整 macOS 窗口透明度。
 // 前端在加载用户外观设置后、以及用户修改外观时调用此方法。
 // opacity=1.0 且 blur=0 时窗口标记为 opaque，GPU 不再持续计算窗口背后的模糊合成。
-func (a *App) SetWindowTranslucency(opacity float64, blur float64) {
-	setMacWindowTranslucency(opacity, blur)
+func (a *App) SetWindowTranslucency(opacity float64, blur float64, darkAppearance bool) {
+	setMacWindowTranslucency(opacity, blur, darkAppearance)
 }
 
 // SetMacNativeWindowControls is retained for compatibility with older frontends.
@@ -720,7 +720,18 @@ func resolveFileDatabaseDSN(config connection.ConnectionConfig) string {
 // Helper: Generate a unique key for the connection config
 func getCacheKey(config connection.ConnectionConfig) string {
 	normalized := normalizeCacheKeyConfig(config)
-	b, _ := json.Marshal(normalized)
+	var b []byte
+	if currentSchema := db.QuoteOracleSchemaIdentifier(normalized.RuntimeOracleCurrentSchema()); normalized.Type == "oracle" && currentSchema != "" {
+		b, _ = json.Marshal(struct {
+			Connection          connection.ConnectionConfig `json:"connection"`
+			OracleCurrentSchema string                      `json:"oracleCurrentSchema"`
+		}{
+			Connection:          normalized,
+			OracleCurrentSchema: currentSchema,
+		})
+	} else {
+		b, _ = json.Marshal(normalized)
+	}
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
 }
@@ -1846,11 +1857,12 @@ func verifyRuntimeOptionalDriverAgentRevision(config connection.ConnectionConfig
 		return nil
 	}
 	displayName := resolveDriverDisplayName(driverDefinition{Type: driverType})
+	// revision 不匹配只告警不阻断连接：旧 agent 仍可正常连库。
 	agentRevision, err := verifyInstalledOptionalDriverAgentRevision(driverType, executablePath, selectedVersion)
 	if err != nil {
-		logger.Warnf("%s driver-agent revision 校验失败，已阻止使用不匹配代理：当前需要=%s version=%s path=%s err=%v",
+		logger.Warnf("%s driver-agent revision 不匹配，放行连接（建议在驱动管理中重装）：当前需要=%s version=%s path=%s err=%v",
 			displayName, expectedRevision, selectedVersion, executablePath, err)
-		return err
+		return nil
 	}
 	logger.Infof("%s driver-agent revision 校验通过：已安装=%s 当前需要=%s version=%s path=%s",
 		displayName, strings.TrimSpace(agentRevision), expectedRevision, selectedVersion, executablePath)

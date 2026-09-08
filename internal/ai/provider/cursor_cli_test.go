@@ -143,7 +143,7 @@ func TestCursorCLIModelCatalogDoesNotAcceptFailedCommands(t *testing.T) {
 
 func TestCursorCLIChatRequiresLocalSignInBeforeSendingPrompt(t *testing.T) {
 	commands := overrideCursorCLIProcess(t, "echo", "", 0)
-	cursorCLIAuthCheck = func(context.Context) error { return errors.New("not signed in") }
+	cursorCLIAuthCheck = func(context.Context, ai.ProviderConfig) error { return errors.New("not signed in") }
 	provider, _ := NewCursorCLIProvider(ai.ProviderConfig{AuthMode: "local-cli"})
 	if _, err := provider.Chat(context.Background(), ai.ChatRequest{Messages: []ai.Message{{Role: "user", Content: "must not be sent"}}}); err == nil || len(*commands) != 0 {
 		t.Fatal("the model command must not start until local sign-in passes")
@@ -166,6 +166,44 @@ func TestCursorCLIChatUsesStdinAndTemporaryPermissions(t *testing.T) {
 	}
 	if response.TokensUsed.TotalTokens != 0 || len(response.ToolCalls) != 0 {
 		t.Fatal("do not fabricate usage or expose native agent tools")
+	}
+}
+
+func TestCursorCLIChatUsesConfiguredExecutableAndSafeEnvironment(t *testing.T) {
+	commands := overrideCursorCLIProcess(t, "echo", "", 0)
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The configured executable must be sufficient even when PATH discovery
+	// cannot find Cursor on the host.
+	cursorLookPath = func(string) (string, error) { return "", exec.ErrNotFound }
+	provider, err := NewCursorCLIProvider(ai.ProviderConfig{
+		AuthMode: "local-cli",
+		CLIPath:  executable,
+		CLIEnv: map[string]string{
+			"GONAVI_CURSOR_CUSTOM": "configured",
+			"CURSOR_API_KEY":       "must-stay-blocked",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.Chat(context.Background(), ai.ChatRequest{Messages: []ai.Message{{Role: "user", Content: "configured"}}}); err != nil {
+		t.Fatalf("configured Cursor CLI should run without PATH discovery: %v", err)
+	}
+	if len(*commands) != 1 {
+		t.Fatalf("model commands = %d, want 1", len(*commands))
+	}
+	command := (*commands)[0]
+	if got := envValue(command.Env, "GONAVI_CURSOR_REQUESTED_COMMAND"); got != executable {
+		t.Fatalf("requested command = %q, want %q", got, executable)
+	}
+	if got := envValue(command.Env, "GONAVI_CURSOR_CUSTOM"); got != "configured" {
+		t.Fatalf("custom environment = %q, want configured", got)
+	}
+	if got := envValue(command.Env, "CURSOR_API_KEY"); got != "" {
+		t.Fatalf("Cursor API override was restored after isolation: %q", got)
 	}
 }
 
@@ -194,6 +232,27 @@ func TestCursorCLIChatRejectsIncompleteErrorAndNonzeroResults(t *testing.T) {
 				t.Fatal("failed requests must clean up their workspace")
 			}
 		})
+	}
+}
+
+func TestCursorCLIChatStreamEmitsPartialTextThenDone(t *testing.T) {
+	partial := strings.Join([]string{
+		`{"type":"assistant","message":{"content":[{"type":"text","text":"Hel"}]}}`,
+		`{"type":"content_block_delta","delta":{"text":"lo"}}`,
+		`{"type":"result","subtype":"success","is_error":false,"result":"Hello"}`,
+	}, "\n")
+	overrideCursorCLIProcess(t, "output", partial+"\n", 0)
+	provider, _ := NewCursorCLIProvider(ai.ProviderConfig{AuthMode: "local-cli"})
+	var chunks []ai.StreamChunk
+	if err := provider.ChatStream(context.Background(), ai.ChatRequest{
+		Messages: []ai.Message{{Role: "user", Content: "hi"}},
+	}, func(chunk ai.StreamChunk) {
+		chunks = append(chunks, chunk)
+	}); err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+	if len(chunks) != 3 || chunks[0].Content != "Hel" || chunks[1].Content != "lo" || !chunks[2].Done || chunks[2].Content != "" {
+		t.Fatalf("result line must not duplicate streamed text: %#v", chunks)
 	}
 }
 
@@ -236,10 +295,10 @@ func overrideCursorCLIProcess(t *testing.T, scenario, output string, exitCode in
 	}
 	commands := make([]*exec.Cmd, 0)
 	cursorLookPath = func(string) (string, error) { return executable, nil }
-	cursorCLIAuthCheck = func(context.Context) error { return nil }
-	cursorCommandContext = func(ctx context.Context, _ string, args ...string) *exec.Cmd {
+	cursorCLIAuthCheck = func(context.Context, ai.ProviderConfig) error { return nil }
+	cursorCommandContext = func(ctx context.Context, requestedCommand string, args ...string) *exec.Cmd {
 		command := exec.CommandContext(ctx, executable, append([]string{"-test.run=^TestCursorCLIHelperProcess$", "--", scenario}, args...)...)
-		command.Env = append(os.Environ(), "GONAVI_CURSOR_HELPER=1", "GONAVI_CURSOR_OUTPUT="+output, "GONAVI_CURSOR_EXIT="+strconv.Itoa(exitCode), "GORACE=atexit_sleep_ms=0")
+		command.Env = append(os.Environ(), "GONAVI_CURSOR_HELPER=1", "GONAVI_CURSOR_OUTPUT="+output, "GONAVI_CURSOR_EXIT="+strconv.Itoa(exitCode), "GONAVI_CURSOR_REQUESTED_COMMAND="+requestedCommand, "GORACE=atexit_sleep_ms=0")
 		commands = append(commands, command)
 		return command
 	}

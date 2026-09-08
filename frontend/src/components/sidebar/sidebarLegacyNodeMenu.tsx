@@ -58,6 +58,11 @@ import {
 
 type NacosNamespaceFormMode = 'create' | 'edit';
 
+const resolveOptionalSchemaName = (node: any): string | undefined => {
+  const schemaName = String(node?.dataRef?.schemaName ?? '').trim();
+  return schemaName || undefined;
+};
+
 const isNacosNamespaceStructureRestricted = (config: SavedConnection['config'] | undefined) =>
   config?.readOnly === true || config?.protection?.restrictStructureEdit === true;
 
@@ -408,6 +413,12 @@ export const buildSidebarLegacyNodeMenuItems = (
             return [];
         }
         return [
+            {
+                key: 'new-query',
+                label: t('sidebar.menu.new_query'),
+                icon: <ConsoleSqlOutlined />,
+                onClick: () => handleV2DatabaseContextMenuAction(node, 'new-query'),
+            },
             {
                 key: 'rename-schema',
                 label: t('sidebar.menu.edit_schema'),
@@ -1341,6 +1352,7 @@ export const buildSidebarLegacyNodeMenuItems = (
                         type: 'query',
                         connectionId: node.dataRef.id,
                         dbName: node.dataRef.dbName,
+                        schemaName: resolveOptionalSchemaName(node),
                         query: ''
                     });
                 }
@@ -1410,6 +1422,7 @@ export const buildSidebarLegacyNodeMenuItems = (
                             type: 'query',
                             connectionId: node.dataRef.id,
                             dbName: node.dataRef.dbName,
+                            schemaName: resolveOptionalSchemaName(node),
                             query: queryTemplate,
                         });
                     })();
@@ -1608,6 +1621,7 @@ export const buildSidebarLegacyNodeMenuItems = (
                            type: 'query',
                            connectionId: node.dataRef.id,
                            dbName: node.dataRef.dbName,
+                           schemaName: resolveOptionalSchemaName(node),
                            query: queryTemplate,
                        });
                    })();
