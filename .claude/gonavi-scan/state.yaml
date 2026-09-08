@@ -1,22 +1,40 @@
-artifact_schema: 2
+artifact_schema: 3
 manifest_path: scan-manifest.yaml
 coverage_path: coverage.yaml
-scan_id: full-new-20260902-pm-alias-retry
-head_commit: 04977a127798de85bc5339fdfbe49f7f116f0395
-baseline_status: ok
+scan_id: full-new-20260908-380530b-1788834183
+head_commit: 380530bc17882f024a24a97106d24a11a7ebd84b
+baseline_status: not_used
 scan_mode: 全量新问题扫描
-review_views: [product]
-developer_scan_mode: null
+review_views:
+  - product
+  - db
+  - developer
+  - ui
+developer_scan_mode: contract_first
 execution: parallel
 scan_scope: full_repository
 history_recheck: not_applicable
 history_recheck_status: not_applicable
-full_scan_status: completed
-coverage_units_total: 22
-coverage_units_completed: 22
-started_at: 2026-09-02T13:10:19+08:00
-completed_at: 2026-09-02T13:18:39+08:00
-start_commit: 04977a127798de85bc5339fdfbe49f7f116f0395
+full_scan_status: partial
+coverage_units_total: 72
+coverage_units_completed: 11
+coverage_status_counts:
+  completed: 11
+  partial: 54
+  blocked: 7
+  not_applicable: 0
+adjudication_counts:
+  accepted: 10
+  duplicates: 5
+  rejected: 0
+  pending_verification: 0
+started_at: 2026-09-08T10:23:52+08:00
+completed_at: 2026-09-08T02:56:05.512Z
+start_commit: 380530bc17882f024a24a97106d24a11a7ebd84b
 workspace_status: 有未提交改动
-included_scope: [全仓产品入口, 前端 React, Wails 应用层, 数据源与工作台, SQL 编辑器自动表别名专项]
-excluded_scope: [真实数据库写入, 真实消息发布或消费确认, 多平台人工界面验证, 数据库工程与开发视角]
+included_scope:
+  - GoNavi 当前工作区全部能力注册表、入口账本及 product/db/developer/ui 四视角
+excluded_scope:
+  - 真实外部服务写操作
+  - 原生 Wails 跨平台行为
+  - 未列为 checked 的具体能力与状态

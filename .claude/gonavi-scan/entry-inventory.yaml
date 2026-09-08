@@ -1,15 +1,829 @@
 version: 1
-scan_id: full-new-20260902-pm-alias-retry
-head_commit: 04977a127798de85bc5339fdfbe49f7f116f0395
+scan_id: full-new-20260908-380530b-1788834183
+head_commit: 380530bc17882f024a24a97106d24a11a7ebd84b
+summary:
+  entry_groups: 12
+  workbench_tab_types: 30
+  builtin_data_sources: 12
+  optional_go_data_sources: 21
+  custom_data_sources: 1
+  special_connection_types: 2
 entries:
-  - {id: ENTRY-WORKBENCH-TABS, category: 工作台与标签类型, code_locations: [frontend/src/types.ts, frontend/src/components/TabManager.tsx, frontend/src/App.tsx], capability_ids: [CAP-QUERY-001, CAP-DATA-001, CAP-SYNC-001], coverage_status: 已映射}
-  - {id: ENTRY-MENUS-ACTIONS, category: 标题栏侧栏右键与快捷动作, code_locations: [frontend/src/App.tsx, frontend/src/components/Sidebar.tsx, frontend/src/components/sidebar/useSidebarV2ContextMenu.tsx], capability_ids: [CAP-CONN-A01, CAP-EXP-001, CAP-DATA-002], coverage_status: 已映射}
-  - {id: ENTRY-SETTINGS-TOOLS, category: 设置中心与工具中心, code_locations: [frontend/src/App.tsx, frontend/src/components], capability_ids: [CAP-OPS-001, CAP-CONN-A13, CAP-AI-001], coverage_status: 已映射}
-  - {id: ENTRY-WAILS-METHODS, category: Wails 对外方法族, code_locations: [internal/app/methods_db.go, internal/app/methods_file.go, internal/app/methods_saved_connections.go], capability_ids: [CAP-CONN-001, CAP-EXP-001, CAP-QUERY-002], coverage_status: 已映射}
-  - {id: ENTRY-DESKTOP-RUNTIME, category: 桌面主程序与原生窗口, code_locations: [main.go, internal/app, internal/nativewindow], capability_ids: [CAP-OPS-A10, CAP-OPS-A11], coverage_status: 已映射}
-  - {id: ENTRY-WEB-MCP-RUNTIME, category: Web MCP 与容器运行入口, code_locations: [main.go, cmd/gonavi-mcp-server, internal/webserver, internal/mcpserver], capability_ids: [CAP-WEB-001, CAP-MCP-001], coverage_status: 已映射}
-  - {id: ENTRY-CLI, category: 无头 CLI 与自动化入口, code_locations: [cmd/gonavi/main.go, internal/cli, npm/gonavi-cli], capability_ids: [CAP-CLI-001], coverage_status: 已映射}
-  - {id: ENTRY-DATASOURCE-BUILTIN, category: 内置数据源, code_locations: [internal/db/driver_support.go, internal/db, frontend/src/components/ConnectionModal.tsx], capability_ids: [CAP-DS-MYSQL, CAP-DS-CHROMA, CAP-DS-KAFKA], coverage_status: 已映射}
-  - {id: ENTRY-DATASOURCE-OPTIONAL, category: 可选 Driver Agent 数据源, code_locations: [internal/db/driver_support.go, internal/db/optional_driver_agent_impl.go, cmd/optional-driver-agent], capability_ids: [CAP-DS-DUCKDB, CAP-DS-MONGODB, CAP-DS-CLICKHOUSE], coverage_status: 已映射}
-  - {id: ENTRY-SPECIALIZED-WORKBENCH, category: 专用数据源与运维工作台, code_locations: [frontend/src/components/RedisViewer.tsx, frontend/src/components/NacosViewer.tsx, frontend/src/components/JVMOverview.tsx], capability_ids: [CAP-REDIS-001, CAP-MSG-A02], coverage_status: 已映射}
-  - {id: ENTRY-DELIVERY, category: 发布安装更新与部署, code_locations: [.github/workflows, tools, Dockerfile, internal/app/methods_update.go], capability_ids: [CAP-OPS-A12, CAP-WEB-A03], coverage_status: 已映射}
+  - id: ENTRY-WORKBENCH-TABS
+    category: 工作台与标签类型
+    code_locations:
+      - frontend/src/types.ts
+      - frontend/src/components/WorkbenchTabContent.tsx
+      - frontend/src/components/TabManager.tsx
+    capability_ids:
+      - CAP-QUERY-001
+      - CAP-DATA-001
+      - CAP-DESIGN-001
+      - CAP-SYNC-001
+      - CAP-OPS-001
+      - CAP-MSG-A01
+    enumerated_items:
+      - query
+      - table
+      - design
+      - data-sync
+      - sql-file-execution
+      - sql-analysis
+      - sql-audit
+      - driver-manager
+      - settings-center
+      - request-diagnostics
+      - message-queue
+      - redis-keys
+      - redis-command
+      - redis-monitor
+      - nacos-config
+      - nacos-services
+      - trigger
+      - view-def
+      - event-def
+      - routine-def
+      - sequence-def
+      - package-def
+      - table-overview
+      - table-export
+      - data-import
+      - jvm-overview
+      - jvm-resource
+      - jvm-audit
+      - jvm-diagnostic
+      - jvm-monitoring
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 入口变化时复核调用及多入口门控；未执行桌面、Web 和跨平台端到端验证。
+    scan_evidence:
+      - frontend/src/types.ts:TabData
+      - frontend/src/components/WorkbenchTabContent.tsx:109-204
+    negative_checks:
+      - 逐项对照 TabData 与 WorkbenchTabContent，30 类标签均有渲染分支；settings-center/driver-manager/message-queue 已计入。
+    coverage_gaps:
+      - 未执行桌面、Web 和跨平台端到端验证。
+  - id: ENTRY-MENUS-ACTIONS
+    category: 标题栏、侧栏、对象菜单和快捷动作
+    code_locations:
+      - frontend/src/components/TitleBarPrimaryActions.tsx
+      - frontend/src/components/TitleBarQuickActions.tsx
+      - frontend/src/components/Sidebar.tsx
+      - frontend/src/components/sidebar/useSidebarV2ContextMenu.tsx
+      - frontend/src/components/sidebar/sidebarLegacyNodeMenu.tsx
+    capability_ids:
+      - CAP-CONN-A01
+      - CAP-CONN-A03
+      - CAP-EXP-001
+      - CAP-QUERY-A01
+      - CAP-DATA-002
+    enumerated_items:
+      - 新建查询
+      - 新建连接
+      - 分组管理
+      - Legacy/V2 对象菜单
+      - 全库搜索
+      - SQL 文件与已保存查询
+      - 表设计、导入、导出
+      - 专用工作台
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 入口变化时复核调用及多入口门控；未执行桌面、Web 和跨平台端到端验证。
+    scan_evidence:
+      - frontend/src/components/TitleBarPrimaryActions.tsx:44-86
+      - frontend/src/components/Sidebar.tsx:5165
+      - frontend/src/components/sidebar/useSidebarV2ContextMenu.tsx:423-441
+    negative_checks:
+      - 标题栏除新建外已有分组管理；对象菜单通过方言分支生成，不从旧入口账本推断缺失。
+    coverage_gaps:
+      - 未执行桌面、Web 和跨平台端到端验证。
+  - id: ENTRY-SETTINGS-TOOLS
+    category: 设置中心和工具入口
+    code_locations:
+      - frontend/src/App.tsx
+      - frontend/src/components/settings/SettingsCenterWorkbench.tsx
+      - frontend/src/components/settings/SettingsCenterTreeNav.tsx
+    capability_ids:
+      - CAP-OPS-001
+      - CAP-OPS-A07
+      - CAP-CONN-A16
+      - CAP-AI-001
+      - CAP-MCP-001
+      - CAP-SYNC-001
+    enumerated_items:
+      - 外观与自定义主题
+      - 工作区布局
+      - AI Provider/模型/Skills/MCP
+      - 代理
+      - Web认证
+      - 云备份
+      - 快捷键
+      - 关于与更新
+      - 连接导入导出
+      - 连接健康
+      - 数据目录
+      - 安全更新
+      - 结构/数据比较与同步
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 入口变化时复核调用及多入口门控；未执行桌面、Web 和跨平台端到端验证。
+    scan_evidence:
+      - frontend/src/App.tsx:6740
+      - frontend/src/App.tsx:8359-8470
+      - frontend/src/components/settings/SettingsCenterWorkbench.tsx:12-55
+    negative_checks:
+      - 设置中心已有工作台宿主；连接健康已在工具组暴露。
+    coverage_gaps:
+      - 未执行桌面、Web 和跨平台端到端验证。
+  - id: ENTRY-WAILS-METHODS
+    category: App 对外方法和 AI 服务绑定
+    code_locations:
+      - internal/app/methods_db.go
+      - internal/app/methods_file.go
+      - internal/app/methods_sync_jobs.go
+      - internal/ai/service/service_agent_harness.go
+      - frontend/wailsjs/go/app/App.js
+      - frontend/wailsjs/go/aiservice/Service.js
+    capability_ids:
+      - CAP-CONN-001
+      - CAP-QUERY-002
+      - CAP-DATA-001
+      - CAP-SYNC-001
+      - CAP-AI-001
+    enumerated_items:
+      - SetLanguage
+      - SetWindowTranslucency
+      - SetMacNativeWindowControls
+      - ResetWebViewZoom
+      - RefreshWebViewBounds
+      - LogWindowDiagnostic
+      - Shutdown
+      - CancelQuery
+      - GenerateQueryID
+      - CancelApplicationQuit
+      - ForceQuitApplication
+      - CloudBackupGetConfig
+      - SaveCloudBackupConfig
+      - CloudBackupSyncNow
+      - CloudBackupGetStatus
+      - CloudBackupListRestorePoints
+      - CloudBackupPreviewRestore
+      - CloudBackupRestore
+      - ImportConnectionsPayload
+      - DataImportCapability
+      - DataSourceCapability
+      - DataSyncCDCAdapterList
+      - DataSyncCDCProbe
+      - GetDatabaseDiagnosticPackagePreview
+      - BuildDatabaseDiagnosticPackage
+      - ExportDatabaseDiagnosticPackage
+      - PreflightDatabaseSQLImport
+      - GetDownloadSourceConfig
+      - SaveDownloadSourceConfig
+      - StartDriverPackageDownload
+      - ListDriverDownloadTasks
+      - ConfigureGlobalProxy
+      - GetGlobalProxyConfig
+      - TestGlobalProxyConnection
+      - AuthorizeMCPConnectionSQL
+      - ResumeImportJob
+      - RetryImportJobFailedRows
+      - GetBrandIconDataURL
+      - SetApplicationBrandIcon
+      - DeleteConnectionGroup
+      - InspectSavedConnectionHealth
+      - InspectSavedConnectionsHealth
+      - StartSavedConnectionsHealthRun
+      - GetSavedConnectionsHealthRun
+      - CancelSavedConnectionsHealthRun
+      - BootstrapConnectionSidebarLayout
+      - LoadConnectionSidebarLayout
+      - SaveConnectionSidebarLayout
+      - GetDataRootDirectoryInfo
+      - SelectDataRootDirectory
+      - ApplyDataRootDirectory
+      - OpenDataRootDirectory
+      - DBConnect
+      - DBReleaseConnection
+      - TestConnection
+      - TestConnectionWithProgress
+      - MongoDiscoverMembers
+      - CreateDatabase
+      - ListDatabaseCharsets
+      - ListDatabaseCollations
+      - CreateSchema
+      - RenameSchema
+      - DropSchema
+      - RenameDatabase
+      - DropDatabase
+      - RenameTable
+      - DropTable
+      - MySQLConnect
+      - MySQLQuery
+      - MySQLGetDatabases
+      - MySQLGetTables
+      - MySQLShowCreateTable
+      - DBQuery
+      - DBQueryWithCancel
+      - DBQueryMulti
+      - DBQueryIsolated
+      - DBGetDatabases
+      - DBGetTables
+      - DBRefreshTableStats
+      - DBTableExists
+      - DBGetViews
+      - DBShowCreateTable
+      - DBGetColumns
+      - DBGetIndexes
+      - DBGetForeignKeys
+      - DBGetDatabaseForeignKeys
+      - DBGetTriggers
+      - DropView
+      - DropFunction
+      - RenameView
+      - DBGetAllColumns
+      - DBQueryAudited
+      - DBQueryAI
+      - DBGetDatabasesContext
+      - DBGetTablesContext
+      - DBGetViewsContext
+      - DBGetObjectsContext
+      - DBGetAllColumnsContext
+      - DBGetColumnsContext
+      - DBGetIndexesContext
+      - DBGetForeignKeysContext
+      - DBGetTriggersContext
+      - DBShowCreateTableContext
+      - DBGetObjects
+      - DBQueryMultiTransactional
+      - DBQueryMultiInTransaction
+      - DBCommitTransaction
+      - DBRollbackTransaction
+      - DBCommitTransactionWithTrigger
+      - DBRollbackTransactionWithTrigger
+      - SelectDriverDownloadDirectory
+      - SelectDriverPackageFile
+      - SelectDriverPackageDirectory
+      - OpenDriverDownloadDirectory
+      - ResolveDriverDownloadDirectory
+      - ConfigureDriverRuntimeDirectory
+      - ResolveDriverRepositoryURL
+      - ResolveDriverPackageDownloadURL
+      - GetDriverVersionList
+      - GetDriverVersionPackageSize
+      - GetDriverStatusList
+      - CheckDriverNetworkStatus
+      - InstallLocalDriverPackage
+      - DownloadDriverPackage
+      - RemoveDriverPackage
+      - InspectElasticsearchConsole
+      - ExecuteElasticsearchConsole
+      - DiagnoseQuery
+      - OpenSQLFile
+      - SelectSQLFileForExecution
+      - SelectSQLDirectory
+      - ListSQLDirectory
+      - ReadSQLFile
+      - ReadAppLogTail
+      - WriteSQLFile
+      - CreateSQLFile
+      - CreateSQLDirectory
+      - DeleteSQLFile
+      - DeleteSQLDirectory
+      - RenameSQLFile
+      - RenameSQLDirectory
+      - ExportSQLFile
+      - ImportDatabaseSQL
+      - ImportDatabaseSQLWithOptions
+      - ExecuteSQLFile
+      - CancelSQLFileExecution
+      - ImportConfigFile
+      - ExportConnectionsPackage
+      - ExportConnectionsPayload
+      - SelectSSHKeyFile
+      - SelectSSHKnownHostsFile
+      - SelectCertificateFile
+      - SelectDatabaseFile
+      - PreviewImportFile
+      - PreviewImportFileWithOptions
+      - ImportData
+      - ImportDataWithProgress
+      - ImportDataWithProgressOptions
+      - ApplyChanges
+      - PreviewChanges
+      - ExportTable
+      - ExportTableWithOptions
+      - ExportTablesSQL
+      - ExportTablesDataSQL
+      - ExportTablesSQLWithOptions
+      - ExportDatabaseSQL
+      - ExportDatabaseSQLWithOptions
+      - ExportDatabasesSQLWithOptions
+      - ExportSchemaSQL
+      - ExportSchemaSQLWithOptions
+      - TruncateTables
+      - ClearTables
+      - ExportData
+      - ExportDataWithOptions
+      - ExportQuery
+      - ExportQueryWithOptions
+      - ListInstalledFontFamilies
+      - ExportImportErrorRows
+      - ListImportJobs
+      - GetImportJob
+      - CancelImportJob
+      - DeleteImportJob
+      - TestJVMConnection
+      - JVMListResources
+      - JVMGetValue
+      - JVMPreviewChange
+      - JVMApplyChange
+      - JVMListAuditRecords
+      - JVMProbeCapabilities
+      - JVMProbeDiagnosticCapabilities
+      - JVMStartDiagnosticSession
+      - JVMExecuteDiagnosticCommand
+      - JVMCancelDiagnosticCommand
+      - JVMListDiagnosticAuditRecords
+      - JVMStartMonitoring
+      - JVMGetMonitoringHistory
+      - JVMStopMonitoring
+      - SelectLogDirectory
+      - ApplyLogDirectory
+      - OpenLogDirectory
+      - NacosConnect
+      - NacosTestConnection
+      - NacosTestConnectionWithProgress
+      - CancelConnectionTest
+      - NacosListNamespaces
+      - NacosListConfigGroups
+      - NacosSearchConfigs
+      - NacosGetConfig
+      - NacosPublishConfig
+      - NacosGetBetaConfig
+      - NacosStopBetaConfig
+      - NacosDeleteConfig
+      - NacosCreateNamespace
+      - NacosUpdateNamespace
+      - NacosDeleteNamespace
+      - NacosListConfigHistory
+      - NacosGetConfigHistory
+      - NacosListServices
+      - NacosGetService
+      - NacosCreateService
+      - NacosUpdateService
+      - NacosDeleteService
+      - NacosListInstances
+      - NacosGetInstance
+      - NacosRegisterInstance
+      - NacosUpdateInstance
+      - NacosDeregisterInstance
+      - NacosUpdateInstanceHealth
+      - NacosStartConfigListen
+      - NacosStopConfigListen
+      - NacosUpdateConfigListenMD5
+      - NacosExportConfigs
+      - NacosPreviewImportConfigs
+      - NacosImportConfigs
+      - GetSlowQueries
+      - ClearSlowQueries
+      - RedisConnect
+      - RedisTestConnection
+      - RedisScanKeys
+      - RedisGetValue
+      - RedisGetListValue
+      - RedisSetString
+      - RedisSetHashField
+      - RedisDeleteKeys
+      - RedisSetTTL
+      - RedisExecuteCommand
+      - RedisGetServerInfo
+      - RedisGetDatabases
+      - RedisSelectDB
+      - RedisRenameKey
+      - RedisKeyExists
+      - RedisDeleteHashField
+      - RedisListPush
+      - RedisListSet
+      - RedisListRemove
+      - RedisSetAdd
+      - RedisSetRemove
+      - RedisZSetAdd
+      - RedisZSetRemove
+      - RedisStreamAdd
+      - RedisStreamDelete
+      - RedisFlushDB
+      - RedisExportKeys
+      - RedisPreviewImportKeys
+      - RedisImportKeys
+      - ResultDiffStart
+      - ResultDiffUploadChunk
+      - ResultDiffCompute
+      - ResultDiffPage
+      - ResultDiffClose
+      - GetSavedConnections
+      - GetEditableSavedConnection
+      - RevealSavedConnectionPrimaryPassword
+      - SaveConnection
+      - UpdateConnectionVisibility
+      - DeleteConnection
+      - DeleteConnections
+      - DuplicateConnection
+      - ImportLegacyConnections
+      - SaveGlobalProxy
+      - ImportLegacyGlobalProxy
+      - GetSavedQueries
+      - GetSavedQueryGroups
+      - SaveQuery
+      - ImportSavedQueries
+      - DeleteQuery
+      - RenameSavedQuery
+      - SaveSavedQueryGroup
+      - DeleteSavedQueryGroup
+      - MoveSavedQueryToGroup
+      - MoveSavedQueryGroup
+      - RebindSavedQuery
+      - GetUnboundSavedQueries
+      - SelectSavedQueryDirectory
+      - ApplySavedQueryDirectory
+      - OpenSavedQueryDirectory
+      - RevealSavedQueryInFolder
+      - GetSQLAuditHealth
+      - GetSQLAuditEvents
+      - GetSQLAuditSettings
+      - UpdateSQLAuditSettings
+      - VerifySQLAuditIntegrity
+      - ClearSQLAuditEvents
+      - BuildSQLAuditExport
+      - ExportSQLAuditFile
+      - DataSyncCapability
+      - DataSync
+      - DataSyncAnalyze
+      - DataSyncPreview
+      - DataSyncJobList
+      - DataSyncJobGet
+      - DataSyncJobPreflight
+      - DataSyncJobApprovalBegin
+      - DataSyncJobApprove
+      - DataSyncJobSave
+      - DataSyncJobDelete
+      - DataSyncSchedulePreview
+      - DataSyncRunStart
+      - DataSyncRunGet
+      - DataSyncRunCancel
+      - DataSyncRunResume
+      - DataSyncRunRetry
+      - DataSyncRunList
+      - DataSyncRunPage
+      - DataSyncRunDelete
+      - DataSyncRunClearTerminal
+      - DataSyncRunEventList
+      - DataSyncErrorRowList
+      - DataSyncErrorRowGet
+      - DataSyncErrorRowRetry
+      - DataSyncErrorRowDiscard
+      - DataSyncCheckpointGet
+      - DataSyncCheckpointReset
+      - DataSyncDatabaseList
+      - DataSyncObjectList
+      - DataSyncFieldList
+      - DataSyncCapabilityResolve
+      - CopyTable
+      - CheckForUpdates
+      - CheckForUpdatesSilently
+      - GetAppInfo
+      - DownloadUpdate
+      - StartUpdateDownload
+      - GetUpdateDownloadTask
+      - InstallUpdateAndRestart
+      - OpenDownloadedUpdateDirectory
+      - ListReproductionBundleSources
+      - BuildReproductionBundle
+      - ExportReproductionBundle
+      - PreviewReproductionBundle
+      - ReplayReproductionBundle
+      - GetRequestDiagnostics
+      - GetRequestDiagnostic
+      - GetSecurityUpdateStatus
+      - StartSecurityUpdate
+      - RetrySecurityUpdateCurrentRound
+      - RestartSecurityUpdate
+      - DismissSecurityUpdateReminder
+      - TrustSSHHostKeyForConnection
+      - TrustSSHHostKey
+      - GetUpdateChannel
+      - SetUpdateChannel
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 入口变化时复核调用及多入口门控；枚举导出方法不等于逐方法运行验证；UI/CLI 调用链由各视角记录。
+    scan_evidence:
+      - internal/app/methods_db.go:DBQuery
+      - internal/app/methods_sync_jobs.go
+      - internal/ai/service/service_agent_harness.go:70-299
+    negative_checks:
+      - App 导出函数从全部非测试 Go 文件枚举，AI Service 独立绑定单独纳入，未只枚举 methods_ 前缀。
+    coverage_gaps:
+      - 枚举导出方法不等于逐方法运行验证；UI/CLI 调用链由各视角记录。
+  - id: ENTRY-DESKTOP-RUNTIME
+    category: 主进程和分离窗口
+    code_locations:
+      - main.go
+      - internal/nativewindow/bridge.go
+      - frontend/src/components/NativeDetachedWindowController.tsx
+    capability_ids:
+      - CAP-OPS-A09
+      - CAP-OPS-A10
+      - CAP-OPS-A11
+    enumerated_items:
+      - Wails主窗口
+      - detached-window
+      - 浮动结果/AI
+      - 退出保护
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 入口变化时复核调用及多入口门控；未执行桌面、Web 和跨平台端到端验证。
+    scan_evidence:
+      - main.go:267-278
+      - frontend/src/components/TabManager.tsx:1531
+    negative_checks:
+      - 特殊模式由 main.go 分发；普通桌面与分离窗口入口分开枚举。
+    coverage_gaps:
+      - 未执行桌面、Web 和跨平台端到端验证。
+  - id: ENTRY-WEB-MCP-RUNTIME
+    category: Web RPC/SSE 和 MCP
+    code_locations:
+      - main.go
+      - internal/webserver/server.go
+      - internal/mcpserver/server.go
+      - cmd/gonavi-mcp-server/main.go
+    capability_ids:
+      - CAP-WEB-001
+      - CAP-WEB-A01
+      - CAP-MCP-001
+      - CAP-MCP-A04
+    enumerated_items:
+      - web-server
+      - mcp-server stdio/http/remote-config
+      - Web API invoke
+      - SSE events
+      - get_connections
+      - get_databases
+      - get_tables
+      - get_views
+      - get_objects
+      - get_all_columns
+      - get_columns
+      - get_indexes
+      - get_foreign_keys
+      - get_triggers
+      - get_table_ddl
+      - execute_sql
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 入口变化时复核调用及多入口门控；未执行桌面、Web 和跨平台端到端验证。
+    scan_evidence:
+      - main.go:267-304
+      - internal/webserver/server.go:751-754
+      - internal/mcpserver/server.go:34-91
+    negative_checks:
+      - MCP execute_sql 注册受选项控制，未把条件入口误记为始终启用。
+    coverage_gaps:
+      - 未执行桌面、Web 和跨平台端到端验证。
+  - id: ENTRY-CLI
+    category: 无头数据库命令
+    code_locations:
+      - cmd/gonavi/main.go
+      - internal/cli/cli.go
+      - npm/gonavi-cli
+      - Dockerfile.cli
+    capability_ids:
+      - CAP-CLI-001
+      - CAP-CLI-A01
+      - CAP-CLI-A03
+      - CAP-CLI-A04
+      - CAP-CLI-A05
+      - CAP-CLI-A06
+      - CAP-CLI-A07
+    enumerated_items:
+      - help/version
+      - connections/connection list/add/import
+      - query
+      - export
+      - batch/exec-file
+      - audit export
+      - mcp
+      - agent
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 入口变化时复核调用及多入口门控；未执行桌面、Web 和跨平台端到端验证。
+    scan_evidence:
+      - internal/cli/cli.go:153-211
+      - Dockerfile.cli:43-44
+    negative_checks:
+      - 顶层 export 与 query 分支均枚举；agent 子命令另设入口组。
+    coverage_gaps:
+      - 未执行桌面、Web 和跨平台端到端验证。
+  - id: ENTRY-DATASOURCE-BUILTIN
+    category: 内置数据源
+    code_locations:
+      - internal/db/driver_support.go
+      - frontend/src/utils/connectionTypeCatalog.ts
+    capability_ids:
+      - CAP-DS-MYSQL
+      - CAP-DS-GOLDENDB
+      - CAP-DS-REDIS
+      - CAP-DS-ORACLE
+      - CAP-DS-POSTGRES
+      - CAP-DS-CHROMA
+      - CAP-DS-QDRANT
+      - CAP-DS-MILVUS
+      - CAP-DS-ROCKETMQ
+      - CAP-DS-MQTT
+      - CAP-DS-KAFKA
+      - CAP-DS-RABBITMQ
+    enumerated_items:
+      - mysql
+      - goldendb
+      - redis
+      - oracle
+      - postgres
+      - chroma
+      - qdrant
+      - milvus
+      - rocketmq
+      - mqtt
+      - kafka
+      - rabbitmq
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 入口变化时复核调用及多入口门控；未连接真实实例；版本、认证和权限矩阵未验证。
+    scan_evidence:
+      - internal/db/driver_support.go:17-30
+    negative_checks:
+      - 实际 coreBuiltinDrivers 共12项；Nacos/JVM 不混入 Database 驱动统计。
+    coverage_gaps:
+      - 未连接真实实例；版本、认证和权限矩阵未验证。
+  - id: ENTRY-DATASOURCE-OPTIONAL
+    category: 可选和 Custom 驱动
+    code_locations:
+      - internal/db/driver_support.go
+      - internal/db/database.go
+      - cmd/optional-driver-agent
+    capability_ids:
+      - CAP-DS-MARIADB
+      - CAP-DS-OCEANBASE
+      - CAP-DS-DORIS
+      - CAP-DS-STARROCKS
+      - CAP-DS-SPHINX
+      - CAP-DS-SQLSERVER
+      - CAP-DS-SQLITE
+      - CAP-DS-DUCKDB
+      - CAP-DS-DAMENG
+      - CAP-DS-KINGBASE
+      - CAP-DS-HIGHGO
+      - CAP-DS-VASTBASE
+      - CAP-DS-OPENGAUSS
+      - CAP-DS-GAUSSDB
+      - CAP-DS-IRIS
+      - CAP-DS-MONGODB
+      - CAP-DS-TDENGINE
+      - CAP-DS-IOTDB
+      - CAP-DS-CLICKHOUSE
+      - CAP-DS-ELASTICSEARCH
+      - CAP-DS-TRINO
+      - CAP-DS-CUSTOM
+    enumerated_items:
+      - mariadb
+      - oceanbase
+      - diros
+      - starrocks
+      - sphinx
+      - sqlserver
+      - sqlite
+      - duckdb
+      - dameng
+      - kingbase
+      - highgo
+      - vastbase
+      - opengauss
+      - gaussdb
+      - iris
+      - mongodb
+      - tdengine
+      - iotdb
+      - clickhouse
+      - elasticsearch
+      - trino
+      - custom
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 入口变化时复核调用及多入口门控；未执行各平台 driver-agent 安装及真实数据库矩阵。
+    scan_evidence:
+      - internal/db/driver_support.go:34-56
+      - internal/db/database.go:1105
+    negative_checks:
+      - optionalGoDrivers 共21项，Custom 走独立注册路径，分开说明而非把 Custom 当作 optionalGoDrivers 成员。
+    coverage_gaps:
+      - 未执行各平台 driver-agent 安装及真实数据库矩阵。
+  - id: ENTRY-SPECIALIZED-WORKBENCH
+    category: 专用数据源工作台
+    code_locations:
+      - frontend/src/components/WorkbenchTabContent.tsx
+      - frontend/src/components/MessageQueueWorkbench.tsx
+      - frontend/src/components/RedisViewer.tsx
+      - frontend/src/components/NacosViewer.tsx
+      - frontend/src/components/JVMOverview.tsx
+    capability_ids:
+      - CAP-REDIS-001
+      - CAP-NACOS-001
+      - CAP-JVM-001
+      - CAP-ES-001
+      - CAP-MSG-A02
+      - CAP-VECTOR-A02
+    enumerated_items:
+      - Redis key/command/monitor
+      - Nacos config/services
+      - JVM overview/resource/audit/diagnostic/monitor
+      - message-queue
+      - ES console
+      - 向量查询
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 入口变化时复核调用及多入口门控；未连接 Redis、Broker、向量或 JVM 服务。
+    scan_evidence:
+      - frontend/src/components/WorkbenchTabContent.tsx:116-193
+      - frontend/src/utils/connectionTypeCatalog.ts:129-137
+    negative_checks:
+      - 消息工作台已独立 tab；Nacos/JVM 是单独连接目录入口。
+    coverage_gaps:
+      - 未连接 Redis、Broker、向量或 JVM 服务。
+  - id: ENTRY-DELIVERY
+    category: 发布安装更新与部署
+    code_locations:
+      - .github/workflows/publish-release.yml
+      - .github/workflows/dev-build.yml
+      - .github/workflows/docker-images.yml
+      - Dockerfile.cli
+      - Dockerfile.web-server
+      - Dockerfile.mcp-server
+      - internal/app/methods_update.go
+    capability_ids:
+      - CAP-OPS-A12
+      - CAP-OPS-A13
+      - CAP-OPS-A14
+      - CAP-WEB-A03
+      - CAP-CLI-A07
+    enumerated_items:
+      - 桌面发布
+      - dev-build
+      - Driver Agent
+      - Docker CLI/Web/MCP
+      - npm CLI
+      - 更新/回滚
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 入口变化时复核调用及多入口门控；未发布、下载安装器或执行真实升级。
+    scan_evidence:
+      - Dockerfile.cli:43-44
+      - Dockerfile.web-server:64-70
+      - Dockerfile.mcp-server:45-50
+    negative_checks:
+      - CLI/Web/MCP 是不同镜像入口，不以根 Dockerfile 是否存在判断缺失。
+    coverage_gaps:
+      - 未发布、下载安装器或执行真实升级。
+  - id: ENTRY-AGENT-HARNESS
+    category: Agent 会话、运行控制与恢复
+    code_locations:
+      - internal/cli/agent_cli.go
+      - internal/ai/service/service_agent_harness.go
+      - internal/ai/runharness
+      - frontend/src/components/AIChatPanel.tsx
+    capability_ids:
+      - CAP-AI-001
+      - CAP-AI-A02
+      - CAP-AI-A06
+      - CAP-CLI-001
+    enumerated_items:
+      - agent run/chat/list/show
+      - resume/cancel
+      - approve/deny
+      - recover
+      - config
+      - snapshot/workspace
+      - AISubmitAgentInput
+      - AIControlAgentRun
+      - AIReadAgentRun
+      - AIListAgentSessions
+      - AIReadAgentSession
+      - AIMutateAgentSession
+      - AIGetAgentLedgerStatus
+    coverage_status: 部分映射
+    uncovered_reason: Agent 运行审批/恢复仅能映射 AI/CLI 聚合能力，稳定注册表尚无对应细粒度节点。
+    next_validation: 入口变化时复核调用及多入口门控；现有能力注册表只有聚合 AI/CLI 能力，缺少 Agent 运行审批/恢复细粒度 ID；本轮不修改注册表。
+    scan_evidence:
+      - internal/cli/agent_cli.go:500-532
+      - internal/ai/service/service_agent_harness.go:70-299
+    negative_checks:
+      - Agent Harness 不等于 MCP Server；按独立入口组记录，不复用旧 CLI 工具枚举。
+    coverage_gaps:
+      - 现有能力注册表只有聚合 AI/CLI 能力，缺少 Agent 运行审批/恢复细粒度 ID；本轮不修改注册表。
