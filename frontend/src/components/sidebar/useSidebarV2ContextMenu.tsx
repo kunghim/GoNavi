@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Menu } from 'antd';
+import V2ActionMenuPopup from '../common/V2ActionMenuPopup';
 import {
   V2DatabaseContextMenuView,
   V2ConnectionGroupContextMenuView,
@@ -19,6 +21,7 @@ import { t } from '../../i18n';
 import { DBQuery } from '../../../wailsjs/go/app/App';
 import { getCaseInsensitiveRawValue, getCaseInsensitiveValue, getMetadataDialect, splitQualifiedName, escapeSQLLiteral, parseSidebarTableRowCount } from './sidebarMetadataLoaders';
 import { getDataSourceCapabilities } from '../../utils/dataSourceCapabilities';
+import { isConnectionDataEditRestricted } from '../../utils/connectionReadOnly';
 import { resolveConnectionHostSummary } from '../../utils/tabDisplay';
 import { resolveConnectionIconType } from '../../utils/connectionVisual';
 import { formatSidebarRowCount } from './sidebarHelpers';
@@ -28,7 +31,7 @@ import {
   type SidebarTreeNode as TreeNode,
   type V2RailConnectionGroup,
 } from '../sidebarV2Utils';
-import { getTableDataDangerActionMeta, supportsTableTruncateAction } from '../tableDataDangerActions';
+import { getTableDataDangerActionMeta, supportsTableClearAction, supportsTableTruncateAction } from '../tableDataDangerActions';
 import {
   SIDEBAR_CONTEXT_MENU_FALLBACK_HEIGHT,
   SIDEBAR_CONTEXT_MENU_FALLBACK_WIDTH,
@@ -47,12 +50,41 @@ export type SidebarContextMenuState = {
   sourceX?: number;
   sourceY?: number;
   items: any;
-  kind?: 'v2-table' | 'v2-database' | 'v2-schema' | 'v2-table-group' | 'v2-connection' | 'v2-connection-group';
+  kind?: 'v2-table' | 'v2-database' | 'v2-schema' | 'v2-table-group' | 'v2-connection' | 'v2-connection-group' | 'v2-node';
   node?: any;
   rootClassName?: string;
   overlayStyle?: React.CSSProperties;
   maxHeight?: number;
 };
+
+export const buildSidebarNodeMenuProps = ({
+  menu,
+  portalRef,
+  onClose,
+}: {
+  menu: SidebarContextMenuState;
+  portalRef: React.RefObject<HTMLDivElement | null>;
+  onClose: () => void;
+}) => ({
+  className: 'gn-v2-sidebar-node-menu',
+  items: menu.items,
+  selectable: false,
+  onClick: onClose,
+  getPopupContainer: () => portalRef.current || document.body,
+});
+
+export const SidebarNodeContextMenuContent: React.FC<{
+  menu: SidebarContextMenuState;
+  portalRef: React.RefObject<HTMLDivElement | null>;
+  onClose: () => void;
+}> = ({ menu, portalRef, onClose }) => (
+  <V2ActionMenuPopup
+    title={String(menu.node?.title || t('sidebar.context_menu.object_fallback'))}
+    badge={String(menu.node?.type || 'OBJECT').toUpperCase()}
+  >
+    <Menu {...buildSidebarNodeMenuProps({ menu, portalRef, onClose })} />
+  </V2ActionMenuPopup>
+);
 
 type SidebarV2ContextMenuOptions = {
   connections: SavedConnection[];
@@ -339,7 +371,12 @@ export const useSidebarV2ContextMenu = ({
       const statsKey = getV2TableContextMenuStatsKey(node);
       const stats = v2TableContextMenuStats[statsKey];
       const isStarRocks = getMetadataDialect(node.dataRef as SavedConnection) === 'starrocks';
-      const supportsCopyTable = getDataSourceCapabilities(node.dataRef?.config).supportsCopyTable;
+      const dataSourceCapabilities = getDataSourceCapabilities(node.dataRef?.config);
+      const supportsCopyTable = dataSourceCapabilities.supportsCopyTable;
+      const supportsClear = supportsTableClearAction(
+          node.dataRef?.config?.type,
+          node.dataRef?.config?.driver,
+      ) && !isConnectionDataEditRestricted(node.dataRef?.config);
       const supportsMessagePublish = Boolean(resolveMessagePublishTarget(node));
       const isPinned = isSidebarTablePinned(
           pinnedSidebarTables,
@@ -355,10 +392,11 @@ export const useSidebarV2ContextMenu = ({
               stats={stats}
               isPinned={isPinned}
               supportsTruncate={supportsTableTruncateAction(node.dataRef?.config?.type, node.dataRef?.config?.driver)}
+              supportsClear={supportsClear}
               supportsCopyTable={supportsCopyTable}
               supportsStarRocksRollup={isStarRocks}
               supportsMessagePublish={supportsMessagePublish}
-              supportsBatchTables={getDataSourceCapabilities(node.dataRef?.config).supportsSqlQueryExport}
+              supportsBatchTables={dataSourceCapabilities.supportsSqlQueryExport}
               onAction={(action) => {
                   setContextMenu(null);
                   handleV2TableContextMenuAction(node, action);
@@ -511,6 +549,15 @@ export const useSidebarV2ContextMenu = ({
       if (menu.kind === 'v2-table-group') return renderV2TableGroupContextMenu(menu.node);
       if (menu.kind === 'v2-connection') return renderV2ConnectionContextMenu(menu.node);
       if (menu.kind === 'v2-connection-group') return renderV2ConnectionGroupContextMenu(menu.node);
+      if (menu.kind === 'v2-node') {
+          return (
+              <SidebarNodeContextMenuContent
+                  menu={menu}
+                  portalRef={contextMenuPortalRef}
+                  onClose={() => setContextMenu(null)}
+              />
+          );
+      }
       return null;
   };
 

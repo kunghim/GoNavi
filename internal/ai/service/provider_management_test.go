@@ -51,7 +51,8 @@ func TestProviderManagementCLIModelCatalogRestoresHiddenExecutionEnvironment(t *
 	}
 	if err := service.AISaveProvider(ai.ProviderConfig{
 		ID: "codex-catalog", Type: "custom", AuthMode: "local-cli", APIFormat: "codex-cli",
-		CLIEnv: map[string]string{"CODEX_HOME": codexHome},
+		CLIPath: filepath.Join(t.TempDir(), "missing-codex"),
+		CLIEnv:  map[string]string{"CODEX_HOME": codexHome},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -254,8 +255,9 @@ func TestProviderManagementCursorCLIAndCloudAPIRemainIndependent(t *testing.T) {
 		return nil, nil
 	}
 	result := service.AIListModels()
-	if result["success"] != true || result["source"] != "static" || !reflect.DeepEqual(result["models"], []string{"saved-model"}) {
-		t.Fatalf("chat model list must preserve the user's saved selection: %v", result)
+	models, ok := result["models"].([]string)
+	if result["success"] != true || result["source"] != "static" || !ok || len(models) != 0 {
+		t.Fatalf("removed favorite models must not survive provider save: %v", result)
 	}
 }
 

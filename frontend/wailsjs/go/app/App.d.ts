@@ -127,6 +127,8 @@ export function DBQuery(arg1:connection.ConnectionConfig,arg2:string,arg3:string
 
 export function DBQueryAI(arg1:connection.ConnectionConfig,arg2:string,arg3:string):Promise<connection.QueryResult>;
 
+export function DBQueryApplicationWithCancel(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string):Promise<connection.QueryResult>;
+
 export function DBQueryAudited(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string):Promise<connection.QueryResult>;
 
 export function DBQueryIsolated(arg1:connection.ConnectionConfig,arg2:string,arg3:string):Promise<connection.QueryResult>;
@@ -265,6 +267,10 @@ export function ExecuteElasticsearchConsole(arg1:connection.ConnectionConfig,arg
 
 export function ExecuteSQLFile(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string):Promise<connection.QueryResult>;
 
+export function ExportConnectionsExcel(arg1:app.ConnectionExportOptions):Promise<connection.QueryResult>;
+
+export function ExportConnectionsExcelPayload(arg1:app.ConnectionExportOptions):Promise<connection.QueryResult>;
+
 export function ExportConnectionsPackage(arg1:app.ConnectionExportOptions):Promise<connection.QueryResult>;
 
 export function ExportConnectionsPayload(arg1:app.ConnectionExportOptions):Promise<connection.QueryResult>;
@@ -313,6 +319,8 @@ export function GenerateQueryID():Promise<string>;
 
 export function GetAppInfo():Promise<connection.QueryResult>;
 
+export function GetBrandIconDataURL(arg1:string):Promise<string>;
+
 export function GetDataRootDirectoryInfo():Promise<connection.QueryResult>;
 
 export function GetDatabaseDiagnosticPackagePreview():Promise<connection.QueryResult>;
@@ -360,6 +368,8 @@ export function GetUpdateChannel():Promise<connection.QueryResult>;
 export function GetUpdateDownloadTask():Promise<connection.QueryResult>;
 
 export function ImportConfigFile():Promise<connection.QueryResult>;
+
+export function ImportConnectionsExcelFileBase64(arg1:string):Promise<connection.QueryResult>;
 
 export function ImportConnectionsPayload(arg1:string,arg2:string):Promise<app.ConnectionPackageImportResult>;
 
@@ -531,6 +541,8 @@ export function OpenSavedQueryDirectory():Promise<connection.QueryResult>;
 
 export function PreflightDatabaseSQLImport(arg1:connection.ConnectionConfig,arg2:string,arg3:string):Promise<connection.QueryResult>;
 
+export function PrepareWindowsBrandIconRestart(arg1:string):Promise<connection.QueryResult>;
+
 export function PreviewChanges(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:connection.ChangeSet):Promise<connection.QueryResult>;
 
 export function PreviewImportFile(arg1:string):Promise<connection.QueryResult>;
@@ -631,6 +643,8 @@ export function ResolveDriverPackageDownloadURL(arg1:string,arg2:string):Promise
 
 export function ResolveDriverRepositoryURL(arg1:string):Promise<connection.QueryResult>;
 
+export function RestartApplication():Promise<connection.QueryResult>;
+
 export function RestartSecurityUpdate(arg1:app.RestartSecurityUpdateRequest):Promise<app.SecurityUpdateStatus>;
 
 export function ResultDiffClose(arg1:string):Promise<connection.QueryResult>;
@@ -692,8 +706,6 @@ export function SelectSSHKnownHostsFile(arg1:string):Promise<connection.QueryRes
 export function SelectSavedQueryDirectory(arg1:string):Promise<connection.QueryResult>;
 
 export function SetApplicationBrandIcon(arg1:string):Promise<connection.QueryResult>;
-
-export function GetBrandIconDataURL(arg1:string):Promise<string>;
 
 export function SetLanguage(arg1:string):Promise<void>;
 

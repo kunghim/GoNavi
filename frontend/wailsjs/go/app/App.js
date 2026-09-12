@@ -234,6 +234,10 @@ export function DBQueryAI(arg1, arg2, arg3) {
   return window['go']['app']['App']['DBQueryAI'](arg1, arg2, arg3);
 }
 
+export function DBQueryApplicationWithCancel(arg1, arg2, arg3, arg4) {
+  return window['go']['app']['App']['DBQueryApplicationWithCancel'](arg1, arg2, arg3, arg4);
+}
+
 export function DBQueryAudited(arg1, arg2, arg3, arg4) {
   return window['go']['app']['App']['DBQueryAudited'](arg1, arg2, arg3, arg4);
 }
@@ -510,6 +514,14 @@ export function ExecuteSQLFile(arg1, arg2, arg3, arg4) {
   return window['go']['app']['App']['ExecuteSQLFile'](arg1, arg2, arg3, arg4);
 }
 
+export function ExportConnectionsExcel(arg1) {
+  return window['go']['app']['App']['ExportConnectionsExcel'](arg1);
+}
+
+export function ExportConnectionsExcelPayload(arg1) {
+  return window['go']['app']['App']['ExportConnectionsExcelPayload'](arg1);
+}
+
 export function ExportConnectionsPackage(arg1) {
   return window['go']['app']['App']['ExportConnectionsPackage'](arg1);
 }
@@ -606,6 +618,10 @@ export function GetAppInfo() {
   return window['go']['app']['App']['GetAppInfo']();
 }
 
+export function GetBrandIconDataURL(arg1) {
+  return window['go']['app']['App']['GetBrandIconDataURL'](arg1);
+}
+
 export function GetDataRootDirectoryInfo() {
   return window['go']['app']['App']['GetDataRootDirectoryInfo']();
 }
@@ -700,6 +716,10 @@ export function GetUpdateDownloadTask() {
 
 export function ImportConfigFile() {
   return window['go']['app']['App']['ImportConfigFile']();
+}
+
+export function ImportConnectionsExcelFileBase64(arg1) {
+  return window['go']['app']['App']['ImportConnectionsExcelFileBase64'](arg1);
 }
 
 export function ImportConnectionsPayload(arg1, arg2) {
@@ -1042,6 +1062,10 @@ export function PreflightDatabaseSQLImport(arg1, arg2, arg3) {
   return window['go']['app']['App']['PreflightDatabaseSQLImport'](arg1, arg2, arg3);
 }
 
+export function PrepareWindowsBrandIconRestart(arg1) {
+  return window['go']['app']['App']['PrepareWindowsBrandIconRestart'](arg1);
+}
+
 export function PreviewChanges(arg1, arg2, arg3, arg4) {
   return window['go']['app']['App']['PreviewChanges'](arg1, arg2, arg3, arg4);
 }
@@ -1242,6 +1266,10 @@ export function ResolveDriverRepositoryURL(arg1) {
   return window['go']['app']['App']['ResolveDriverRepositoryURL'](arg1);
 }
 
+export function RestartApplication() {
+  return window['go']['app']['App']['RestartApplication']();
+}
+
 export function RestartSecurityUpdate(arg1) {
   return window['go']['app']['App']['RestartSecurityUpdate'](arg1);
 }
@@ -1364,10 +1392,6 @@ export function SelectSavedQueryDirectory(arg1) {
 
 export function SetApplicationBrandIcon(arg1) {
   return window['go']['app']['App']['SetApplicationBrandIcon'](arg1);
-}
-
-export function GetBrandIconDataURL(arg1) {
-  return window['go']['app']['App']['GetBrandIconDataURL'](arg1);
 }
 
 export function SetLanguage(arg1) {

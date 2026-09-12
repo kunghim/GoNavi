@@ -65,9 +65,8 @@ import { useAIChatSessionState } from './ai/useAIChatSessionState';
 import { useWorkbenchTabs } from '../hooks/useWorkbenchTabs';
 import { useI18n } from '../i18n/provider';
 import {
-    coerceThinkingIntensityForProfile,
-    defaultThinkingIntensityForProfile,
-    resolveThinkingIntensityProfile,
+    coerceThinkingIntensityForControl,
+    resolveProviderThinkingIntensityControl,
 } from '../utils/aiThinkingIntensity';
 
 interface AIChatPanelProps {
@@ -75,7 +74,7 @@ interface AIChatPanelProps {
     darkMode: boolean;
     bgColor?: string;
     onClose: () => void;
-    onOpenSettings?: () => void;
+    onOpenSettings?: (providerId?: string) => void;
     onWidthChange?: (width: number) => void;
     overlayTheme: OverlayWorkbenchTheme;
     /** dock：侧栏；detached：独立浮动窗内 */
@@ -89,6 +88,9 @@ interface AIChatPanelProps {
 }
 
 const genId = () => `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+const createRunStopFailureMessageId = (runId: string): string =>
+    `agent-run-${runId}-stop-error`;
 
 const toAgentAttachments = (attachments: AIChatAttachment[]): AgentAttachment[] =>
     attachments
@@ -143,27 +145,46 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
     const [pendingRecoveries, setPendingRecoveries] = useState<Record<string, AIRunRecoveryState>>({});
     const [waitingWorkspaces, setWaitingWorkspaces] = useState<Record<string, AIRunWorkspaceState>>({});
     const [runStateVersion, setRunStateVersion] = useState(0);
+    const [stopRequestVersion, setStopRequestVersion] = useState(0);
     const [runControlBusyKey, setRunControlBusyKey] = useState<string | null>(null);
     const [showScrollBottom, setShowScrollBottom] = useState(false);
     const [historyOpen, setHistoryOpen] = useState(false);
     const [activePanelMode, setActivePanelMode] = useState<'chat' | 'insights' | 'history'>('chat');
     const [composerNoticeState, setComposerNoticeState] = useState<AIComposerNoticeDescriptor | null>(null);
-    const [thinkingIntensity, setThinkingIntensity] = useState('medium');
+    const [thinkingIntensity, setThinkingIntensity] = useState('');
     const {
         activeProvider,
+        cliCapabilities,
         composerNotice: runtimeComposerNotice,
         dynamicModels,
         fetchDynamicModels,
+        fetchProviderModels,
         handleComposerAction,
         handleModelChange,
+        handleProviderModelChange,
         handleOpenSettingsFromPanel,
         loadingModels,
+        providers,
+        providerModels,
+        providerCatalogs,
     } = useAIChatRuntimeResources({ onOpenSettings });
+    const activeCLICapability = useMemo(() => (cliCapabilities || []).find((capability) =>
+        capability.apiFormat === String(activeProvider?.apiFormat || '').trim()), [activeProvider?.apiFormat, cliCapabilities]);
+    const activeCLIModelCatalog = activeProvider ? providerCatalogs?.[activeProvider.id] : undefined;
+    const thinkingControl = useMemo(() => activeProvider
+        ? resolveProviderThinkingIntensityControl(activeProvider, activeCLICapability, activeCLIModelCatalog)
+        : null, [
+            activeProvider?.id, activeProvider?.type, activeProvider?.authMode, activeProvider?.apiFormat,
+            activeProvider?.baseUrl, activeProvider?.model, activeProvider?.effort,
+            activeCLICapability, activeCLIModelCatalog,
+        ]);
+    const thinkingProviderIdRef = useRef('');
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const activeRunsRef = useRef(new Map<string, { state: string; revision: number; sessionId?: string }>());
     const harnessServiceRef = useRef<AIRunHarnessService | undefined>(undefined);
+    const stopRequestsInFlightRef = useRef(new Set<string>());
     const pendingConversationBranchRef = useRef<PendingConversationBranch | null>(null);
     const dispatchModeDirtyRef = useRef(false);
 
@@ -183,7 +204,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
     const sqlLogs = useStore(state => state.sqlLogs);
     const setAIActiveSessionId = useStore(state => state.setAIActiveSessionId);
     const aiPanelVisible = useStore(state => state.aiPanelVisible);
-    const isV2Ui = true;
+
     const activeShortcutPlatform = getShortcutPlatform(isMacLikePlatform());
     const {
         ghostRef,
@@ -194,7 +215,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
         panelWidth,
     } = useAIChatPanelResize({
         width,
-        isV2Ui,
         onWidthChange,
     });
     const aiChatSendShortcutBinding = useStore(state => resolveShortcutBinding(
@@ -254,30 +274,20 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
         }
     }, [runtimeComposerNotice]);
 
-    // 切换供应商/模型时，将思考强度钳制到当前体系合法档位。
+    // 切换供应商/模型时，将思考强度钳制到当前供应商和模型真实支持的档位。
     useEffect(() => {
-        if (!activeProvider) {
-            return;
-        }
-        const profile = resolveThinkingIntensityProfile({
-            type: activeProvider.type,
-            apiFormat: activeProvider.apiFormat,
-            baseUrl: activeProvider.baseUrl,
-            model: activeProvider.model,
-        });
+        if (!activeProvider || !thinkingControl) return;
+        const providerChanged = thinkingProviderIdRef.current !== activeProvider.id;
+        thinkingProviderIdRef.current = activeProvider.id;
         setThinkingIntensity((current) => {
-            const next = coerceThinkingIntensityForProfile(
-                current || defaultThinkingIntensityForProfile(profile),
-                profile,
-            );
-            return next;
+            if (providerChanged || !current) return thinkingControl.defaultValue;
+            if (current === 'default' && activeProvider.effort
+                && thinkingControl.options.some((option) => option.value === activeProvider.effort)) {
+                return activeProvider.effort;
+            }
+            return coerceThinkingIntensityForControl(current, thinkingControl);
         });
-    }, [
-        activeProvider?.type,
-        activeProvider?.apiFormat,
-        activeProvider?.baseUrl,
-        activeProvider?.model,
-    ]);
+    }, [activeProvider?.id, activeProvider?.effort, thinkingControl]);
 
     const getConnectionName = useCallback(() => {
         let connectionId = activeContext?.connectionId;
@@ -483,11 +493,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
     const isTrackedRun = useCallback((runId: string): boolean => activeRunsRef.current.has(runId), []);
     const trackedRunIds = Array.from(activeRunsRef.current.keys());
 
-    const handleRunTerminal = useCallback((_runId: string, sessionId: string) => {
+    const handleRunTerminal = useCallback((runId: string, sessionId: string) => {
+        deleteAIChatMessage(sessionId, createRunStopFailureMessageId(runId));
         const service = harnessServiceRef.current || getAIRunHarnessService();
         harnessServiceRef.current = service;
         void hydrateSessionProjection(sessionId, service);
-    }, [hydrateSessionProjection]);
+    }, [deleteAIChatMessage, hydrateSessionProjection]);
 
     useAIChatRunEventSubscription({
         sid,
@@ -512,6 +523,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
         [runStateVersion, sid],
     );
     const hasActiveRun = activeRuns.length > 0;
+    const stopRequestPending = useMemo(
+        () => activeRuns.some(({ runId }) => stopRequestsInFlightRef.current.has(runId)),
+        [activeRuns, stopRequestVersion],
+    );
     const visibleApprovals = useMemo(
         () => Object.values(pendingApprovals).filter((approval) => approval.sessionId === sid),
         [pendingApprovals, sid],
@@ -525,12 +540,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
         [waitingWorkspaces, sid],
     );
 
-    const refreshRunAfterRevisionConflict = useCallback(async (
+    const refreshRunProjection = useCallback(async (
         runId: string,
         sessionId: string,
         service: AIRunHarnessService | undefined,
-    ): Promise<void> => {
-        if (!service?.AIReadAgentRun) return;
+    ): Promise<{ state: string; revision: number } | null> => {
+        if (!service?.AIReadAgentRun) return null;
         try {
             const projection = await readAgentRun({ runId, afterSequence: 0, limit: 1 }, service);
             const state = String(projection?.run?.state || '').trim();
@@ -539,8 +554,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 handleRunStateChange(runId, state || 'queued', revision);
             }
             void hydrateSessionProjection(sessionId, service);
+            return { state, revision };
         } catch (refreshError) {
-            console.warn('Failed to refresh stale AI agent run projection', runId, refreshError);
+            console.warn('Failed to refresh AI agent run projection', runId, refreshError);
+            return null;
         }
     }, [handleRunStateChange, hydrateSessionProjection]);
 
@@ -629,7 +646,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
         } catch (error) {
             const detail = error instanceof Error ? error.message : String(error);
             if (isRevisionConflictError(error)) {
-                void refreshRunAfterRevisionConflict(runId, sessionId, service);
+                void refreshRunProjection(runId, sessionId, service);
             }
             addAIChatMessage(sessionId, {
                 id: genId(),
@@ -644,7 +661,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
         } finally {
             setRunControlBusyKey(null);
         }
-    }, [addAIChatMessage, refreshRunAfterRevisionConflict, resolveRunRevision, sid, t]);
+    }, [addAIChatMessage, refreshRunProjection, resolveRunRevision, sid, t]);
 
     const handleApprovalDecision = useCallback((
         approval: AIRunApprovalState,
@@ -902,29 +919,66 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
     }, [aiChatSendShortcutBinding, handleSend]);
 
     const handleStop = useCallback(async () => {
+        const candidate = Array.from(activeRunsRef.current.entries())
+            .reverse()
+            .find(([, run]) => run.sessionId === sid && !isTerminalRunState(run.state));
+        if (!candidate) return;
+        const [runId, run] = candidate;
+        if (stopRequestsInFlightRef.current.has(runId)) return;
+        stopRequestsInFlightRef.current.add(runId);
+        setStopRequestVersion((version) => version + 1);
+        const sessionId = run.sessionId || sid;
+        const stopFailureMessageId = createRunStopFailureMessageId(runId);
+        deleteAIChatMessage(sessionId, stopFailureMessageId);
+        let service: AIRunHarnessService | undefined;
         try {
-            const service = harnessServiceRef.current || getAIRunHarnessService();
+            service = harnessServiceRef.current || getAIRunHarnessService();
             harnessServiceRef.current = service;
             if (!service?.AIControlAgentRun) throw new Error('AIControlAgentRun is unavailable');
-            const candidate = Array.from(activeRunsRef.current.entries())
-                .reverse()
-                .find(([, run]) => run.sessionId === sid && !isTerminalRunState(run.state));
-            if (!candidate) return;
-            const [runId, run] = candidate;
             const expectedRevision = await resolveRunRevision(runId, run.revision, service);
             setSending(true);
-            await controlAgentRun({
+            const snapshot = await controlAgentRun({
                 requestId: `agent-control-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                 runId,
-                sessionId: sid,
+                sessionId,
                 action: 'cancel',
                 expectedRevision,
             }, service);
+            const nextState = String(snapshot?.state || '').trim();
+            const nextRevision = Number(snapshot?.revision || 0);
+            const latestRevision = activeRunsRef.current.get(runId)?.revision || 0;
+            if (nextState && nextRevision > 0 && nextRevision >= latestRevision) {
+                handleRunStateChange(runId, nextState, nextRevision);
+            }
         } catch (error) {
             console.warn('Failed to stop chat stream', error);
-            setSending(false);
+            // A failed bridge call can be either a definite rejection or an
+            // ambiguous transport failure after the durable command committed.
+            const refreshed = await refreshRunProjection(runId, sessionId, service);
+            if (refreshed && (refreshed.state === 'canceling' || isTerminalRunState(refreshed.state))) {
+                return;
+            }
+            const detail = error instanceof Error ? error.message : String(error);
+            const failureMessage: AIChatMessage = {
+                id: stopFailureMessageId,
+                runId,
+                role: 'assistant',
+                content: t('ai_chat.panel.message.stop_failed', { detail }),
+                rawError: detail,
+                timestamp: Date.now(),
+                loading: false,
+                phase: 'idle',
+                excludeFromAIContext: true,
+            };
+            const alreadyVisible = (useStore.getState().aiChatHistory[sessionId] || [])
+                .some((message) => message.id === stopFailureMessageId);
+            if (alreadyVisible) updateAIChatMessage(sessionId, stopFailureMessageId, failureMessage);
+            else addAIChatMessage(sessionId, failureMessage);
+        } finally {
+            stopRequestsInFlightRef.current.delete(runId);
+            setStopRequestVersion((version) => version + 1);
         }
-    }, [resolveRunRevision, sid]);
+    }, [addAIChatMessage, deleteAIChatMessage, handleRunStateChange, refreshRunProjection, resolveRunRevision, sid, t, updateAIChatMessage]);
 
     const handleCreateSession = useCallback(() => {
         if (sending || interactionDisabled) return;
@@ -1044,8 +1098,8 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
         [orderedAISessions, t],
     );
     const effectivePanelMode = useMemo(
-        () => resolveAIChatPanelMode(isV2Ui, activePanelMode),
-        [activePanelMode, isV2Ui],
+        () => resolveAIChatPanelMode(activePanelMode),
+        [activePanelMode],
     );
 
     const handleComposerActionWithNoticeReset = useCallback((actionKey: 'open-settings' | 'reload-models') => {
@@ -1063,7 +1117,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
     return (
         <div
             ref={panelRef}
-            className={`ai-chat-panel${isV2Ui ? ' gn-v2-ai-panel' : ''}${isDetachedPresentation ? ' is-detached' : ''}`}
+            className={`ai-chat-panel gn-v2-ai-panel${isDetachedPresentation ? ' is-detached' : ''}`}
             aria-busy={interactionDisabled}
             style={{
                 width: isDetachedPresentation ? '100%' : panelWidth,
@@ -1101,14 +1155,9 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 mutedColor={mutedColor}
                 textColor={textColor}
                 overlayTheme={overlayTheme}
-                isV2Ui={isV2Ui}
                 presentation={presentation}
                 onHistoryClick={() => {
-                    if (isV2Ui) {
-                        setActivePanelMode('history');
-                    } else {
-                        setHistoryOpen(true);
-                    }
+                    setActivePanelMode('history');
                 }}
                 onClear={() => {
                     handleCreateSession();
@@ -1121,7 +1170,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 sessionTitle={currentSessionTitle}
                 activeMode={effectivePanelMode}
                 onModeChange={(mode) => {
-                    if (!isV2Ui) return;
                     setActivePanelMode(mode);
                     if (mode === 'history') {
                         setHistoryOpen(false);
@@ -1140,7 +1188,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 quickActionBorder={quickActionBorder}
                 showScrollBottom={showScrollBottom}
                 contextTableNames={contextTableNames}
-                isV2Ui={isV2Ui}
                 insights={aiInsights}
                 sessions={panelHistorySessions}
                 activeSessionId={sid}
@@ -1188,6 +1235,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 sending={sending}
                 dispatchMode={dispatchMode}
                 hasActiveRun={hasActiveRun}
+                stopRequestPending={stopRequestPending}
                 onDispatchModeChange={handleDispatchModeChange}
                 onSend={handleSend}
                 onStop={handleStop}
@@ -1195,6 +1243,8 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 activeConnName={activeConnName}
                 activeContext={activeContext}
                 activeProvider={activeProvider}
+                providers={providers}
+                providerModels={providerModels}
                 dynamicModels={dynamicModels}
                 loadingModels={loadingModels}
                 sendShortcutBinding={aiChatSendShortcutBinding}
@@ -1202,9 +1252,17 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 composerNotice={composerNotice}
                 onComposerAction={handleComposerActionWithNoticeReset}
                 onModelChange={handleModelChangeWithNoticeReset}
+                onProviderModelChange={(providerId, model) => {
+                    setComposerNoticeState(null);
+                    void handleProviderModelChange(providerId, model);
+                }}
+                onManageProvider={handleOpenSettingsFromPanel}
                 onFetchModels={fetchDynamicModels}
+                onFetchProviderModels={fetchProviderModels}
                 thinkingIntensity={thinkingIntensity}
                 onThinkingIntensityChange={setThinkingIntensity}
+                cliCapability={activeCLICapability}
+                cliCatalog={activeCLIModelCatalog}
                 textareaRef={textareaRef}
                 darkMode={darkMode}
                 textColor={textColor}
@@ -1212,7 +1270,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 overlayTheme={overlayTheme}
                 contextUsageChars={contextUsageChars}
                 maxContextChars={getDynamicMaxContextChars(activeProvider?.model)}
-                isV2Ui={isV2Ui}
             />
 
             <AIHistoryDrawer

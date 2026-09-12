@@ -228,6 +228,7 @@ import {
     collectQueryEditorObjectDecorationCandidates,
     collectQueryEditorReferencedDatabaseNames,
     collectQueryEditorTableReferences,
+    resolveQueryEditorExecutionContext,
     QUERY_EDITOR_OBJECT_DECORATION_MAX_IDENTIFIERS,
     dispatchQueryEditorSidebarLocate,
     findCompletionTablesByDatabase,
@@ -509,7 +510,6 @@ const buildQueryEditorInlineMemoryEntries = ({
 const buildQueryEditorMonacoOptions = (
     isObjectEditQueryTab: boolean,
     wordWrapEnabled = false,
-    preserveLegacyObjectEditTypography = false,
 ) => ({
     minimap: { enabled: false },
     automaticLayout: true,
@@ -531,9 +531,6 @@ const buildQueryEditorMonacoOptions = (
     inlineSuggest: buildQueryEditorAiInlineSuggestOptions(),
     ...(isObjectEditQueryTab
         ? {
-            ...(preserveLegacyObjectEditTypography
-                ? { fontSize: 14, lineHeight: 24 }
-                : {}),
             lineNumbersMinChars: 4,
             stickyScroll: { enabled: false },
         }
@@ -2086,11 +2083,10 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       () => buildQueryEditorMonacoOptions(
           isObjectEditQueryTab,
           wordWrapEnabled,
-          appearance.uiVersion !== 'v2',
       ),
-      [appearance.uiVersion, isObjectEditQueryTab, wordWrapEnabled],
+      [isObjectEditQueryTab, wordWrapEnabled],
   );
-  
+
   type ResultSet = QueryEditorResultSet;
 
   // Result Sets (session cache survives detach/attach remounts)
@@ -2466,7 +2462,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
   const languagePreference = useStore((state) => state.languagePreference);
   void languagePreference;
   const darkMode = theme === 'dark';
-  const isV2Ui = appearance.uiVersion === 'v2';
+
   const sqlFormatOptions = useStore(state => state.sqlFormatOptions);
   const setSqlFormatOptions = useStore(state => state.setSqlFormatOptions);
   const queryEditorEditorHeightRatio = sanitizeQueryEditorEditorHeightRatio(
@@ -6015,7 +6011,6 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       const mountedEditorOptions = buildQueryEditorMonacoOptions(
           isObjectEditQueryTab,
           wordWrapEnabled,
-          !isV2Ui,
       );
       editor.updateOptions?.(isElasticsearchMode ? {
           ...mountedEditorOptions,
@@ -6024,7 +6019,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           inlineSuggest: { enabled: false },
       } : mountedEditorOptions);
 
-      if (isV2Ui && typeof editor.onContextMenu === 'function') {
+      if (typeof editor.onContextMenu === 'function') {
           editor.onContextMenu(() => {
               decorateV2MonacoContextMenu();
               window.setTimeout(decorateV2MonacoContextMenu, 0);
@@ -10458,7 +10453,41 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
         clearUnpinnedResultSets();
         return;
     }
-    if (!canUseQueryEditorDatabaseContext(currentConnection, currentDb)) {
+    const executionDialect = resolveSqlDialect(
+        String(currentConnection?.config?.type || ''),
+        String(currentConnection?.config?.driver || ''),
+        { oceanBaseProtocol: currentConnection?.config?.oceanBaseProtocol },
+    );
+    const sqlContext = resolveQueryEditorExecutionContext(
+        executableSQL,
+        executionDialect,
+        currentDbRef.current,
+        currentSchemaRef.current,
+        visibleDbsRef.current,
+    );
+    if (sqlContext.dbName || sqlContext.schemaName) {
+        if (sqlContext.schemaName && canSelectQuerySchema && pendingSqlTransactionRef.current) {
+            message.warning(translate('query_editor.transaction.message.pending_managed_transaction'));
+            return;
+        }
+        if (sqlContext.schemaName && canSelectQuerySchema && queryContextLockRunSeqRef.current !== 0) {
+            message.info(translate('common.loading'));
+            return;
+        }
+        if (sqlContext.dbName && !switchQueryContext(currentConnectionIdRef.current, sqlContext.dbName)) return;
+        if (sqlContext.schemaName && canSelectQuerySchema) {
+            const nextSchema = sqlContext.schemaName;
+            schemaContextKeyRef.current = `${tab.id}\u0000${currentConnectionIdRef.current}\u0000${currentDbRef.current}`;
+            currentSchemaRef.current = nextSchema;
+            latestSelectedSchemaRef.current = nextSchema;
+            setCurrentSchema(nextSchema);
+            setSchemaList((current) => current.includes(nextSchema) ? current : [nextSchema, ...current]);
+            updateQueryTabDraft(tab.id, { schemaName: nextSchema });
+        }
+    }
+    const executionDbName = currentDbRef.current;
+    const executionSchemaName = currentSchemaRef.current;
+    if (!canUseQueryEditorDatabaseContext(currentConnection, executionDbName)) {
         message.error(translate('query_editor.message.select_database_first'));
         return;
     }
@@ -10511,7 +10540,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
         const approved = await confirmProductionRisk({
             connection: conn,
             action: translate('connection.production_risk.action.execute_sql'),
-            target: currentDb,
+            target: executionDbName,
             translate,
         });
         if (!isCurrentRun()) return;
@@ -10530,7 +10559,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
         ssh: conn.config.ssh || { host: "", port: 22, user: "", password: "", keyPath: "" },
         timeout: resolveQueryEditorConnectionTimeout(conn.config),
     };
-        const executionConfig = buildSqlExecutionConnectionConfig(config);
+        const executionConfig = buildSqlExecutionConnectionConfig(config, executionSchemaName);
         const executionConnectionParams = canSelectQuerySchema
             ? String(executionConfig.connectionParams || '')
             : undefined;
@@ -10613,8 +10642,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                 const mongoRPCConfig = buildRpcConnectionConfig(config) as any;
                 const res = await invokeRequestScopedApp(
                     'DBQueryWithCancel',
-                    [mongoRPCConfig, currentDb, executedSql, queryId],
-                    () => DBQueryWithCancel(mongoRPCConfig, currentDb, executedSql, queryId),
+                    [mongoRPCConfig, executionDbName, executedSql, queryId],
+                    () => DBQueryWithCancel(mongoRPCConfig, executionDbName, executedSql, queryId),
                 );
                 if (!isCurrentRun()) return;
                 if (currentQueryIdRef.current === queryId) {
@@ -10631,7 +10660,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                     duration,
                     message: res.success ? '' : res.message,
                     affectedRows: (res.success && !Array.isArray(res.data)) ? (res.data as any).affectedRows : (Array.isArray(res.data) ? res.data.length : undefined),
-                    dbName: currentDb
+                    dbName: executionDbName
                 });
                 if (!res.success) {
                     const prefix = statements.length > 1
@@ -10836,7 +10865,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                         const leadingSegments = splitQueryIdentifierPathSegments(leadingTable.tableText);
                         const oracleLookupDbCandidates = leadingSegments.length >= 2
                             ? [String(leadingSegments[0]?.value || '').trim()].filter(Boolean)
-                            : resolveOracleLikeLookupSchemaCandidates(config, currentDb);
+                            : resolveOracleLikeLookupSchemaCandidates(config, executionDbName);
                         let exactQualifiedTable: string | undefined;
                         for (const oracleLookupDbName of oracleLookupDbCandidates) {
                             const oracleTables = oracleLookupDbName ? await getOracleTablesForDb(oracleLookupDbName) : [];
@@ -10873,7 +10902,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                         statement: statementForPlan,
                         originalStatement: sourceStatements[index],
                         dbType: normalizedDbType,
-                        currentDb,
+                        currentDb: executionDbName,
                         config: executionConfig,
                         forceReadOnly: forceReadOnlyResult,
                         allowOracleRowID: allowOracleRowIDByStatement[index],
@@ -10924,13 +10953,13 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                 res = useManagedTransaction
                     ? await DBQueryMultiTransactional(
                         buildRpcConnectionConfig(executionConfig) as any,
-                        currentDb,
+                        executionDbName,
                         fullSQL,
                         queryId,
                     )
                     : await executeSqlEditorMultiQuery(
                         config,
-                        currentDb,
+                        executionDbName,
                         fullSQL,
                         queryId,
                         executableStatements,
@@ -10991,7 +11020,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                 status: res.success ? 'success' : 'error',
                 duration,
                 message: res.success ? '' : res.message,
-                dbName: currentDb
+                dbName: executionDbName
             });
 
             const confirmedStatementCount = res.success
@@ -11008,7 +11037,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                 invalidateQueryEditorHoverDdlCacheForConnection(conn.id);
                 dispatchSidebarDatabaseRefresh({
                     connectionId: conn.id,
-                    dbName: currentDb,
+                    dbName: executionDbName,
                 });
             }
 
@@ -11056,7 +11085,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                     try {
                         const restoreResult = await DBQueryAudited(
                             buildRpcConnectionConfig(executionConfig) as any,
-                            currentDb,
+                            executionDbName,
                             triggerRollbackSql,
                             'table_designer',
                         );
@@ -11083,7 +11112,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                     invalidateQueryEditorHoverDdlCacheForConnection(conn.id);
                     dispatchSidebarDatabaseRefresh({
                         connectionId: conn.id,
-                        dbName: currentDb,
+                        dbName: executionDbName,
                     });
                 }
                 const errorMsg = String(res.message || '').toLowerCase();
@@ -11123,7 +11152,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                         createdAt: Date.now(),
                         statementCount: managedTransactionStatementCount,
                         dbType: normalizedDbType,
-                        dbName: currentDb,
+                        dbName: executionDbName,
                         statements: sourceStatements,
                         executionDurationMs: duration,
                     });
@@ -11263,7 +11292,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                         ddlDbName: tableRef?.ddlDbName,
                         ddlTableName: tableRef?.ddlTableName,
                         executionConnectionId: currentConnectionId,
-                        executionDbName: currentDb,
+                        executionDbName: executionDbName,
                         executionConnectionParams,
                         pkColumns: plan?.pkColumns || [],
                         editLocator,
@@ -11330,7 +11359,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             status: 'error',
             duration: Date.now() - runStartTime,
             message: e.message,
-            dbName: currentDb
+            dbName: executionDbName
         });
         updateResultPanelVisibility(true);
         setExecutionError(formattedError);
@@ -12176,7 +12205,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
               if (position) {
                   const mText = (sqlText.endsWith('\n') ? sqlText : sqlText + '\n');
                   const startRange = new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column);
-                  
+
                   editor.executeEdits('ai-insert', [{
                       range: startRange,
                       text: (position.column > 1 ? '\n' : '') + mText,
@@ -12186,13 +12215,13 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                   if (typeof nextValue === 'string') {
                       applyQueryState(nextValue);
                   }
-                  
+
                   // 定位并滚动到可见区域
                   const targetLine = position.lineNumber + (position.column > 1 ? 1 : 0);
                   editor.revealLineInCenterIfOutsideViewport(targetLine);
                   editor.setPosition({ lineNumber: targetLine + mText.split('\n').length - 1, column: 1 });
                   editor.focus();
-                  
+
                   if (!e.detail.runImmediately) {
                       message.success(translate('query_editor.message.insert_success'));
                   }
@@ -12895,7 +12924,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       const currentActiveKey = resolveEffectiveActiveResultKey(
           currentResultSets,
           activeResultKeyRef.current,
-          isV2Ui,
+          true,
       );
       const nextResultSets = currentResultSets.filter(result => result.key !== key);
       const nextActiveKey = currentActiveKey && currentActiveKey !== key
@@ -12903,7 +12932,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           : nextResultSets[idx]?.key
               || nextResultSets[idx - 1]?.key
               || nextResultSets[0]?.key
-              || (isV2Ui ? QUERY_EDITOR_SQL_LOG_TAB_KEY : '');
+              || (QUERY_EDITOR_SQL_LOG_TAB_KEY);
 
       resultSetsRef.current = nextResultSets;
       activeResultKeyRef.current = nextActiveKey;
@@ -12924,7 +12953,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           const effectiveActiveKey = resolveEffectiveActiveResultKey(
               resultSetsRef.current,
               activeResultKeyRef.current,
-              isV2Ui,
+              true,
           );
           if (!effectiveActiveKey) return;
 
@@ -12943,7 +12972,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       return () => {
           window.removeEventListener(CLOSE_ACTIVE_RESULT_TAB_EVENT, handleCloseActiveResultTab);
       };
-  }, [isActive, isV2Ui, tab.id, updateResultPanelVisibility]);
+  }, [isActive, true, tab.id, updateResultPanelVisibility]);
 
   const handleResultPinnedChange = (key: string, pinned: boolean) => {
       const nextResultSets = resultSetsRef.current.map((result) => (
@@ -13149,7 +13178,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
               handleRedetachQueryResult as EventListener,
           );
       };
-  }, [isV2Ui, tab.id, updateResultPanelVisibility]);
+  }, [tab.id, updateResultPanelVisibility]);
 
   const toggleQueryResultsPanelShortcutLabel =
       toggleQueryResultsPanelShortcutBinding.enabled && toggleQueryResultsPanelShortcutBinding.combo
@@ -13172,7 +13201,6 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
   const sqlEditorTransactionToolbar = (
       <QueryEditorTransactionToolbar
-          isV2Ui={isV2Ui}
           darkMode={darkMode}
           transaction={pendingSqlTransaction}
           autoCommitRemainingSeconds={sqlEditorAutoCommitRemainingSeconds}
@@ -13188,22 +13216,19 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           flex: '1 1 auto',
           minHeight: 0,
       };
-  const resolvedQueryEditorStageStyle: React.CSSProperties = isV2Ui
-      ? {
+  const resolvedQueryEditorStageStyle: React.CSSProperties = {
           ...queryEditorStageStyle,
-      } as React.CSSProperties
-      : queryEditorStageStyle;
+      } as React.CSSProperties;
 
   return (
-    <div ref={queryEditorRootRef} className={isV2Ui ? 'gn-v2-query-editor' : undefined} style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+    <div ref={queryEditorRootRef} className="gn-v2-query-editor" style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <div
         ref={editorPaneRef}
-        className={isV2Ui ? 'gn-v2-query-editor-pane' : undefined}
+        className="gn-v2-query-editor-pane"
         style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: isResultPanelVisible ? '0 0 auto' : '1 1 auto' }}
       >
       <QueryEditorToolbar
         editorMode={isElasticsearchMode ? 'elasticsearch' : 'sql'}
-        isV2Ui={isV2Ui}
         currentConnectionId={currentConnectionId}
         currentDb={currentDb}
         queryCapableConnections={queryCapableConnections}
@@ -13296,19 +13321,19 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           setViewDataVerifyOpen(true);
         }}
       />
-      
+
       <div
         ref={editorStageRef}
-        className={isV2Ui ? 'gn-v2-query-monaco-stage gn-query-monaco-stage' : 'gn-query-monaco-stage'}
+        className="gn-v2-query-monaco-stage gn-query-monaco-stage"
         style={resolvedQueryEditorStageStyle}
       >
         <div
           ref={editorShellRef}
-          className={isV2Ui ? 'gn-v2-query-monaco-shell gn-query-monaco-shell' : 'gn-query-monaco-shell'}
+          className="gn-v2-query-monaco-shell gn-query-monaco-shell"
           style={{ flex: '1 1 auto', minHeight: 0, minWidth: 0 }}
         >
-          <Editor 
-            height="100%" 
+          <Editor
+            height="100%"
             gonaviTypography="sql"
             language={queryEditorMonacoLanguage}
             theme={darkMode ? "transparent-dark" : "transparent-light"}
@@ -13346,7 +13371,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
       {isResultPanelVisible && (
         <div
-          className={isV2Ui ? 'gn-v2-query-resizer' : undefined}
+          className="gn-v2-query-resizer"
           onMouseDown={handleMouseDown}
           style={{
               height: '5px',
@@ -13370,7 +13395,6 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           executionError={executionError}
           sqlLogCount={sqlLogCount}
           darkMode={darkMode}
-          isV2Ui={isV2Ui}
           currentDb={currentDb}
           currentConnectionId={currentConnectionId}
           maxRows={queryOptions?.maxRows ?? 5000}
@@ -13707,7 +13731,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
         </div>
       </Modal>
 
-      <Modal 
+      <Modal
         title={translate(
           saveModalMode === 'rename'
             ? 'query_editor.save_modal.rename_title'
@@ -13715,8 +13739,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
               ? 'query_editor.save_modal.save_as_title'
               : 'query_editor.save_modal.title',
         )}
-        open={isSaveModalOpen} 
-        onOk={handleSave} 
+        open={isSaveModalOpen}
+        onOk={handleSave}
         onCancel={() => setIsSaveModalOpen(false)}
         okText={translate(
           saveModalMode === 'rename'

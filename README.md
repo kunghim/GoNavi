@@ -11,7 +11,7 @@
 <p align="center">
   A high-performance cross-platform database client built with
   <a href="https://wails.io">Wails</a> (Go) + <a href="https://react.dev">React</a>.
-  Desktop-first. MCP-ready. ~30MB class binaries.
+  Desktop-first. MCP-ready. ~20–26MB class installers.
 </p>
 
 <p align="center">
@@ -57,16 +57,24 @@
 
 ## Why GoNavi?
 
-Most database GUIs are Electron shells with megabytes of tax. GoNavi takes a different path:
+Most database GUIs are Electron shells with megabytes of tax. GoNavi takes a different path — and “lightweight” only makes sense if you separate three numbers:
+
+| Number | What it means | GoNavi (v0.9.8) |
+|---|---|---|
+| **Installer size** | What you download | **~20–26 MB** class (Win / macOS / Linux release assets) |
+| **Steady-state RSS** | What RAM the running UI holds | Linux WebKit build, idle empty workbench: main ≈ **429 MB**; with WebKit helpers ≈ **765 MB** (method below) |
+| **UI stack** | Chromium tax or not | **Go + system WebView (Wails)** — not Electron |
 
 | | Typical Electron client | **GoNavi** |
 |---|---|---|
 | Runtime | Chromium + Node | **Go + native WebView** |
-| Binary size | Hundreds of MB | **~30MB class** |
+| Installer | Hundreds of MB common | **~20–26 MB class** |
 | Startup | Heavy | **Fast** |
-| Memory | High baseline | **Lean** |
-| AI / Agents | Bolt-on or absent | **First-class MCP + multi-provider AI** |
+| Memory claim | Often mixed with installer size | **Measure RSS separately** (see note) |
+| AI / Agents | Bolt-on or absent | **First-class MCP + multi-provider AI** (draft SQL; GUI still owns schema / edits / EXPLAIN) |
 | Data sources | Mostly RDBMS | **SQL · Cache · Vector · MQ · Search · Time-series · Domestic DBs** |
+
+> **Installer MB ≠ RAM.** The RSS figures above are one Linux cloud run of the v0.9.8 WebKit41 build (empty workbench, no DB connections, remote display, ~30–40 s steady). Do not compare them to installer size, or to unverified “native ~80 MB” marketing. Windows / macOS laptop numbers may differ — treat them as a labeled sample, not a leaderboard score.
 
 > **One cockpit for MySQL, Postgres, Redis, Kafka, Milvus, OceanBase, ClickHouse…**  
 > Query, edit, audit, sync — and hand structured context to coding agents without leaking passwords off-host.
@@ -208,7 +216,7 @@ Special thanks to **[APISmart](https://www.apismart.ai/)** and **[HuaLongAI](htt
 | | |
 |---|---|
 | **Built-in** | MySQL · GoldenDB · PostgreSQL · Oracle · Redis · Chroma · Qdrant · Milvus · RocketMQ · MQTT · Kafka · RabbitMQ |
-| **Optional** | MariaDB · Doris · StarRocks · Sphinx · SQL Server · SQLite · DuckDB · OceanBase · Dameng · Kingbase · HighGo · Vastbase · OpenGauss · GaussDB · IRIS · MongoDB · TDengine · IoTDB · ClickHouse · Trino · Elasticsearch · Custom Driver/DSN |
+| **Optional** | MariaDB · Doris · StarRocks · Sphinx · SQL Server · SQLite · DuckDB · OceanBase · Dameng · Kingbase · HighGo · Vastbase · OpenGauss · GaussDB · IRIS · Caché · MongoDB · TDengine · IoTDB · ClickHouse · Trino · Elasticsearch · Custom Driver/DSN |
 
 <details>
 <summary><b>Full capability matrix</b></summary>
@@ -242,6 +250,7 @@ Special thanks to **[APISmart](https://www.apismart.ai/)** and **[HuaLongAI](htt
 | Domestic DB | OpenGauss | Optional driver agent | PostgreSQL-like schema browsing, SQL query, object management |
 | Domestic DB | GaussDB | Optional driver agent | PostgreSQL-like schema browsing, SQL query, object management |
 | Multi-model | InterSystems IRIS | Optional driver agent | Namespace browsing, SQL query, object management |
+| Multi-model | InterSystems Caché | Optional driver agent | Namespace browsing, Caché SQL query, object management |
 | Document | MongoDB | Optional driver agent | Document query, collection browsing, connection management |
 | Time-series | TDengine | Optional driver agent | Time-series schema browsing and querying |
 | Time-series | Apache IoTDB | Optional driver agent | Storage group / device / timeseries browsing and querying |

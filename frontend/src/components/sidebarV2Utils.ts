@@ -209,7 +209,6 @@ export const dedupeSidebarTreeNodesByKey = (
 
   return result;
 };
-
 /**
  * Replaces one node's children while preserving the tree's global key
  * invariant. Canonicalize before the replacement so stale children from a
@@ -270,18 +269,25 @@ const V2_TREE_CONTENT_TOP_PADDING_PX = 4;
 
 export const resolveSidebarTreeVirtualHeight = (
   containerHeight: number,
-  isV2Ui: boolean,
 ): number => {
   if (!Number.isFinite(containerHeight)) return 0;
   const normalizedHeight = Math.max(0, containerHeight);
   return Math.max(
     0,
     normalizedHeight - (
-      isV2Ui
-        ? V2_TREE_HORIZONTAL_SCROLL_RESERVE_PX + V2_TREE_CONTENT_TOP_PADDING_PX
-        : 0
+      V2_TREE_HORIZONTAL_SCROLL_RESERVE_PX + V2_TREE_CONTENT_TOP_PADDING_PX
     ),
   );
+};
+
+/** Exact V2 row geometry, including Ant Tree's 4px inter-row margin. */
+export const resolveSidebarTreeRowHeight = (
+  node: SidebarTreeNode | null | undefined,
+): number => {
+  if (node?.type === 'v2-table-section' || node?.type === 'v2-database-section') {
+    return 36;
+  }
+  return 30;
 };
 
 export const hasSidebarLazyChildren = (children: unknown): boolean => {
@@ -579,10 +585,9 @@ export const buildV2SidebarTableSectionedChildren = (
 export const buildSidebarTableChildrenForUi = (
   parentKey: string,
   tableNodes: SidebarTreeNode[],
-  isV2Ui: boolean,
   translate: SidebarV2Translate = translateSidebarV2Current,
 ): SidebarTreeNode[] => {
-  if (!isV2Ui) return tableNodes;
+
   return buildV2SidebarTableSectionedChildren(parentKey, tableNodes, translate);
 };
 
@@ -713,6 +718,7 @@ export const buildSidebarConnectionTagTree = (
   };
 
   const sortConnectionIds = (ids: string[], mode: ConnectionDisplaySortMode): string[] => {
+    if (mode === 'manual') return ids;
     const manualIndex = new Map(ids.map((id, index) => [id, index]));
     return [...ids].sort((left, right) => {
       const a = connectionById.get(left);
@@ -1235,11 +1241,12 @@ export const buildV2CommandSearchTreeIndex = (
         dataRef.viewName,
         dataRef.sequenceName,
         dataRef.packageName,
+        dataRef.tableComment,
         dataRef.dbName,
         dataRef.name,
         dataRef.config?.host,
       ].filter(Boolean).join(' ').toLowerCase(),
-      normalizedObjectText: `${normalizedPrimaryObjectText} ${normalizedTitle}`.trim(),
+      normalizedObjectText: `${normalizedPrimaryObjectText} ${String(dataRef.tableComment || '').trim().toLowerCase()} ${normalizedTitle}`.trim(),
       objectNode: isV2CommandSearchObjectNode(item.node),
     }];
   });
@@ -1875,5 +1882,3 @@ export const resolveSidebarDatabaseTreePruneKeys = ({
   const pruneCount = loadedDatabaseKeys.length - maxLoadedDatabases;
   return candidates.slice(0, pruneCount);
 };
-
-export const shouldClearSidebarActiveContextOnEmptySelect = (isV2Ui: boolean): boolean => !isV2Ui;

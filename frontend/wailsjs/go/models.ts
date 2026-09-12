@@ -224,7 +224,7 @@ export namespace ai {
 	    customModels?: string[];
 	    apiFormat?: string;
 	    headers?: Record<string, string>;
-	    maxTokens: number;
+	    maxTokens?: number;
 	    contextWindow?: number;
 	    cliPath?: string;
 	    cliEnv?: Record<string, string>;
@@ -260,6 +260,22 @@ export namespace ai {
 	        this.temperature = source["temperature"];
 	        this.thinkingIntensity = source["thinkingIntensity"];
 	        this.effort = source["effort"];
+	    }
+	}
+	export class ResultMaskingSettings {
+	    enabled: boolean;
+	    fullMaskFields: string[];
+	    partialMaskFields: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ResultMaskingSettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.fullMaskFields = source["fullMaskFields"];
+	        this.partialMaskFields = source["partialMaskFields"];
 	    }
 	}
 	export class SafetyResult {
@@ -321,6 +337,81 @@ export namespace ai {
 	        this.jvm = source["jvm"];
 	        this.jvmDiagnostic = source["jvmDiagnostic"];
 	    }
+	}
+
+}
+
+export namespace aiservice {
+	
+	export class AgentDataDirectoryInfo {
+	    directory: string;
+	    defaultDirectory: string;
+	    source: string;
+	    restartRequired: boolean;
+	    stats: runharness.LedgerStorageStats;
+	
+	    static createFrom(source: any = {}) {
+	        return new AgentDataDirectoryInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.directory = source["directory"];
+	        this.defaultDirectory = source["defaultDirectory"];
+	        this.source = source["source"];
+	        this.restartRequired = source["restartRequired"];
+	        this.stats = this.convertValues(source["stats"], runharness.LedgerStorageStats);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class AgentDataMaintenanceResult {
+	    info: AgentDataDirectoryInfo;
+	    maintenance: runharness.LedgerMaintenanceResult;
+	
+	    static createFrom(source: any = {}) {
+	        return new AgentDataMaintenanceResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.info = this.convertValues(source["info"], AgentDataDirectoryInfo);
+	        this.maintenance = this.convertValues(source["maintenance"], runharness.LedgerMaintenanceResult);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }
@@ -588,6 +679,20 @@ export namespace app {
 	        this.dirty = source["dirty"];
 	    }
 	}
+	export class ConnectionExcelGroupAssignment {
+	    connectionName: string;
+	    groupPath: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConnectionExcelGroupAssignment(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.connectionName = source["connectionName"];
+	        this.groupPath = source["groupPath"];
+	    }
+	}
 	export class ConnectionExportOptions {
 	    includeSecrets: boolean;
 	    filePassword?: string;
@@ -609,6 +714,7 @@ export namespace app {
 	export class ConnectionPackageImportResult {
 	    connections: connection.SavedConnectionView[];
 	    redisDbAliases?: Record<string, any>;
+	    excelGroups?: ConnectionExcelGroupAssignment[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ConnectionPackageImportResult(source);
@@ -618,6 +724,7 @@ export namespace app {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.connections = this.convertValues(source["connections"], connection.SavedConnectionView);
 	        this.redisDbAliases = source["redisDbAliases"];
+	        this.excelGroups = this.convertValues(source["excelGroups"], ConnectionExcelGroupAssignment);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1902,6 +2009,7 @@ export namespace connection {
 	    port: number;
 	    user?: string;
 	    password?: string;
+	    encodeBase64?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new HTTPTunnelConfig(source);
@@ -1913,6 +2021,7 @@ export namespace connection {
 	        this.port = source["port"];
 	        this.user = source["user"];
 	        this.password = source["password"];
+	        this.encodeBase64 = source["encodeBase64"];
 	    }
 	}
 	export class ProxyConfig {
@@ -3280,6 +3389,68 @@ export namespace runharness {
 	        this.command = source["command"];
 	    }
 	}
+	export class LedgerStorageStats {
+	    fileBytes: number;
+	    walBytes: number;
+	    allocatedBytes: number;
+	    freeBytes: number;
+	    sessionCount: number;
+	    runCount: number;
+	    snapshotCount: number;
+	    activeRunCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new LedgerStorageStats(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.fileBytes = source["fileBytes"];
+	        this.walBytes = source["walBytes"];
+	        this.allocatedBytes = source["allocatedBytes"];
+	        this.freeBytes = source["freeBytes"];
+	        this.sessionCount = source["sessionCount"];
+	        this.runCount = source["runCount"];
+	        this.snapshotCount = source["snapshotCount"];
+	        this.activeRunCount = source["activeRunCount"];
+	    }
+	}
+	export class LedgerMaintenanceResult {
+	    before: LedgerStorageStats;
+	    after: LedgerStorageStats;
+	    removedSnapshots: number;
+	    removedSessions: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new LedgerMaintenanceResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.before = this.convertValues(source["before"], LedgerStorageStats);
+	        this.after = this.convertValues(source["after"], LedgerStorageStats);
+	        this.removedSnapshots = source["removedSnapshots"];
+	        this.removedSessions = source["removedSessions"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class LedgerStatus {
 	    state: string;
 	    message?: string;
@@ -3294,6 +3465,7 @@ export namespace runharness {
 	        this.message = source["message"];
 	    }
 	}
+	
 	export class Message {
 	    id: string;
 	    sessionId: string;

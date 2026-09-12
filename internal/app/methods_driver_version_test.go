@@ -1373,6 +1373,22 @@ func TestIRISDriverDefinitionUsesOptionalAgent(t *testing.T) {
 	}
 }
 
+func TestCacheDriverDefinitionUsesIndependentOptionalAgent(t *testing.T) {
+	definition, ok := resolveDriverDefinition("cache")
+	if !ok {
+		t.Fatal("expected cache driver definition")
+	}
+	if definition.Name != "InterSystems Caché" || definition.PinnedVersion != "0.2.1" {
+		t.Fatalf("unexpected cache definition: %#v", definition)
+	}
+	if driverGoModulePathMap["cache"] != "github.com/caretdev/go-irisnative" {
+		t.Fatalf("unexpected cache module path: %q", driverGoModulePathMap["cache"])
+	}
+	if got, err := optionalDriverBuildTags("cache", ""); err != nil || got != "gonavi_cache_driver" {
+		t.Fatalf("unexpected cache build tag=%q err=%v", got, err)
+	}
+}
+
 func TestElasticsearchDriverDefinitionUsesOptionalAgent(t *testing.T) {
 	definition, ok := resolveDriverDefinition("elasticsearch")
 	if !ok {
@@ -2326,7 +2342,7 @@ func TestInstallOptionalDriverAgentFromLocalPathSupportsMongoV1DirectoryImport(t
 	writeSelfExecutable(t, filepath.Join(platformDir, assetName))
 
 	installRoot := filepath.Join(t.TempDir(), "drivers")
-	meta, err := installOptionalDriverAgentFromLocalPath(definition, packageRoot, installRoot, "1.17.4")
+	meta, err := installOptionalDriverAgentFromLocalPath(nil, definition, packageRoot, installRoot, "1.17.4")
 	if err != nil {
 		t.Fatalf("expected mongodb v1 directory import to succeed, got %v", err)
 	}
@@ -2355,7 +2371,7 @@ func TestInstallOptionalDriverAgentFromLocalPathSupportsMongoV1ZipImport(t *test
 	writeZipWithSelfExecutable(t, zipPath, filepath.ToSlash(filepath.Join(optionalDriverBundlePlatformDir(runtime.GOOS), assetName)))
 
 	installRoot := filepath.Join(t.TempDir(), "drivers")
-	meta, err := installOptionalDriverAgentFromLocalPath(definition, zipPath, installRoot, "1.17.4")
+	meta, err := installOptionalDriverAgentFromLocalPath(nil, definition, zipPath, installRoot, "1.17.4")
 	if err != nil {
 		t.Fatalf("expected mongodb v1 zip import to succeed, got %v", err)
 	}

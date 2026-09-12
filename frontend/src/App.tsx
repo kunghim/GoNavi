@@ -11,6 +11,7 @@ import Sidebar from './components/Sidebar';
 import TitleBarPrimaryActions, {
   resolveTitleBarPrimaryActionShortcut,
 } from './components/TitleBarPrimaryActions';
+import TitleBarSystemActions from './components/TitleBarSystemActions';
 import ConnectionGroupManagementModal from './components/sidebar/ConnectionGroupManagementModal';
 import TabManager from './components/TabManager';
 import FloatingWorkbenchWindows from './components/FloatingWorkbenchWindows';
@@ -23,17 +24,18 @@ import ConnectionHealthModal from './components/ConnectionHealthModal';
 import SnippetSettingsModal from './components/SnippetSettingsModal';
 import DriverManagerModal from './components/DriverManagerModal';
 import ConnectionPackagePasswordModal from './components/ConnectionPackagePasswordModal';
+import ConnectionImportSettingsPanel, {
+  buildConnectionImportGroupOptions,
+  resolveConnectionImportPlacement,
+  type ConnectionImportNotice,
+} from './components/settings/ConnectionImportSettingsPanel';
 import UpdateReleaseNotesModal from './components/UpdateReleaseNotesModal';
 import {
   buildReleaseNotesReadKey,
   isReleaseNotesRead,
   markReleaseNotesRead,
 } from './utils/updateReleaseNotesReadState';
-import {
-  shouldShowFooterReleaseNotesAction,
-  type AboutUpdateActionsSurface,
-} from './utils/aboutUpdateActions';
-import { type DataSyncEntryMode } from './components/dataSyncEntryMode';
+import { normalizeDataSyncEntryMode, type DataSyncEntryModeAlias } from './components/dataSyncEntryMode';
 import LinuxCJKFontBanner from './components/LinuxCJKFontBanner';
 import LogPanel from './components/LogPanel';
 import AIPanelErrorBoundary from './components/ai/AIPanelErrorBoundary';
@@ -49,16 +51,30 @@ import {
   resolveBrandAboutSrc,
   resolveBrandDockSrc,
   resolveBrandIconSrc,
+  resolveBrandIcon,
   setLoadedBrandIconSources,
   BRAND_ICONS,
   type BrandIconId,
 } from './brand/brandIcons';
-import { composeMacOSDockIconBase64, shouldSyncMacOSDockIcon } from './brand/macDockIcon';
+import {
+  composeMacOSDockIconBase64,
+  composeWindowsNativeIconBase64,
+  LEGACY_MASCOT_DOCK_ICON_INSET,
+  shouldSyncApplicationBrandIcon,
+} from './brand/macDockIcon';
 import CustomThemeManager from './components/settings/CustomThemeManager';
 import ToolbarButtonAppearanceSettings from './components/settings/ToolbarButtonAppearanceSettings';
 import SettingsCenterTreeNav, {
   findSettingsCenterTreeItem,
 } from './components/settings/SettingsCenterTreeNav';
+import {
+  DataDirectoryPage,
+  DirectoryChoice,
+  DirectoryMetaGrid,
+  DirectoryNote,
+  DirectoryPathDisplay,
+  DirectorySectionHeading,
+} from './components/settings/DataDirectorySettings';
 import { AI_SETTINGS_NAV_ITEMS, type AISettingsSectionKey } from './components/ai/AISettingsSidebar';
 import CustomThemeStyleHost, {
   type CustomThemeAntTokenSnapshot,
@@ -120,11 +136,17 @@ import { createGlobalProxyDraft, toSaveGlobalProxyInput } from './utils/globalPr
 import {
   detectConnectionImportKind,
   isConnectionPackagePasswordRequiredError,
+  parseConnectionsExcelImportEnvelope,
   resolveConnectionPackageExportResult,
   normalizeConnectionPackagePassword,
 } from './utils/connectionExport';
 import { downloadBrowserTextFile } from './utils/browserFileTransfer';
-import { buildDataSyncWorkbenchTab } from './utils/dataSyncTab';
+import {
+  planExcelGroupAssignments,
+  type ExcelGroupAssignment,
+  type ExcelGroupPlanContext,
+} from './utils/connectionExcelGroups';
+import { buildDataSyncWorkbenchTab, resolveExistingDataSyncWorkbenchTabId } from './utils/dataSyncTab';
 import {
   buildDriverManagerWorkbenchTab,
   DOWNLOAD_SOURCE_CHANGED_EVENT,
@@ -198,7 +220,7 @@ import {
   type SecurityUpdateRepairSource,
   type SecurityUpdateSettingsFocusTarget,
 } from './utils/securityUpdateRepairFlow';
-import { getWindowsScaleFixNudgedWidth, hasWindowsViewportScaleDrift } from './utils/windowsScaleFix';
+import { getWindowsScaleFixNudgedWidth } from './utils/windowsScaleFix';
 import {
   clearStartupWindowRestorePending,
   isStartupMaximisedWindowSettled,
@@ -242,9 +264,6 @@ import {
   installNativeWindowActivityScheduler,
   resolveTitleBarToggleIconKey,
   resolveWindowsScaleCheckDelayMs,
-  shouldApplyWindowsScaleFix,
-  shouldResetWebViewZoomForScaleFix,
-  shouldToggleMaximisedWindowForScaleFix,
   WINDOW_STATE_FALLBACK_INTERVAL_MS,
   WINDOWS_SCALE_FALLBACK_INTERVAL_MS,
   type WindowScaleFixReason,
@@ -260,6 +279,7 @@ import {
   shouldUseFullscreenAIPanelOverlay,
 } from './utils/aiPanelLayout';
 import { safeWindowRuntimeCall } from './utils/wailsRuntime';
+import { repairWindowsWindowScale } from './utils/windowsWindowScaleRepair';
 import { waitForWindowCondition } from './utils/windowTransition';
 import {
   hasNativeDetachedWindowManager,
@@ -287,6 +307,8 @@ import { canInheritNewQueryTableContext, resolveNewQueryContext } from './utils/
 import { useAppUtilityStyles } from './hooks/useAppUtilityStyles';
 import { useWorkbenchTabs } from './hooks/useWorkbenchTabs';
 import { useAIWorkspaceSnapshot } from './components/ai/useAIWorkspaceSnapshot';
+import { shouldAllowNativeContextMenu } from './utils/nativeContextMenu';
+import AgentDataSettingsPanel from './components/ai/AgentDataSettingsPanel';
 import {
   ApplyDataRootDirectory,
   ApplyLogDirectory,
@@ -300,6 +322,7 @@ import {
   OpenDataRootDirectory,
   OpenLogDirectory,
   OpenSavedQueryDirectory,
+  RestartApplication,
   SelectDataRootDirectory,
   SelectLogDirectory,
   SelectSavedQueryDirectory,
@@ -586,6 +609,7 @@ const mergeSavedConnections = (current: SavedConnection[], imported: SavedConnec
 type ConnectionPackageImportPayload = {
   connections: SavedConnection[];
   redisDbAliases: RedisDbAliasMap;
+  excelGroups?: ExcelGroupAssignment[];
 };
 
 /** Normalize ImportConnectionsPayload results: object (new) or bare array (legacy/mock). */
@@ -599,13 +623,17 @@ const normalizeConnectionPackageImportPayload = (value: unknown): ConnectionPack
   if (!value || typeof value !== 'object') {
     return null;
   }
-  const record = value as { connections?: unknown; redisDbAliases?: unknown };
+  const record = value as { connections?: unknown; redisDbAliases?: unknown; excelGroups?: unknown };
   if (!Array.isArray(record.connections)) {
     return null;
   }
+  const excelGroups = Array.isArray(record.excelGroups)
+    ? (record.excelGroups as ExcelGroupAssignment[])
+    : [];
   return {
     connections: record.connections as SavedConnection[],
     redisDbAliases: sanitizeRedisDbAliases(record.redisDbAliases),
+    excelGroups,
   };
 };
 
@@ -613,7 +641,13 @@ type ConnectionPackageDialogMode = 'import' | 'export';
 type ToolCenterGroupKey = 'config' | 'workflow' | 'workspace';
 type ToolCenterPaneKey =
   | 'connection-package'
+  | 'import'
+  | 'export'
+  | 'connection-health'
   | 'data-root'
+  | 'data-root-application'
+  | 'data-root-agent'
+  | 'data-root-saved-queries'
   | 'security-update'
   | 'drivers'
   | 'snippet-settings'
@@ -642,6 +676,10 @@ const isToolCenterGroupKey = (group: SettingsCenterGroupKey): group is ToolCente
   group === 'config' || group === 'workflow' || group === 'workspace'
 );
 
+const isConnectionPackageSettingsPaneKey = (
+  key: SettingsCenterPaneKey | string | null | undefined,
+): boolean => key === 'connection-package' || key === 'import' || key === 'export';
+
 const resolveSettingsCenterGroupInitialPane = (group: SettingsCenterGroupKey): SettingsCenterPaneState | null => {
   switch (group) {
     case 'preferences':
@@ -649,7 +687,7 @@ const resolveSettingsCenterGroupInitialPane = (group: SettingsCenterGroupKey): S
     case 'services':
       return { key: 'proxy', group };
     case 'config':
-      return { key: 'data-root', group };
+      return { key: 'data-root-application', group };
     case 'workspace':
       return { key: 'snippet-settings', group };
     case 'about':
@@ -830,9 +868,12 @@ function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isConnectionModalMounted, setIsConnectionModalMounted] = useState(false);
   const [editingConnection, setEditingConnection] = useState<SavedConnection | null>(null);
-  const [isConnectionHealthModalOpen, setIsConnectionHealthModalOpen] = useState(false);
   const [connectionHealthTargetIds, setConnectionHealthTargetIds] = useState<string[]>([]);
   const pendingConnectionTagIdRef = useRef<string | null>(null);
+  // Suppresses the brand-icon sync effect while the explicit selection flow is
+  // applying the same icon through the native bridge, so the shortcut update
+  // and window identity rotation run exactly once.
+  const windowsBrandIconApplyingRef = useRef<BrandIconId | null>(null);
   const connectionModalWarmupDoneRef = useRef(false);
   const windowState = useStore(state => state.windowState);
   const themeMode = useStore(state => state.theme);
@@ -869,6 +910,9 @@ function App() {
   const updateShortcut = useStore(state => state.updateShortcut);
   const resetShortcutOptions = useStore(state => state.resetShortcutOptions);
   const [systemThemeMode, setSystemThemeMode] = useState<'light' | 'dark'>(() => getSystemThemeMode());
+  const [runtimePlatform, setRuntimePlatform] = useState('');
+  const [runtimeBuildType, setRuntimeBuildType] = useState('');
+  const [isLinuxRuntime, setIsLinuxRuntime] = useState(false);
   const activeCustomTheme = useMemo(
       () => resolveAvailableCustomTheme(customThemes, activeCustomThemeId),
       [activeCustomThemeId, customThemes],
@@ -883,14 +927,14 @@ function App() {
       [activeCustomTheme],
   );
   const [computedCustomThemeAntTokens, setComputedCustomThemeAntTokens] = useState<CustomThemeAntTokenSnapshot | null>(null);
-  const customThemeStyleContextKey = `${resolvedThemeMode}:${appearance.uiVersion}`;
+  const customThemeStyleContextKey = `${resolvedThemeMode}:v2`;
   const customThemeAntTokens = activeCustomTheme
       && computedCustomThemeAntTokens?.themeId === activeCustomTheme.id
       && computedCustomThemeAntTokens.themeRevision === activeCustomTheme.updatedAt
       && computedCustomThemeAntTokens.contextKey === customThemeStyleContextKey
       ? computedCustomThemeAntTokens.tokens
       : sourceCustomThemeAntTokens;
-  const isV2Ui = true;
+
   const effectiveUiScale = Math.min(MAX_UI_SCALE, Math.max(MIN_UI_SCALE, Number(uiScale) || DEFAULT_UI_SCALE));
   const effectiveFontSize = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, Math.round(Number(fontSize) || DEFAULT_FONT_SIZE)));
   const tokenFontSize = Math.round(effectiveFontSize * effectiveUiScale);
@@ -1003,7 +1047,7 @@ function App() {
       void safeWindowRuntimeCall(() => WindowSetLightTheme(), undefined);
   }, [effectiveThemePreference, resolvedThemeMode, setTheme, themeMode]);
 
-  // Apply selected brand mascot to favicon + native macOS Dock icon.
+  // Apply the selected brand mascot to the favicon and supported native OS surfaces.
   useEffect(() => {
       if (typeof document === 'undefined') return;
       const href = resolveBrandIconSrc(brandIconId);
@@ -1014,42 +1058,61 @@ function App() {
           link.setAttribute('data-brand-icon', 'true');
           document.head.appendChild(link);
       }
-      link.type = 'image/svg+xml';
+      // The current ribbon assets are SVG, while the restored 0.9.7 mascot
+      // assets are lossless WebP files. Keep the favicon MIME in sync with
+      // the selected asset so browsers do not discard the mascot icon.
+      link.type = /\.webp(?:[?#]|$)/i.test(href) ? 'image/webp' : 'image/svg+xml';
       link.href = href;
 
+      // The selection flow below rotates the live window identity itself;
+      // skip this sync while that apply is in flight so the shortcut update
+      // and window re-grouping run exactly once.
+      if (runtimePlatform === 'windows' && windowsBrandIconApplyingRef.current === brandIconId) {
+          return;
+      }
+
       let cancelled = false;
-      const applyDockIcon = async () => {
+      const applyNativeIcon = async () => {
           try {
               const environment = await Environment();
-              if (cancelled || !shouldSyncMacOSDockIcon(environment)) {
+              if (cancelled || !shouldSyncApplicationBrandIcon(environment)) {
                   return;
               }
               const dockHref = resolveBrandDockSrc(brandIconId);
-              const b64 = await composeMacOSDockIconBase64(dockHref);
+              // The compact fallback is suitable for UI placeholders, but it
+              // must never become the cached Windows taskbar or macOS Dock icon.
+              if (!dockHref) return;
+              const b64 = runtimePlatform === 'windows'
+                  ? await composeWindowsNativeIconBase64(dockHref, {
+                      transparentMark: resolveBrandIcon(brandIconId).bundled ? true : undefined,
+                  })
+                  : await composeMacOSDockIconBase64(dockHref, {
+                      inset: resolveBrandIcon(brandIconId).bundled ? LEGACY_MASCOT_DOCK_ICON_INSET : undefined,
+                  });
               if (cancelled) return;
               const result = await SetApplicationBrandIcon(b64);
               if (!result.success && !cancelled) {
-                  console.warn('Failed to update the macOS Dock icon:', result.message);
-                  message.warning(t('app.settings.entry.brand_icon.dock_sync_failed'));
+                  console.warn('Failed to update the native application icon:', result.message);
+                  message.warning(t('app.settings.entry.brand_icon.native_sync_failed'));
               }
           } catch (error) {
               if (!cancelled) {
-                  console.warn('Failed to update the macOS Dock icon:', error);
-                  message.warning(t('app.settings.entry.brand_icon.dock_sync_failed'));
+                  console.warn('Failed to update the native application icon:', error);
+                  message.warning(t('app.settings.entry.brand_icon.native_sync_failed'));
               }
           }
       };
-      void applyDockIcon();
+      void applyNativeIcon();
       return () => {
           cancelled = true;
       };
-  }, [brandIconId, t, brandAssetRevision]);
+  }, [brandIconId, brandAssetRevision, runtimePlatform, t]);
 
   useEffect(() => {
       let cancelled = false;
       const loadBrandAssets = async () => {
           const loaded: Partial<Record<BrandIconId, string>> = {};
-          await Promise.all(BRAND_ICONS.map(async (icon) => {
+          await Promise.all(BRAND_ICONS.filter((icon) => !icon.bundled).map(async (icon) => {
               try {
                   const source = await GetBrandIconDataURL(icon.id);
                   if (source) loaded[icon.id] = source;
@@ -1154,9 +1217,6 @@ function App() {
   const effectiveOpacity = normalizeOpacityForPlatform(resolvedAppearance.opacity);
   const effectiveBlur = normalizeBlurForPlatform(resolvedAppearance.blur);
   const blurFilter = blurToFilter(effectiveBlur);
-  const [runtimePlatform, setRuntimePlatform] = useState('');
-  const [runtimeBuildType, setRuntimeBuildType] = useState('');
-  const [isLinuxRuntime, setIsLinuxRuntime] = useState(false);
   const isWebRuntime = runtimeBuildType === 'web'
     || (typeof window !== 'undefined' && (window as any).__GONAVI_WEB_RUNTIME__?.buildType === 'web');
   const [installedFontFamilies, setInstalledFontFamilies] = useState<InstalledFontFamily[]>(EMPTY_INSTALLED_FONT_FAMILIES);
@@ -1217,6 +1277,8 @@ function App() {
   const [aiSettingsProviderView, setAiSettingsProviderView] = useState<'workspace' | 'connected'>('workspace');
   const [connectionPackageDialog, setConnectionPackageDialog] = useState<ConnectionPackageDialogState>(() => createClosedConnectionPackageDialogState());
   const [pendingConnectionImportPayload, setPendingConnectionImportPayload] = useState<string | null>(null);
+  const [connectionImportTargetTagId, setConnectionImportTargetTagId] = useState('');
+  const [connectionImportNotice, setConnectionImportNotice] = useState<ConnectionImportNotice | null>(null);
   const browserConnectionImportInputRef = useRef<HTMLInputElement>(null);
   const browserConnectionImportSourceGroupRef = useRef<ToolCenterGroupKey | undefined>(undefined);
   const [aiPanelRenderNonce, setAiPanelRenderNonce] = useState(0);
@@ -1236,7 +1298,6 @@ function App() {
   const titlebarRuntimePlatform = resolveTitlebarRuntimePlatform(runtimePlatform, navigatorPlatform);
   const isMacRuntime = titlebarRuntimePlatform === 'darwin';
   const shouldDockCollapsedSidebarActionsInTitlebar = resolveCollapsedSidebarDocking(
-      isV2Ui,
       runtimePlatform,
       navigatorPlatform,
       isWebRuntime,
@@ -1278,12 +1339,11 @@ function App() {
   }, [collapsedSidebarActionsTarget, isCollapsedSidebarActionsDocked, isSidebarCollapsed]);
   const titleBarLayout = resolveTitleBarLayout(
       effectiveUiScale,
-      isV2Ui,
       isCollapsedSidebarActionsDocked,
       effectiveSidebarRailScale,
   );
   const titleBarHeight = titleBarLayout.height;
-  const sidebarCollapsedWidth = isV2Ui && !shouldDockCollapsedSidebarActionsInTitlebar
+  const sidebarCollapsedWidth = !shouldDockCollapsedSidebarActionsInTitlebar
       ? 38 * effectiveUiScale * effectiveSidebarRailScale
       : 0;
   const renderedSidebarWidth = isSidebarCollapsed ? sidebarCollapsedWidth : sidebarWidth;
@@ -1798,8 +1858,13 @@ function App() {
 
       const checkStartupPreferenceApplied = async (): Promise<boolean> => {
           try {
-              const isMaximised = await WindowIsMaximised();
+              const [isMaximised, size] = await Promise.all([
+                  WindowIsMaximised(),
+                  WindowGetSize(),
+              ]);
               return isStartupMaximisedWindowSettled({
+                  windowWidth: Number(size?.w),
+                  windowHeight: Number(size?.h),
                   isMaximised,
                   isWindows: isWindowsPlatform(),
                   surfaceWidth: window.innerWidth,
@@ -2084,15 +2149,22 @@ function App() {
               state.windowState,
           );
           if (restoreMode !== 'normal') {
+              markStartupWindowRestorePending(startupRestoreGraceMs);
               if (bounds && bounds.width >= 400 && bounds.height >= 300) {
                   try {
                       // Seed the OS restore rectangle before maximising so a later
-                      // unmaximise returns to the user's last normal window bounds.
-                      applyRestoredWindowBounds(bounds);
+                      // unmaximise returns to the last normal bounds. A frontend
+                      // reload may already be maximised: SetSize in that state
+                      // shrinks the HWND while its client area stays maximised.
+                      if (!await WindowIsMaximised() && !await WindowIsFullscreen() && !cancelled) {
+                          const appliedBounds = applyRestoredWindowBounds(bounds);
+                          await waitForNativeWindowBounds(appliedBounds);
+                      }
                   } catch (e) {
                       console.warn('Failed to prepare remembered normal window bounds', e);
                   }
               }
+              if (cancelled) return;
               markStartupWindowRestorePending(startupRestoreGraceMs);
               applyStartupWindowChrome(1);
               return;
@@ -2365,7 +2437,6 @@ function App() {
       let minimisedSeen = false;
       let hiddenSeen = document.visibilityState === 'hidden';
 
-      const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
       // Automatic scale-fix may call ResetWebViewZoom multiple times on startup.
       // The backend path depends on Wails unexported fields and can fail harmlessly;
       // log at most once so the console is not flooded with expected unavailability.
@@ -2390,90 +2461,45 @@ function App() {
           }
       };
 
+      let refreshWebViewBoundsUnavailableLogged = false;
+      const tryRefreshWebViewBoundsQuietly = async (): Promise<boolean> => {
+          try {
+              const result = await (window as any).go?.app?.App?.RefreshWebViewBounds?.();
+              if (result?.success) return true;
+              if (!refreshWebViewBoundsUnavailableLogged) {
+                  refreshWebViewBoundsUnavailableLogged = true;
+                  console.warn('RefreshWebViewBounds unavailable in scale repair:', result?.message);
+              }
+          } catch (error) {
+              if (!refreshWebViewBoundsUnavailableLogged) {
+                  refreshWebViewBoundsUnavailableLogged = true;
+                  console.warn('RefreshWebViewBounds call failed in scale repair', error);
+              }
+          }
+          return false;
+      };
+
       const fixWindowScaleIfNeeded = async (reason: WindowScaleFixReason) => {
           if (cancelled || inFlight) return;
           const now = Date.now();
           if (now - lastFixAt < 700) return;
           inFlight = true;
           try {
-              const [isFullscreen, isMaximised] = await Promise.all([
-                  safeWindowRuntimeCall(() => WindowIsFullscreen(), false),
-                  safeWindowRuntimeCall(() => WindowIsMaximised(), false),
-              ]);
-
-              // 全屏状态下只广播 resize，避免破坏用户的全屏上下文。
-              if (isFullscreen) {
-                  window.dispatchEvent(new Event('resize'));
-                  lastFixAt = Date.now();
-                  return;
-              }
-
-              const size = await safeWindowRuntimeCall(() => WindowGetSize(), null);
-              const width = Math.trunc(Number(size?.w || 0));
-              const height = Math.trunc(Number(size?.h || 0));
-              const hasViewportScaleDrift = hasWindowsViewportScaleDrift({
-                  windowWidth: width,
-                  innerWidth: window.innerWidth,
-                  devicePixelRatio: Number(window.devicePixelRatio) || 1,
-                  visualViewportScale: window.visualViewport?.scale,
+              await repairWindowsWindowScale({
+                  reason,
+                  readViewport: () => ({
+                      innerWidth: window.innerWidth,
+                      devicePixelRatio: Number(window.devicePixelRatio) || 1,
+                      visualViewportScale: window.visualViewport?.scale,
+                  }),
+                  resetZoom: tryResetWebViewZoomQuietly,
+                  refreshBounds: tryRefreshWebViewBoundsQuietly,
+                  notifyResize: () => window.dispatchEvent(new Event('resize')),
+                  isCancelled: () => cancelled,
               });
-              const shouldResetWebViewZoom = shouldResetWebViewZoomForScaleFix(reason, hasViewportScaleDrift);
-
-              if (shouldResetWebViewZoom && !isMaximised) {
-                  await tryResetWebViewZoomQuietly();
-              }
-
-              if (isMaximised) {
-                  if (!shouldToggleMaximisedWindowForScaleFix(reason, hasViewportScaleDrift)) {
-                      // restore（任务栏点击恢复后字体异常变大/变糊）的零感知修复路径：
-                      // 调 backend App.ResetWebViewZoom 触发 WebView2 ICoreWebView2Controller::put_ZoomFactor(1.0)，
-                      // 让 WebView2 重算 D2D/DirectWrite 字体度量。该异常不一定表现为 viewport ratio drift，
-                      // 所以 restore 场景不能依赖 hasViewportScaleDrift。完全不动窗口、零动画。
-                      // backend 失败（wails 升级破坏反射 / 非 Windows）时回退到 dispatch resize 兜底；
-                      // 用户仍可按 Ctrl+Shift+0 手动 toggle 修复。
-                      if (shouldResetWebViewZoom) {
-                          await tryResetWebViewZoomQuietly();
-                      }
-                      window.dispatchEvent(new Event('resize'));
-                      lastFixAt = Date.now();
-                      return;
-                  }
-
-                  try {
-                      WindowUnmaximise();
-                      await wait(96);
-                      WindowMaximise();
-                      await wait(96);
-                  } catch (e) {
-                      console.warn("Wails Window maximise restore unavailable in fixWindowScaleIfNeeded", e);
-                  }
-                  window.dispatchEvent(new Event('resize'));
-                  lastFixAt = Date.now();
-                  return;
-              }
-
-              if (width <= 0 || height <= 0) {
-                  window.dispatchEvent(new Event('resize'));
-                  lastFixAt = Date.now();
-                  return;
-              }
-
-              if (!shouldApplyWindowsScaleFix(reason, hasViewportScaleDrift)) {
-                  window.dispatchEvent(new Event('resize'));
-                  lastFixAt = Date.now();
-                  return;
-              }
-
-              const nudgedWidth = getWindowsScaleFixNudgedWidth(width);
-              try {
-                  WindowSetSize(nudgedWidth, height);
-                  await wait(28);
-                  WindowSetSize(width, height);
-              } catch(e) {}
-              window.dispatchEvent(new Event('resize'));
               lastFixAt = Date.now();
-          } catch(e) {
-              console.warn("Wails Window APIs unavailable in fixWindowScaleIfNeeded", e);
+          } catch (error) {
+              console.warn('Wails Window APIs unavailable in scale repair', error);
           } finally {
               inFlight = false;
           }
@@ -2632,7 +2658,7 @@ function App() {
   }, []);
 
   const {
-      bgContent, bgMain,
+      bgContent,
       floatingLogButtonBgColor, floatingLogButtonBorderColor, floatingLogButtonShadow, floatingLogButtonTextColor,
       isSidebarNarrow, isSidebarUltraCompact,
       overlayTheme, renderUtilityModalTitle,
@@ -2646,7 +2672,6 @@ function App() {
       darkMode,
       effectiveOpacity,
       effectiveUiScale,
-      isV2Ui,
       resolvedAppearance,
       sidebarWidth,
   });
@@ -2663,11 +2688,26 @@ function App() {
   }, [addTab]);
   const activeContext = useStore(state => state.activeContext);
   const connections = useStore(state => state.connections);
+  const connectionTags = useStore(state => state.connectionTags);
   const [sidebarTitlebarSnapshot, setSidebarTitlebarSnapshot] = useState<TitlebarSidebarSnapshot>({
       selection: null,
       connectionStates: {},
   });
   const moveConnectionToTag = useStore(state => state.moveConnectionToTag);
+  const moveConnectionsToTag = useStore(state => state.moveConnectionsToTag);
+  const setConnectionDisplaySortMode = useStore(state => state.setConnectionDisplaySortMode);
+  const connectionImportGroupOptions = useMemo(
+      () => buildConnectionImportGroupOptions(connectionTags),
+      [connectionTags],
+  );
+  useEffect(() => {
+      if (
+          connectionImportTargetTagId
+          && !connectionTags.some((tag) => tag.id === connectionImportTargetTagId)
+      ) {
+          setConnectionImportTargetTagId('');
+      }
+  }, [connectionImportTargetTagId, connectionTags]);
   const tabs = useWorkbenchTabs();
   const activeTabId = useStore(state => state.activeTabId);
   const setActiveTab = useStore(state => state.setActiveTab);
@@ -2998,7 +3038,6 @@ function App() {
       formatBytes,
       handleInstallFromProgress,
       hideUpdateDownloadProgress,
-      isAboutOpen,
       isBackgroundProgressForLatestUpdate,
       isCheckingForUpdates,
       isLatestUpdateDownloaded,
@@ -3010,7 +3049,6 @@ function App() {
       muteLatestUpdate,
       openDownloadedUpdateDirectory,
       prepareAboutSurface,
-      setIsAboutOpen,
       showUpdateDownloadProgress,
       updateChannel,
       updateDownloadProgress,
@@ -3308,6 +3346,14 @@ function App() {
       }
   }, [t]);
 
+  const restartApplication = useCallback(async (): Promise<boolean> => {
+      const res = await RestartApplication();
+      if (res && res.success === false) {
+          throw new Error(res.message || t('common.unknown'));
+      }
+      return true;
+  }, [t]);
+
   const handleApplicationQuitRequest = useCallback(async (
       confirmedAction?: ApplicationQuitConfirmedAction,
       cancelledAction?: () => void,
@@ -3458,6 +3504,51 @@ function App() {
       });
   }, [applicationQuitModalZIndex, ensureSavedQueriesLoaded, forceQuitApplication, resetApplicationQuitRequest, saveQuery, t]);
 
+  const handleBrandIconChange = useCallback(async (id: BrandIconId) => {
+      if (id === brandIconId) return;
+      const previousId = brandIconId;
+      if (runtimePlatform !== 'windows') {
+          setBrandIconId(id);
+          message.success(t('app.settings.entry.brand_icon.applied'));
+          return;
+      }
+
+      // Windows applies the new ICO to existing shortcuts and rotates the live
+      // window's AppUserModel identity in a single native call, so Explorer
+      // re-renders the taskbar group immediately — no restart required now
+      // that the identity follows the icon. Detached native windows spawned
+      // before the next full app restart keep the previous identity until
+      // then, which is the only leftover of skipping the restart.
+      windowsBrandIconApplyingRef.current = id;
+      setBrandIconId(id);
+      try {
+          const source = resolveBrandDockSrc(id) || resolveBrandIconSrc(id);
+          if (!source) {
+              throw new Error('selected brand icon source is unavailable');
+          }
+          // Windows fills the whole taskbar tile; the macOS Dock safe-area
+          // inset would shrink the ICO mark relative to neighbouring apps.
+          // Bundled mascots drop the white tile and the GoNavi word mark —
+          // the cut-out dog itself becomes the whole icon, no background.
+          const b64 = await composeWindowsNativeIconBase64(source, {
+              transparentMark: resolveBrandIcon(id).bundled ? true : undefined,
+          });
+          const result = await SetApplicationBrandIcon(b64);
+          if (!result || result.success === false) {
+              throw new Error(result?.message || 'Windows brand icon update failed');
+          }
+          message.success(t('app.settings.entry.brand_icon.applied'));
+      } catch (error) {
+          setBrandIconId(previousId);
+          console.warn('Failed to apply the Windows brand icon:', error);
+          message.error(t('app.settings.entry.brand_icon.native_sync_failed'));
+      } finally {
+          if (windowsBrandIconApplyingRef.current === id) {
+              windowsBrandIconApplyingRef.current = null;
+          }
+      }
+  }, [brandIconId, runtimePlatform, setBrandIconId, t]);
+
   const handleInstallUpdateRequest = useCallback(async () => {
       let pendingCloseInstanceCount: number | null = null;
       hideUpdateDownloadProgress();
@@ -3505,10 +3596,8 @@ function App() {
   const closeConnectionPackageDialog = useCallback(() => {
       setConnectionPackageDialog(createClosedConnectionPackageDialogState());
       setPendingConnectionImportPayload(null);
+      setConnectionImportNotice(null);
       setToolCenterBackGroupKey(null);
-      setActiveSettingsCenterPane((current) => (
-          current?.key === 'connection-package' ? resolveSettingsCenterGroupInitialPane('config') : current
-      ));
   }, []);
 
   const refreshConnectionsAfterImport = useCallback(async (importedViews: SavedConnection[]) => {
@@ -3542,6 +3631,15 @@ function App() {
           throw new Error(t('app.connection_package.error.import_capability_unavailable'));
       }
 
+      await connectionSidebarLayoutCoordinatorRef.current?.bootstrap();
+      const targetTagId = String(connectionImportTargetTagId || '').trim();
+      if (
+          targetTagId
+          && !useStore.getState().connectionTags.some((tag) => tag.id === targetTagId)
+      ) {
+          throw new Error(t('app.connection_package.import.target_group_unavailable'));
+      }
+
       let importedRaw: unknown;
       try {
           importedRaw = await backendApp.ImportConnectionsPayload(raw, password);
@@ -3560,7 +3658,33 @@ function App() {
       if (!imported) {
           throw new Error(t('app.connection_package.error.import_no_connections'));
       }
+      const importedConnectionIDs = imported.connections
+          .map((connection) => String(connection.id || '').trim())
+          .filter(Boolean);
+      const preRefreshState = useStore.getState();
+      const placement = resolveConnectionImportPlacement(
+          importedConnectionIDs,
+          targetTagId,
+          preRefreshState.connectionTags,
+      );
+      placement.manualOrderTargetGroupIds.forEach((groupID) => {
+          setConnectionDisplaySortMode(groupID, 'manual');
+      });
       await refreshConnectionsAfterImport(imported.connections);
+      if (placement.groupAssignment) {
+          moveConnectionsToTag(
+              placement.groupAssignment.connectionIds,
+              placement.groupAssignment.targetGroupId,
+          );
+      }
+      if (placement.manualOrderTargetGroupIds.length > 0) {
+          try {
+              await connectionSidebarLayoutCoordinatorRef.current?.flush();
+          } catch (error) {
+              const detail = error instanceof Error ? error.message : String(error ?? '').trim();
+              throw new Error(t('app.connection_package.import.group_save_failed', { detail }));
+          }
+      }
       // Redis DB 别名存在前端 appearance，需随连接包一并恢复
       if (Object.keys(imported.redisDbAliases).length > 0) {
           const currentAliases = useStore.getState().appearance.redisDbAliases;
@@ -3569,30 +3693,62 @@ function App() {
           });
       }
       return imported.connections;
-  }, [refreshConnectionsAfterImport, t]);
+  }, [connectionImportTargetTagId, moveConnectionsToTag, refreshConnectionsAfterImport, setConnectionDisplaySortMode, t]);
 
   const importConnectionPayloadFromFile = async (raw: string, sourceGroup?: ToolCenterGroupKey) => {
+      // Excel 由后端在统一入口直接完成导入，返回信封结果而非文本载荷。
+      const excelResult = parseConnectionsExcelImportEnvelope(raw);
+      if (excelResult) {
+          await finishExcelImport({ data: excelResult }, sourceGroup);
+          return;
+      }
+
       const importKind = detectConnectionImportKind(raw);
 
       if (importKind === 'invalid') {
-          void message.error(t('app.connection_package.message.unsupported_file_format'));
+          setConnectionImportNotice(null);
+          setConnectionPackageDialog((current) => ({
+              ...current,
+              mode: 'import',
+              error: t('app.connection_package.message.unsupported_file_format'),
+              confirmLoading: false,
+          }));
           return;
       }
 
       try {
           setPendingConnectionImportPayload(null);
+          setConnectionImportNotice(null);
+          setConnectionPackageDialog((current) => ({
+              ...current,
+              mode: 'import',
+              password: '',
+              error: '',
+              confirmLoading: true,
+          }));
           const importedViews = await importConnectionsPayload(raw, '');
           if ((importKind === 'mysql-workbench-xml' || importKind === 'navicat-ncx') && importedViews.some(v => !v.hasPrimaryPassword)) {
-              void message.warning(t('app.connection_package.message.imported_with_missing_passwords', { count: importedViews.length }));
+              const warning = t('app.connection_package.message.imported_with_missing_passwords', { count: importedViews.length });
+              setConnectionImportNotice({ type: 'warning', message: warning });
+              void message.warning(warning);
           } else {
-              void message.success(t('app.connection_package.message.imported_connections', { count: importedViews.length }));
+              const success = t('app.connection_package.message.imported_connections', { count: importedViews.length });
+              setConnectionImportNotice({ type: 'success', message: success });
+              void message.success(success);
           }
+          setConnectionPackageDialog((current) => ({
+              ...current,
+              open: false,
+              password: '',
+              error: '',
+              confirmLoading: false,
+          }));
       } catch (e: any) {
           if (isConnectionPackagePasswordRequiredError(e)) {
               if (sourceGroup) {
                   setToolCenterBackGroupKey(sourceGroup);
                   setActiveSettingsCenterGroupKey(sourceGroup);
-                  setActiveSettingsCenterPane({ key: 'connection-package', group: sourceGroup });
+                  setActiveSettingsCenterPane({ key: 'import', group: sourceGroup });
               }
               setPendingConnectionImportPayload(raw);
               setConnectionPackageDialog({
@@ -3607,7 +3763,14 @@ function App() {
               });
               return;
           }
-          void message.error(e?.message || t('app.connection_package.message.import_failed'));
+          const detail = e?.message || t('app.connection_package.message.import_failed');
+          setConnectionPackageDialog((current) => ({
+              ...current,
+              mode: 'import',
+              error: detail,
+              confirmLoading: false,
+          }));
+          void message.error(detail);
       }
   };
 
@@ -3621,15 +3784,55 @@ function App() {
       }
 
       try {
+          // Excel 为二进制格式：转 base64 走专用导入通道，其余格式按文本解析。
+          if (/\.xlsx$/i.test(file.name)) {
+              const backendApp = (window as any).go?.app?.App;
+              if (typeof backendApp?.ImportConnectionsExcelFileBase64 !== 'function') {
+                  throw new Error(t('app.connection_package.error.import_capability_unavailable'));
+              }
+              const dataUrl = await new Promise<string>((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = () => resolve(String(reader.result || ''));
+                  reader.onerror = () => reject(reader.error || new Error(t('app.connection_package.message.import_failed')));
+                  reader.readAsDataURL(file);
+              });
+              const base64 = dataUrl.includes(',') ? dataUrl.slice(dataUrl.indexOf(',') + 1) : dataUrl;
+              const res = await backendApp.ImportConnectionsExcelFileBase64(base64);
+              if (!res?.success) {
+                  throw new Error(String(res?.message || ''));
+              }
+              await finishExcelImport(res, sourceGroup);
+              return;
+          }
           await importConnectionPayloadFromFile(await file.text(), sourceGroup);
       } catch (error) {
           const detail = error instanceof Error ? error.message : String(error ?? '').trim();
-          void message.error(detail || t('app.connection_package.message.import_failed'));
+          const resolvedDetail = detail || t('app.connection_package.message.import_failed');
+          setConnectionPackageDialog((current) => ({
+              ...current,
+              mode: 'import',
+              error: resolvedDetail,
+              confirmLoading: false,
+          }));
+          void message.error(resolvedDetail);
       }
   };
 
   const handleImportConnections = async (sourceGroup?: ToolCenterGroupKey) => {
       setToolCenterBackGroupKey(sourceGroup ?? null);
+      setConnectionImportNotice(null);
+      setConnectionPackageDialog((current) => ({
+          ...current,
+          mode: 'import',
+          password: '',
+          error: '',
+          confirmLoading: false,
+      }));
+      if (sourceGroup) {
+          setActiveSettingsCenterGroupKey(sourceGroup);
+          setActiveSettingsCenterPane({ key: 'import', group: sourceGroup });
+          openSettingsCenterWorkbenchTab();
+      }
       if (isWebRuntime) {
           const input = browserConnectionImportInputRef.current;
           if (!input) {
@@ -3645,7 +3848,9 @@ function App() {
       const res = await (window as any).go.app.App.ImportConfigFile();
       if (!res.success) {
           if (res.message !== "已取消") {
-              void message.error(t('app.connection_package.message.import_failed_with_error', { error: res.message }));
+              const detail = t('app.connection_package.message.import_failed_with_error', { error: res.message });
+              setConnectionPackageDialog((current) => ({ ...current, error: detail }));
+              void message.error(detail);
           }
           return;
       }
@@ -3655,15 +3860,11 @@ function App() {
   };
 
   const handleExportConnections = async (sourceGroup?: ToolCenterGroupKey) => {
-      if (connections.length === 0) {
-          void message.warning(t('app.connection_package.message.no_connections_to_export'));
-          return;
-      }
-
       setToolCenterBackGroupKey(sourceGroup ?? null);
       if (sourceGroup) {
           setActiveSettingsCenterGroupKey(sourceGroup);
-          setActiveSettingsCenterPane({ key: 'connection-package', group: sourceGroup });
+          setActiveSettingsCenterPane({ key: 'export', group: sourceGroup });
+          openSettingsCenterWorkbenchTab();
       }
       setConnectionPackageDialog({
           open: true,
@@ -3673,9 +3874,93 @@ function App() {
           password: '',
           error: '',
           confirmLoading: false,
-          // Default to all connections; user can deselect for partial export.
           selectedConnectionIds: connections.map((item) => item.id),
       });
+  };
+
+  // === Excel 批量导入（issue #1226）：统一入口按格式分流 ===
+  // Excel 导入结果里分组按连接名声明；导入完成后按名字→ID 映射把连接挂入
+  // 既有或新建的分组（"父分组/子分组" 逐级查/建），并沿用导入面板的目标分组兜底。
+  const applyExcelGroupAssignments = async (excelGroups: ExcelGroupAssignment[], importedConnections: SavedConnection[]) => {
+      if (!Array.isArray(excelGroups) || excelGroups.length === 0) return 0;
+      await connectionSidebarLayoutCoordinatorRef.current?.bootstrap();
+      const tags = useStore.getState().connectionTags;
+      const resolveTagId = (name: string, parentTagId: string | undefined) => {
+          const found = tags.find((tag) => (
+              tag.parentTagId === (parentTagId || undefined)
+              && String(tag.name || '').localeCompare(name, undefined, { sensitivity: 'accent' }) === 0
+          ));
+          return found?.id;
+      };
+      let nextTagSeq = 0;
+      const context: ExcelGroupPlanContext = {
+          resolveTagId,
+          nextTagId: () => `${Date.now()}-${nextTagSeq++}`,
+      };
+      const plan = planExcelGroupAssignments(excelGroups, context);
+      if (plan.tagsToCreate.length > 0) {
+          plan.tagsToCreate.forEach((tag) => {
+              useStore.getState().addConnectionTag({
+                  id: tag.id,
+                  name: tag.name,
+                  parentTagId: tag.parentTagId,
+                  connectionIds: [],
+              });
+          });
+      }
+      const nameToId = new Map(importedConnections.map((conn) => [conn.name, conn.id]));
+      let movedCount = 0;
+      Object.entries(plan.movesByLeafTagId).forEach(([leafTagId, connectionNames]) => {
+          const ids = connectionNames
+              .map((name) => nameToId.get(name))
+              .filter((id): id is string => Boolean(id));
+          if (ids.length === 0) return;
+          useStore.getState().moveConnectionsToTag(ids, leafTagId);
+          movedCount += ids.length;
+      });
+      if (movedCount > 0 || plan.tagsToCreate.length > 0) {
+          try {
+              await connectionSidebarLayoutCoordinatorRef.current?.flush();
+          } catch (error) {
+              const detail = error instanceof Error ? error.message : String(error ?? '').trim();
+              throw new Error(t('app.connection_package.import.group_save_failed', { detail }));
+          }
+      }
+      return movedCount;
+  };
+
+  const finishExcelImport = async (result: any, sourceGroup?: ToolCenterGroupKey) => {
+      const imported = normalizeConnectionPackageImportPayload(result?.data);
+      if (!imported || imported.connections.length === 0) {
+          throw new Error(t('app.connection_package.error.import_no_connections'));
+      }
+      const targetTagId = String(connectionImportTargetTagId || '').trim();
+      const placement = resolveConnectionImportPlacement(
+          imported.connections.map((connection) => connection.id),
+          targetTagId,
+          useStore.getState().connectionTags,
+      );
+      placement.manualOrderTargetGroupIds.forEach((groupID) => {
+          setConnectionDisplaySortMode(groupID, 'manual');
+      });
+      await refreshConnectionsAfterImport(imported.connections);
+      if (placement.groupAssignment) {
+          moveConnectionsToTag(
+              placement.groupAssignment.connectionIds,
+              placement.groupAssignment.targetGroupId,
+          );
+      }
+      const movedByExcel = await applyExcelGroupAssignments(imported.excelGroups || [], imported.connections);
+      if (sourceGroup) {
+          setToolCenterBackGroupKey(sourceGroup);
+          setActiveSettingsCenterGroupKey(sourceGroup);
+          setActiveSettingsCenterPane({ key: 'import', group: sourceGroup });
+      }
+      const summary = movedByExcel > 0
+          ? t('app.connection_package.excel.groups_applied', { count: imported.connections.length, groupCount: movedByExcel })
+          : t('app.connection_package.message.imported_connections', { count: imported.connections.length });
+      setConnectionImportNotice({ type: 'success', message: summary });
+      void message.success(summary);
   };
 
   const handleConfirmConnectionPackageDialog = async () => {
@@ -3768,7 +4053,12 @@ function App() {
                    }
                }
 
-               closeConnectionPackageDialog();
+              setConnectionPackageDialog((current) => ({
+                  ...current,
+                  password: '',
+                  error: '',
+                  confirmLoading: false,
+              }));
               void message.success(t('app.connection_package.message.export_succeeded'));
               return;
           }
@@ -3778,8 +4068,17 @@ function App() {
           }
 
           const importedViews = await importConnectionsPayload(pendingConnectionImportPayload, password);
-          closeConnectionPackageDialog();
-          void message.success(t('app.connection_package.message.imported_connections', { count: importedViews.length }));
+          const success = t('app.connection_package.message.imported_connections', { count: importedViews.length });
+          setPendingConnectionImportPayload(null);
+          setConnectionImportNotice({ type: 'success', message: success });
+          setConnectionPackageDialog((current) => ({
+              ...current,
+              open: false,
+              password: '',
+              error: '',
+              confirmLoading: false,
+          }));
+          void message.success(success);
       } catch (e: any) {
           setConnectionPackageDialog((current) => ({
               ...current,
@@ -3927,7 +4226,6 @@ function App() {
   const directorySettingsApplying = dataRootApplying || logDirectoryApplying || savedQueryDirectoryApplying;
 
   const aiPanelOverlayActive = aiPanelVisible && shouldOverlayAIPanel({
-      isV2Ui,
       viewportWidth,
       sidebarWidth: renderedSidebarWidth,
       panelWidth: DEFAULT_AI_PANEL_WIDTH,
@@ -4155,10 +4453,19 @@ function App() {
       replaceGlobalProxy,
       t,
   ]);
+  const closeConnectionHealthSettingsPane = useCallback(() => {
+      setConnectionHealthTargetIds([]);
+      setActiveSettingsCenterPane((current) => (
+          current?.key === 'connection-health' ? resolveSettingsCenterGroupInitialPane('config') : current
+      ));
+  }, []);
   const clearSettingsCenterTransientPaneState = useCallback(() => {
       setCapturingShortcutAction(null);
-      if (activeSettingsCenterPaneRef.current?.key === 'connection-package') {
+      if (isConnectionPackageSettingsPaneKey(activeSettingsCenterPaneRef.current?.key)) {
           closeConnectionPackageDialog();
+      }
+      if (activeSettingsCenterPaneRef.current?.key === 'connection-health') {
+          setConnectionHealthTargetIds([]);
       }
       if (activeSettingsCenterPaneRef.current?.key === 'ai') {
           setFocusedAIProviderId(undefined);
@@ -4194,8 +4501,11 @@ function App() {
   }, [openSecurityUpdateSettings, securityUpdateRepairSource]);
   const handleCancelSettingsCenterPane = useCallback(() => withAISettingsLeaveGuard(aiSettingsLeaveGuardRef.current, () => {
       const leavingAI = activeSettingsCenterPane?.key === 'ai';
-      if (activeSettingsCenterPane?.key === 'connection-package') {
+      if (isConnectionPackageSettingsPaneKey(activeSettingsCenterPane?.key)) {
           closeConnectionPackageDialog();
+      }
+      if (activeSettingsCenterPane?.key === 'connection-health') {
+          setConnectionHealthTargetIds([]);
       }
       setCapturingShortcutAction(null);
       setToolCenterBackGroupKey(null);
@@ -4205,10 +4515,15 @@ function App() {
           finalizeSecurityRepairReturnFromAISettings();
       }
   }), [activeSettingsCenterPane?.key, closeConnectionPackageDialog, closeSettingsCenterWorkbenchTab, finalizeSecurityRepairReturnFromAISettings]);
-  const handleOpenDataSyncWorkbench = useCallback((entryMode: DataSyncEntryMode) => withAISettingsLeaveGuard(aiSettingsLeaveGuardRef.current, () => {
-      handleCancelSettingsCenterPane();
-      addTab(buildDataSyncWorkbenchTab({ entryMode }));
-  }), [addTab, handleCancelSettingsCenterPane]);
+  const handleOpenDataSyncWorkbench = useCallback((entryMode: DataSyncEntryModeAlias) => withAISettingsLeaveGuard(aiSettingsLeaveGuardRef.current, () => {
+      const normalized = normalizeDataSyncEntryMode(entryMode);
+      const nextTab = buildDataSyncWorkbenchTab({ entryMode: normalized });
+      const existingId = resolveExistingDataSyncWorkbenchTabId(
+          normalized,
+          useStore.getState().tabs,
+      );
+      addTab(existingId ? { ...nextTab, id: existingId } : nextTab);
+  }), [addTab]);
   const isSettingsAboutPaneOpen = isSettingsModalOpen && activeSettingsCenterPane?.key === 'about-go-navi';
   const wasSettingsCenterTabOpenRef = useRef(false);
   useEffect(() => {
@@ -4218,8 +4533,11 @@ function App() {
           return;
       }
       // Tab closed via workbench chrome (X) — mirror cancel cleanup without re-entering leave guard.
-      if (activeSettingsCenterPaneRef.current?.key === 'connection-package') {
+      if (isConnectionPackageSettingsPaneKey(activeSettingsCenterPaneRef.current?.key)) {
           closeConnectionPackageDialog();
+      }
+      if (activeSettingsCenterPaneRef.current?.key === 'connection-health') {
+          setConnectionHealthTargetIds([]);
       }
       const leavingAI = activeSettingsCenterPaneRef.current?.key === 'ai';
       setCapturingShortcutAction(null);
@@ -4272,22 +4590,22 @@ function App() {
   const handleTitleBarSettingsNavigation = useCallback((spec: {
     group: 'preferences' | 'services' | 'config' | 'workflow' | 'workspace' | 'about';
     pane?: string;
-    action?: 'import-connections' | 'export-connections' | 'schema-compare' | 'data-compare' | 'sync' | 'drivers' | 'sql-audit';
+    action?: 'import-connections' | 'export-connections' | 'schema-compare' | 'data-compare' | 'compare' | 'sync' | 'drivers' | 'sql-audit';
   }) => withAISettingsLeaveGuard(aiSettingsLeaveGuardRef.current, () => {
       if (spec.action === 'import-connections') {
-          void handleImportConnections('config');
+          handleOpenToolCenterPane('config', 'import');
           return;
       }
       if (spec.action === 'export-connections') {
           void handleExportConnections('config');
           return;
       }
-      if (spec.action === 'schema-compare') {
-          handleOpenDataSyncWorkbench('schemaCompare');
-          return;
-      }
-      if (spec.action === 'data-compare') {
-          handleOpenDataSyncWorkbench('dataCompare');
+      if (
+          spec.action === 'compare' ||
+          spec.action === 'schema-compare' ||
+          spec.action === 'data-compare'
+      ) {
+          handleOpenDataSyncWorkbench('compare');
           return;
       }
       if (spec.action === 'sync') {
@@ -4333,7 +4651,6 @@ function App() {
       addTab,
       handleCancelSettingsCenterPane,
       handleExportConnections,
-      handleImportConnections,
       handleOpenDataSyncWorkbench,
       handleOpenSettingsCenterPane,
       handleOpenSettingsModal,
@@ -4377,7 +4694,7 @@ function App() {
   }, [t]);
 
   useEffect(() => {
-      if (!isDataRootModalOpen && activeSettingsCenterPane?.key !== 'data-root') {
+      if (!isDataRootModalOpen && !activeSettingsCenterPane?.key.startsWith('data-root')) {
           return;
       }
       void loadDataRootInfo();
@@ -4573,134 +4890,278 @@ function App() {
   }, [t]);
 
   const renderSavedQueryDirectorySettings = (readOnly = false) => (
-      <div style={utilityPanelStyle} data-saved-query-directory-settings="true">
-          <div style={{ fontWeight: 600 }}>{t('app.data_root.saved_query_directory.title')}</div>
-          <div style={{ ...utilityMutedTextStyle, marginTop: 6 }}>
-              {t('app.data_root.saved_query_directory.description')}
-          </div>
-          <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
-              <div>
-                  <div style={{ marginBottom: 6, fontWeight: 500 }}>
-                      {t('app.data_root.saved_query_directory.current_directory')}
-                  </div>
-                  <Input
-                      readOnly
-                      value={selectedSavedQueryDirectoryPath}
-                      placeholder={t('app.data_root.saved_query_directory.placeholder')}
-                      aria-label={t('app.data_root.saved_query_directory.title')}
+      <DataDirectoryPage testId="saved-queries">
+          <section className="gn-storage-panel gn-storage-panel--current" data-saved-query-directory-settings="true">
+              <div className="gn-storage-panel__body">
+                  <DirectorySectionHeading
+                      title={t('app.data_root.current_location')}
+                      description={t('app.data_root.saved_query_directory.current_description')}
                   />
+                  <DirectoryPathDisplay
+                      label={t('app.data_root.saved_query_directory.current_directory')}
+                      path={dataRootInfo?.savedQueryDirectory || selectedSavedQueryDirectoryPath}
+                      action={!readOnly ? (
+                          <Button onClick={() => void handleOpenSavedQueryDirectory()}>
+                              {t('app.data_root.action.open_current')}
+                          </Button>
+                      ) : undefined}
+                  />
+                  <DirectoryMetaGrid items={[{
+                      label: t('app.data_root.saved_query_directory.default_directory'),
+                      value: dataRootInfo?.defaultSavedQueryDirectory || '-',
+                  }]} />
               </div>
-              {!readOnly && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                      <Button
-                          icon={<FolderOpenOutlined />}
-                          disabled={directorySettingsApplying}
-                          onClick={() => void handleSelectSavedQueryDirectory()}
-                      >
-                          {t('app.data_root.action.select')}
-                      </Button>
-                      <Button onClick={() => void handleOpenSavedQueryDirectory()}>
-                          {t('app.data_root.action.open_current')}
-                      </Button>
-                      <Button
-                          disabled={directorySettingsApplying}
-                          loading={savedQueryDirectoryApplying}
-                          onClick={() => void handleApplySavedQueryDirectory(true)}
-                      >
-                          {t('app.data_root.action.restore_default_directory')}
-                      </Button>
-                      <Button
-                          type="primary"
-                          disabled={directorySettingsApplying}
-                          loading={savedQueryDirectoryApplying}
-                          onClick={() => void handleApplySavedQueryDirectory(false)}
-                      >
-                          {t('common.save')}
-                      </Button>
+          </section>
+
+          {!readOnly && (
+              <section className="gn-storage-panel">
+                  <div className="gn-storage-panel__body">
+                      <DirectorySectionHeading
+                          title={t('app.data_root.change_location')}
+                          description={t('app.data_root.saved_query_directory.change_description')}
+                      />
+                      <div className="gn-storage-path-editor">
+                          <Input
+                              readOnly
+                              value={selectedSavedQueryDirectoryPath}
+                              placeholder={t('app.data_root.saved_query_directory.placeholder')}
+                              aria-label={t('app.data_root.saved_query_directory.title')}
+                          />
+                          <div className="gn-storage-path-editor__actions">
+                              <Button
+                                  icon={<FolderOpenOutlined />}
+                                  disabled={directorySettingsApplying}
+                                  onClick={() => void handleSelectSavedQueryDirectory()}
+                              >
+                                  {t('app.data_root.action.select')}
+                              </Button>
+                              <Button
+                                  disabled={directorySettingsApplying}
+                                  loading={savedQueryDirectoryApplying}
+                                  onClick={() => void handleApplySavedQueryDirectory(true)}
+                              >
+                                  {t('app.data_root.action.restore_default_directory')}
+                              </Button>
+                          </div>
+                      </div>
+                      <DirectoryChoice
+                          recommended
+                          badge={t('app.data_root.recommended')}
+                          title={t('app.data_root.saved_query_directory.apply_title')}
+                          description={t('app.data_root.saved_query_directory.apply_description')}
+                          action={(
+                              <Button
+                                  type="primary"
+                                  disabled={directorySettingsApplying}
+                                  loading={savedQueryDirectoryApplying}
+                                  onClick={() => void handleApplySavedQueryDirectory(false)}
+                              >
+                                  {t('app.data_root.action.use_selected_directory')}
+                              </Button>
+                          )}
+                      />
                   </div>
-              )}
-              <div>
-                  <div style={{ marginBottom: 6, fontWeight: 500 }}>
-                      {t('app.data_root.saved_query_directory.default_directory')}
-                  </div>
-                  <div style={{ ...utilityMutedTextStyle, overflowWrap: 'anywhere' }}>
-                      {dataRootInfo?.defaultSavedQueryDirectory || '-'}
-                  </div>
-              </div>
-          </div>
-      </div>
+              </section>
+          )}
+      </DataDirectoryPage>
   );
 
-  const renderLogDirectorySettings = () => {
+  const renderLogDirectorySettings = (readOnly = false) => {
       const editable = dataRootInfo?.logDirectoryEditable !== false;
       const managedByEnvironment = dataRootInfo?.logDirectorySource === 'environment';
       const restartRequired = dataRootInfo?.logDirectoryRestartRequired === true;
       return (
-          <div style={utilityPanelStyle} data-log-directory-settings="true">
-              <div style={utilityMutedTextStyle}>
-                  {t('app.data_root.log_directory.description')}
-              </div>
-              <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
-                  <Input
-                      readOnly
-                      disabled={!editable}
-                      value={selectedLogDirectoryPath}
-                      placeholder={t('app.data_root.log_directory.placeholder')}
-                      aria-label={t('app.data_root.log_directory.title')}
-                  />
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                      <Button
-                          icon={<FolderOpenOutlined />}
-                          disabled={!editable || directorySettingsApplying}
-                          onClick={() => void handleSelectLogDirectory()}
-                      >
-                          {t('app.data_root.action.select')}
-                      </Button>
-                      <Button onClick={() => void handleOpenLogDirectory()}>
-                          {t('app.data_root.action.open_current')}
-                      </Button>
-                      <Button
-                          disabled={!editable || directorySettingsApplying}
-                          loading={logDirectoryApplying}
-                          onClick={() => void handleApplyLogDirectory(true)}
-                      >
-                          {t('app.data_root.action.restore_default_directory')}
-                      </Button>
-                      <Button
-                          type="primary"
-                          disabled={!editable || directorySettingsApplying}
-                          loading={logDirectoryApplying}
-                          onClick={() => void handleApplyLogDirectory(false)}
-                      >
-                          {t('common.save')}
-                      </Button>
+          <section className="gn-storage-panel" data-log-directory-settings="true">
+              <div className="gn-storage-panel__body">
+                  <div className="gn-storage-panel__header">
+                      <DirectorySectionHeading
+                          title={t('app.data_root.log_directory.title')}
+                          description={t('app.data_root.log_directory.description')}
+                      />
+                      {!readOnly && (
+                          <Button onClick={() => void handleOpenLogDirectory()}>
+                              {t('app.data_root.action.open_current')}
+                          </Button>
+                      )}
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
-                      <div>
-                          <div style={{ marginBottom: 6, fontWeight: 500 }}>
-                              {t('app.data_root.log_directory.current_file')}
+                  <div className="gn-storage-path-editor">
+                      <Input
+                          readOnly
+                          disabled={!editable}
+                          value={selectedLogDirectoryPath}
+                          placeholder={t('app.data_root.log_directory.placeholder')}
+                          aria-label={t('app.data_root.log_directory.title')}
+                      />
+                      {!readOnly && (
+                          <div className="gn-storage-path-editor__actions">
+                              <Button
+                                  icon={<FolderOpenOutlined />}
+                                  disabled={!editable || directorySettingsApplying}
+                                  onClick={() => void handleSelectLogDirectory()}
+                              >
+                                  {t('app.data_root.action.select')}
+                              </Button>
+                              <Button
+                                  disabled={!editable || directorySettingsApplying}
+                                  loading={logDirectoryApplying}
+                                  onClick={() => void handleApplyLogDirectory(true)}
+                              >
+                                  {t('app.data_root.action.restore_default_directory')}
+                              </Button>
+                              <Button
+                                  type="primary"
+                                  disabled={!editable || directorySettingsApplying}
+                                  loading={logDirectoryApplying}
+                                  onClick={() => void handleApplyLogDirectory(false)}
+                              >
+                                  {t('app.data_root.log_directory.action.save')}
+                              </Button>
                           </div>
-                          <div style={{ ...utilityMutedTextStyle, overflowWrap: 'anywhere' }}>
-                              {dataRootInfo?.logFilePath || '-'}
-                          </div>
-                      </div>
-                      <div>
-                          <div style={{ marginBottom: 6, fontWeight: 500 }}>
-                              {t('app.data_root.log_directory.default_directory')}
-                          </div>
-                          <div style={{ ...utilityMutedTextStyle, overflowWrap: 'anywhere' }}>
-                              {dataRootInfo?.defaultLogDirectory || '-'}
-                          </div>
-                      </div>
+                      )}
                   </div>
+                  <DirectoryMetaGrid items={[
+                      { label: t('app.data_root.log_directory.current_file'), value: dataRootInfo?.logFilePath || '-' },
+                      { label: t('app.data_root.log_directory.default_directory'), value: dataRootInfo?.defaultLogDirectory || '-' },
+                  ]} />
                   {managedByEnvironment ? (
                       <Alert type="warning" showIcon message={t('app.data_root.log_directory.environment_hint')} />
                   ) : restartRequired ? (
                       <Alert type="info" showIcon message={t('app.data_root.log_directory.pending_restart')} />
                   ) : (
-                      <div style={utilityMutedTextStyle}>{t('app.data_root.log_directory.restart_hint')}</div>
+                      <DirectoryNote>{t('app.data_root.log_directory.restart_hint')}</DirectoryNote>
                   )}
               </div>
+          </section>
+      );
+  };
+
+  const renderDataDirectorySettings = (
+      section: 'all' | 'application' | 'agent' | 'saved-queries' = 'all',
+      readOnly = false,
+  ) => {
+      if (dataRootLoading) {
+          return (
+              <div style={{ padding: '28px 0', textAlign: 'center' }}>
+                  <Spin />
+              </div>
+          );
+      }
+      return (
+          <div
+              style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '12px 0' }}
+              data-data-directory-layout="true"
+          >
+              {(section === 'all' || section === 'application') && (
+              <DataDirectoryPage testId="application">
+                  <section
+                      className="gn-storage-panel gn-storage-panel--current"
+                      data-data-directory-section="application"
+                  >
+                      <div className="gn-storage-panel__body">
+                          <DirectorySectionHeading
+                              title={t('app.data_root.current_location')}
+                              description={t('app.data_root.application.current_description')}
+                          />
+                          <DirectoryPathDisplay
+                              label={t('app.data_root.current_directory')}
+                              path={dataRootInfo?.path || ''}
+                              action={!readOnly ? (
+                                  <Button onClick={() => void handleOpenDataRoot()}>
+                                      {t('app.data_root.action.open_current')}
+                                  </Button>
+                              ) : undefined}
+                          />
+                          <div>
+                              <div className="gn-storage-field-label">{t('app.data_root.application.stores')}</div>
+                              <div className="gn-storage-tags">
+                                  <span className="gn-storage-tag">{t('app.data_root.application.content.connections')}</span>
+                                  <span className="gn-storage-tag">{t('app.data_root.application.content.ai_config')}</span>
+                                  <span className="gn-storage-tag">{t('app.data_root.application.content.drivers')}</span>
+                              </div>
+                          </div>
+                          <DirectoryMetaGrid items={[
+                              { label: t('app.data_root.default_directory'), value: dataRootInfo?.defaultPath || '-' },
+                              { label: t('app.data_root.driver_directory'), value: dataRootInfo?.driverPath || '-' },
+                          ]} />
+                      </div>
+                  </section>
+
+                  {!readOnly && (
+                      <section className="gn-storage-panel">
+                          <div className="gn-storage-panel__body">
+                              <DirectorySectionHeading
+                                  title={t('app.data_root.change_location')}
+                                  description={t('app.data_root.change_location_description')}
+                              />
+                              <div className="gn-storage-path-editor">
+                                  <Input
+                                      readOnly
+                                      value={selectedDataRootPath}
+                                      placeholder={t('app.data_root.placeholder.select_new_directory')}
+                                      aria-label={t('app.data_root.switch_target')}
+                                  />
+                                  <div className="gn-storage-path-editor__actions">
+                                      <Button
+                                          icon={<FolderOpenOutlined />}
+                                          disabled={directorySettingsApplying}
+                                          onClick={() => void handleSelectDataRoot()}
+                                      >
+                                          {t('app.data_root.action.select')}
+                                      </Button>
+                                      <Button
+                                          disabled={directorySettingsApplying}
+                                          loading={dataRootApplying}
+                                          onClick={() => void handleApplyDataRoot(false, true)}
+                                      >
+                                          {t('app.data_root.action.restore_default_directory')}
+                                      </Button>
+                                  </div>
+                              </div>
+                              <div className="gn-storage-choice-grid">
+                                  <DirectoryChoice
+                                      title={t('app.data_root.action.switch_now')}
+                                      description={t('app.data_root.switch_only_hint')}
+                                      action={(
+                                          <Button
+                                              disabled={directorySettingsApplying}
+                                              loading={dataRootApplying}
+                                              onClick={() => void handleApplyDataRoot(false)}
+                                          >
+                                              {t('app.data_root.action.switch_now')}
+                                          </Button>
+                                      )}
+                                  />
+                                  <DirectoryChoice
+                                      recommended
+                                      badge={t('app.data_root.recommended')}
+                                      title={t('app.data_root.action.migrate_now')}
+                                      description={t('app.data_root.migrate_hint')}
+                                      action={(
+                                          <Button
+                                              type="primary"
+                                              disabled={directorySettingsApplying}
+                                              loading={dataRootApplying}
+                                              onClick={() => void handleApplyDataRoot(true)}
+                                          >
+                                              {t('app.data_root.action.migrate_now')}
+                                          </Button>
+                                      )}
+                                  />
+                              </div>
+                              <DirectoryNote>{t('app.data_root.restart_hint')}</DirectoryNote>
+                          </div>
+                      </section>
+                  )}
+
+                  {renderLogDirectorySettings(readOnly)}
+              </DataDirectoryPage>
+              )}
+
+              {(section === 'all' || section === 'agent') && <AgentDataSettingsPanel
+                  readOnly={readOnly}
+              />}
+
+              {(section === 'all' || section === 'saved-queries') && renderSavedQueryDirectorySettings(readOnly)}
           </div>
       );
   };
@@ -4709,18 +5170,13 @@ function App() {
   const {
       handleCloseLogPanel: handleCloseAppLogPanel,
       handleLogResizeStart,
-      handleToggleLogPanel: toggleAppLogPanel,
       isLogPanelOpen,
       logGhostRef,
       logPanelHeight,
   } = useAppLogPanelResize();
   const handleToggleLogPanel = useCallback(() => {
-      if (isV2Ui) {
-          window.dispatchEvent(new CustomEvent('gonavi:show-sql-execution-log', { detail: { mode: 'open' } }));
-          return;
-      }
-      toggleAppLogPanel();
-  }, [isV2Ui, toggleAppLogPanel]);
+      window.dispatchEvent(new CustomEvent('gonavi:show-sql-execution-log', { detail: { mode: 'open' } }));
+  }, []);
   const handleCloseLogPanel = useCallback(() => {
       handleCloseAppLogPanel();
   }, [handleCloseAppLogPanel]);
@@ -4882,8 +5338,11 @@ function App() {
   };
   const handleOpenConnectionHealth = useCallback((connectionIds: string[] = []) => {
       setConnectionHealthTargetIds(Array.from(new Set(connectionIds.filter((id) => String(id || '').trim() !== ''))));
-      setIsConnectionHealthModalOpen(true);
-  }, []);
+      setToolCenterBackGroupKey('config');
+      setActiveSettingsCenterGroupKey('config');
+      setActiveSettingsCenterPane({ key: 'connection-health', group: 'config' });
+      openSettingsCenterWorkbenchTab();
+  }, [openSettingsCenterWorkbenchTab]);
 
   const handleOpenDriverManagerFromConnection = useCallback(() => {
       pendingConnectionTagIdRef.current = null;
@@ -5408,9 +5867,7 @@ function App() {
   } as any;
 
   const showLinuxResizeHandles = isLinuxRuntime;
-  const resizeGuideColor = isV2Ui
-      ? 'var(--gn-accent, #16a34a)'
-      : (darkMode ? 'rgba(246, 196, 83, 0.55)' : 'rgba(24, 144, 255, 0.5)');
+  const resizeGuideColor = 'var(--gn-accent, #16a34a)';
   const v2AntPrimaryColor = customThemeAntTokens.primary ?? (darkMode ? '#22c55e' : '#16a34a');
   const v2AntPrimaryContrastColor = customThemeAntTokens.primaryContrast ?? '#ffffff';
   const v2AntPrimaryHoverColor = customThemeAntTokens.primaryHover ?? (darkMode ? '#4ade80' : '#15803d');
@@ -5443,36 +5900,36 @@ function App() {
           controlHeightSM: tokenControlHeightSM,
           controlHeightLG: tokenControlHeightLG,
           colorBgLayout: 'transparent',
-          colorBgContainer: (isV2Ui ? v2AntBgContainer : undefined) ?? (darkMode
+          colorBgContainer: v2AntBgContainer ?? (darkMode
               ? `rgba(29, 29, 29, ${effectiveOpacity})`
               : `rgba(255, 255, 255, ${effectiveOpacity})`),
-          colorBgElevated: (isV2Ui ? v2AntBgElevated : undefined) ?? (darkMode
+          colorBgElevated: v2AntBgElevated ?? (darkMode
               ? '#1f1f1f'
               : '#ffffff'),
-          colorFillAlter: (isV2Ui ? v2AntFillAlter : undefined) ?? (darkMode
+          colorFillAlter: v2AntFillAlter ?? (darkMode
               ? `rgba(38, 38, 38, ${effectiveOpacity})`
               : `rgba(250, 250, 250, ${effectiveOpacity})`),
-          ...(isV2Ui && v2AntTextPrimary ? { colorText: v2AntTextPrimary } : {}),
-          ...(isV2Ui && v2AntTextSecondary ? { colorTextSecondary: v2AntTextSecondary } : {}),
-          ...(isV2Ui && v2AntBorder ? {
+          ...(v2AntTextPrimary ? { colorText: v2AntTextPrimary } : {}),
+          ...(v2AntTextSecondary ? { colorTextSecondary: v2AntTextSecondary } : {}),
+          ...(v2AntBorder ? {
               colorBorder: v2AntBorder,
               colorBorderSecondary: v2AntBorder,
           } : {}),
-          colorPrimary: isV2Ui ? v2AntPrimaryColor : (darkMode ? '#f6c453' : '#1677ff'),
-          colorTextLightSolid: isV2Ui ? v2AntPrimaryContrastColor : '#ffffff',
-          colorPrimaryHover: isV2Ui ? v2AntPrimaryHoverColor : (darkMode ? '#ffd666' : '#4096ff'),
-          colorPrimaryActive: isV2Ui ? v2AntPrimaryActiveColor : (darkMode ? '#d8a93b' : '#0958d9'),
-          colorInfo: isV2Ui ? v2AntInfoColor : (darkMode ? '#f6c453' : '#1677ff'),
-          colorLink: isV2Ui ? v2AntPrimaryColor : (darkMode ? '#ffd666' : '#1677ff'),
-          colorLinkHover: isV2Ui ? v2AntPrimaryHoverColor : (darkMode ? '#ffe58f' : '#4096ff'),
-          colorLinkActive: isV2Ui ? v2AntPrimaryActiveColor : (darkMode ? '#d8a93b' : '#0958d9'),
-          colorPrimaryBg: isV2Ui ? v2AntPrimaryBgColor : (darkMode ? 'rgba(246, 196, 83, 0.22)' : '#e6f4ff'),
-          colorPrimaryBgHover: isV2Ui ? v2AntPrimaryBgHoverColor : (darkMode ? 'rgba(246, 196, 83, 0.30)' : '#bae0ff'),
-          colorPrimaryBorder: isV2Ui ? v2AntPrimaryBorderColor : (darkMode ? 'rgba(246, 196, 83, 0.45)' : '#91caff'),
-          colorPrimaryBorderHover: isV2Ui ? v2AntPrimaryBorderHoverColor : (darkMode ? 'rgba(246, 196, 83, 0.60)' : '#69b1ff'),
-          controlItemBgActive: isV2Ui ? v2AntControlActiveBg : (darkMode ? 'rgba(246, 196, 83, 0.20)' : 'rgba(22, 119, 255, 0.12)'),
-          controlItemBgActiveHover: isV2Ui ? v2AntControlActiveHoverBg : (darkMode ? 'rgba(246, 196, 83, 0.28)' : 'rgba(22, 119, 255, 0.18)'),
-          controlOutline: isV2Ui ? v2AntControlOutline : (darkMode ? 'rgba(246, 196, 83, 0.50)' : 'rgba(5, 145, 255, 0.24)'),
+          colorPrimary: v2AntPrimaryColor,
+          colorTextLightSolid: v2AntPrimaryContrastColor,
+          colorPrimaryHover: v2AntPrimaryHoverColor,
+          colorPrimaryActive: v2AntPrimaryActiveColor,
+          colorInfo: v2AntInfoColor,
+          colorLink: v2AntPrimaryColor,
+          colorLinkHover: v2AntPrimaryHoverColor,
+          colorLinkActive: v2AntPrimaryActiveColor,
+          colorPrimaryBg: v2AntPrimaryBgColor,
+          colorPrimaryBgHover: v2AntPrimaryBgHoverColor,
+          colorPrimaryBorder: v2AntPrimaryBorderColor,
+          colorPrimaryBorderHover: v2AntPrimaryBorderHoverColor,
+          controlItemBgActive: v2AntControlActiveBg,
+          controlItemBgActiveHover: v2AntControlActiveHoverBg,
+          controlOutline: v2AntControlOutline,
       },
       components: {
           Layout: {
@@ -5483,21 +5940,20 @@ function App() {
           },
           Table: {
               headerBg: 'transparent',
-              rowHoverBg: (isV2Ui ? v2AntRowHoverBg : undefined)
+              rowHoverBg: v2AntRowHoverBg
                   ?? (darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.02)'),
           },
           Tabs: {
               cardBg: 'transparent',
-              itemActiveColor: isV2Ui ? v2AntPrimaryHoverColor : (darkMode ? '#ffd666' : '#1890ff'),
-              itemHoverColor: isV2Ui ? v2AntPrimaryHoverColor : (darkMode ? '#ffe58f' : '#40a9ff'),
-              itemSelectedColor: isV2Ui ? v2AntPrimaryColor : (darkMode ? '#ffd666' : '#1677ff'),
-              inkBarColor: isV2Ui ? v2AntPrimaryColor : (darkMode ? '#ffd666' : '#1677ff'),
+              itemActiveColor: v2AntPrimaryHoverColor,
+              itemHoverColor: v2AntPrimaryHoverColor,
+              itemSelectedColor: v2AntPrimaryColor,
+              inkBarColor: v2AntPrimaryColor,
           }
       }
   }), [
       darkMode,
       effectiveOpacity,
-      isV2Ui,
       v2AntBgContainer,
       v2AntBgElevated,
       v2AntBorder,
@@ -5881,6 +6337,7 @@ function App() {
       id: DownloadSourceId;
       labelKey: string;
       descKey: string;
+      guideKey: string;
       tagKey: string;
       icon: React.ReactNode;
       iconColor: string;
@@ -5892,6 +6349,7 @@ function App() {
           id: 'cst',
           labelKey: 'app.download_source.option.cst',
           descKey: 'app.download_source.option.cst.desc',
+          guideKey: 'app.download_source.option.cst.guide',
           tagKey: 'app.download_source.option.cst.tag',
           icon: <ThunderboltOutlined />,
           iconColor: '#f59e0b',
@@ -5903,6 +6361,7 @@ function App() {
           id: 'bero',
           labelKey: 'app.download_source.option.bero',
           descKey: 'app.download_source.option.bero.desc',
+          guideKey: 'app.download_source.option.bero.guide',
           tagKey: 'app.download_source.option.bero.tag',
           icon: <ApiOutlined />,
           iconColor: '#0ea5e9',
@@ -5914,6 +6373,7 @@ function App() {
           id: 'github',
           labelKey: 'app.download_source.option.github',
           descKey: 'app.download_source.option.github.desc',
+          guideKey: 'app.download_source.option.github.guide',
           tagKey: 'app.download_source.option.github.tag',
           icon: <GithubOutlined />,
           iconColor: darkMode ? '#cbd5e1' : '#475569',
@@ -5924,7 +6384,6 @@ function App() {
   ];
 
   const renderDownloadSourceSettingsContent = useCallback(() => {
-      const cardColumns = viewportWidth < 720 ? 1 : 3;
       return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '12px 0' }}>
               <div style={utilityPanelStyle}>
@@ -5936,7 +6395,7 @@ function App() {
                       aria-label={t('app.download_source.title')}
                       style={{
                           display: 'grid',
-                          gridTemplateColumns: `repeat(${cardColumns}, minmax(0, 1fr))`,
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))',
                           gap: 12,
                       }}
                   >
@@ -6056,6 +6515,9 @@ function App() {
                                               {t(source.tagKey)}
                                           </span>
                                       </div>
+                                      <div style={{ marginTop: 8, fontSize: 13, fontWeight: 600, lineHeight: 1.6 }}>
+                                          {t(source.guideKey)}
+                                      </div>
                                       <div
                                           style={{
                                               marginTop: 6,
@@ -6103,7 +6565,6 @@ function App() {
       t,
       utilityMutedTextStyle,
       utilityPanelStyle,
-      viewportWidth,
   ]);
   const renderSidebarMetadataSettingsPane = useCallback(() => (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '12px 0' }}>
@@ -6244,43 +6705,13 @@ function App() {
       : (lastUpdateInfo?.packageType === 'portable'
           ? t('app.about.action.download_portable_update')
           : t('app.about.action.download_update'));
-  const renderReleaseNotesActionButton = (key = 'release-notes') => (
-      lastUpdateInfo ? (
-          <Button
-              key={key}
-              icon={<FileTextOutlined />}
-              onClick={openReleaseNotesModal}
-          >
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  {t('app.about.release_notes.action.view')}
-                  {hasUnreadReleaseNotes ? (
-                      <span
-                          aria-label={t('app.about.release_notes.unread_badge')}
-                          style={{
-                              width: 7,
-                              height: 7,
-                              borderRadius: 999,
-                              background: darkMode ? '#4ade80' : '#16a34a',
-                              boxShadow: darkMode ? '0 0 0 2px rgba(15,23,42,0.35)' : '0 0 0 2px rgba(255,255,255,0.9)',
-                          }}
-                      />
-                  ) : null}
-              </span>
-          </Button>
-      ) : null
-  );
-
-  const renderAboutUpdateActions = (
-      surface: AboutUpdateActionsSurface,
-      closeAction?: React.ReactNode,
-  ) => [
+  const renderAboutUpdateActions = () => [
       isBackgroundProgressForLatestUpdate && !isLatestUpdateDownloaded ? (
           <Button key="progress" icon={<DownloadOutlined />} onClick={showUpdateDownloadProgress}>{t('app.about.action.download_progress')}</Button>
       ) : null,
       lastUpdateInfo?.hasUpdate && !isLatestUpdateDownloaded && !isBackgroundProgressForLatestUpdate ? (
           <Button key="mute" onClick={muteLatestUpdate}>{t('app.about.action.mute_this_version')}</Button>
       ) : null,
-      shouldShowFooterReleaseNotesAction(surface) ? renderReleaseNotesActionButton() : null,
       <Button
           key="check"
           icon={<CloudDownloadOutlined />}
@@ -6289,7 +6720,6 @@ function App() {
       >
           {t('app.about.action.check_updates')}
       </Button>,
-      closeAction ?? null,
       lastUpdateInfo?.hasUpdate && !isLatestUpdateDownloaded && !isBackgroundProgressForLatestUpdate ? (
           <Button key="download" type="primary" icon={<DownloadOutlined />} onClick={handleDownloadUpdateWithNotes}>{updateDownloadActionLabel}</Button>
       ) : null,
@@ -6558,10 +6988,12 @@ function App() {
                   <div className="gonavi-about-setting">
                       <div className="gonavi-about-field">
                           <div className="gonavi-about-field-label" style={{ color: overlayTheme.titleText }}>{t('app.about.field.auto_check_updates')}</div>
-                          <Switch
-                            checked={autoCheckForUpdates}
-                            onChange={(checked) => setAutoCheckForUpdates(checked)}
-                          />
+                          <span className="gonavi-about-field-control">
+                            <Switch
+                              checked={autoCheckForUpdates}
+                              onChange={(checked) => setAutoCheckForUpdates(checked)}
+                            />
+                          </span>
                       </div>
                       {autoCheckForUpdates ? (
                           <>
@@ -6678,7 +7110,7 @@ function App() {
 
   const renderSettingsCenterAboutFooter = () => (
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginLeft: 'auto' }}>
-          {renderAboutUpdateActions('settings-center')}
+          {renderAboutUpdateActions()}
       </div>
   );
 
@@ -7223,14 +7655,12 @@ function App() {
                                                       borderRadius: 0,
                                                       border: 'none',
                                                       borderLeft: `3px solid ${isFocused
-                                                          ? (isV2Ui ? v2AntPrimaryColor : (darkMode ? '#ffd666' : '#1677ff'))
+                                                          ? (v2AntPrimaryColor)
                                                           : 'transparent'}`,
                                                       borderBottom: `1px solid ${overlayTheme.divider}`,
                                                       boxShadow: 'none',
                                                       background: isFocused
-                                                          ? (isV2Ui
-                                                              ? v2AntPrimaryBgColor
-                                                              : (darkMode ? 'rgba(255,214,102,0.10)' : 'rgba(24,144,255,0.08)'))
+                                                          ? (v2AntPrimaryBgColor)
                                                           : 'transparent',
                                                       cursor: 'pointer',
                                                       transition: 'border-color 140ms ease, background-color 140ms ease',
@@ -7250,7 +7680,7 @@ function App() {
                                                           fontWeight: 600,
                                                           background: 'transparent',
                                                           color: isFocused
-                                                              ? (isV2Ui ? v2AntPrimaryColor : (darkMode ? '#ffd666' : '#1677ff'))
+                                                              ? (v2AntPrimaryColor)
                                                               : (darkMode ? 'rgba(255,255,255,0.56)' : 'rgba(16,24,40,0.5)'),
                                                       }}>
                                                           {checked && indexInRow >= 0 ? indexInRow + 1 : '-'}
@@ -7270,8 +7700,8 @@ function App() {
                                                                       lineHeight: '16px',
                                                                       padding: '0 6px',
                                                                       borderRadius: 999,
-                                                                      background: isV2Ui ? v2AntPrimaryBgColor : (darkMode ? 'rgba(255,214,102,0.16)' : 'rgba(24,144,255,0.10)'),
-                                                                      color: isV2Ui ? v2AntPrimaryColor : (darkMode ? '#ffd666' : '#1677ff'),
+                                                                      background: v2AntPrimaryBgColor,
+                                                                      color: v2AntPrimaryColor,
                                                                   }}>
                                                                       {t('app.theme.tab_display.badge.current')}
                                                                   </span>
@@ -7727,7 +8157,7 @@ function App() {
   ];
   const isSettingsCenterContainedScrollPane =
       activeSettingsCenterPane?.key === 'theme' || activeSettingsCenterPane?.key === 'ai';
-  const isV2ThemeSettingsPane = isV2Ui && activeSettingsCenterPane?.key === 'theme';
+  const isV2ThemeSettingsPane = activeSettingsCenterPane?.key === 'theme';
   const activeSettingsCenterDetailPanelStyle: React.CSSProperties = {
       ...toolCenterDetailPanelStyle,
       padding: '0 4px 0 0',
@@ -7778,10 +8208,7 @@ function App() {
                     darkMode={darkMode}
                     accentColor={overlayTheme.selectedText}
                     ariaLabel={t('app.settings.entry.brand_icon.title')}
-                    onChange={(id: BrandIconId) => {
-                        setBrandIconId(id);
-                        message.success(t('app.settings.entry.brand_icon.applied'));
-                    }}
+                    onChange={handleBrandIconChange}
                   />
               </div>
           );
@@ -7872,6 +8299,10 @@ function App() {
   const sidebarPanelCollapseLabel = t('app.sidebar.collapse');
   const sidebarPanelExpandLabel = t('app.sidebar.expand');
   const sidebarPanelToggleLabel = isSidebarCollapsed ? sidebarPanelExpandLabel : sidebarPanelCollapseLabel;
+  const handleAppContextMenu = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    if (event.defaultPrevented || shouldAllowNativeContextMenu(event.target)) return;
+    event.preventDefault();
+  }, []);
 
   return (
     <ConfigProvider
@@ -7886,9 +8317,10 @@ function App() {
         />
         <ToolbarAppearanceStyleHost />
         <Layout
-          className={isV2Ui ? 'gn-v2-app-root' : undefined}
+          className="gn-v2-app-root"
+          onContextMenu={handleAppContextMenu}
           data-gonavi-close-shortcut-scope="workspace"
-          data-empty-workbench={isV2Ui && tabs.length === 0 ? 'true' : 'false'}
+          data-empty-workbench={tabs.length === 0 ? 'true' : 'false'}
           data-collapsed-sidebar-actions-docked={
               isCollapsedSidebarActionsDocked ? 'true' : 'false'
           }
@@ -7909,15 +8341,15 @@ function App() {
           <input
             ref={browserConnectionImportInputRef}
             type="file"
-            accept=".gonavi-conn,.json,.xml,.ncx"
+            accept=".gonavi-conn,.json,.xml,.ncx,.xlsx"
             style={{ display: 'none' }}
             onChange={(event) => { void handleBrowserConnectionImportFileChange(event); }}
           />
           {/* Custom Title Bar */}
           <div
             className={[
-              isV2Ui ? 'gn-v2-titlebar' : 'gonavi-titlebar',
-              isV2Ui && useNativeMacWindowControls ? 'gn-v2-titlebar-native-mac' : '',
+              'gn-v2-titlebar',
+              useNativeMacWindowControls ? 'gn-v2-titlebar-native-mac' : '',
               isCollapsedSidebarActionsDocked ? 'gn-v2-titlebar-collapsed-docked' : '',
             ].filter(Boolean).join(' ')}
             onDoubleClick={handleTitleBarDoubleClick}
@@ -7926,9 +8358,9 @@ function App() {
                 flexShrink: 0,
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: isV2Ui ? 'flex-start' : 'space-between',
+                justifyContent: 'flex-start',
                 // Match the titlebar to the adjacent theme surface with its compensated opacity.
-                background: isV2Ui ? 'var(--gn-bg-titlebar)' : bgMain,
+                background: 'var(--gn-bg-titlebar)',
                 borderBottom: 'none',
                 userSelect: 'none',
                 WebkitAppRegion: isWebRuntime ? 'no-drag' : 'drag',
@@ -7937,7 +8369,7 @@ function App() {
                 '--gn-titlebar-divider-height': `${titleBarLayout.dividerHeight}px`,
                 '--gn-titlebar-collapsed-upper-height': `${titleBarLayout.upperBandHeight}px`,
                 '--gn-titlebar-window-controls-width': `${isWebRuntime ? titleBarButtonWidth : (useNativeMacWindowControls ? 0 : titleBarButtonWidth * 3)}px`,
-                '--gn-titlebar-native-content-offset': `${getMacNativeTitlebarContentOffset(titleBarHeight, isV2Ui && useNativeMacWindowControls)}px`,
+                '--gn-titlebar-native-content-offset': `${getMacNativeTitlebarContentOffset(titleBarHeight, useNativeMacWindowControls)}px`,
                 paddingLeft: getMacNativeTitlebarPaddingLeft(effectiveUiScale, useNativeMacWindowControls),
                 paddingRight: getMacNativeTitlebarPaddingRight(effectiveUiScale, useNativeMacWindowControls),
                 fontSize: tokenFontSize
@@ -7962,7 +8394,7 @@ function App() {
                     connectionGroupLabel={t('connection.sidebar.management.title')}
                     onConnectionGroupManagement={() => setIsConnectionGroupManagementOpen(true)}
                   />
-                  {isV2Ui && <div id="gonavi-titlebar-quick-actions" className="gonavi-titlebar-quick-actions-slot" />}
+                  <div id="gonavi-titlebar-quick-actions" className="gonavi-titlebar-quick-actions-slot" />
               </div>
               {isCollapsedSidebarActionsDocked && (
                   <div
@@ -7976,7 +8408,14 @@ function App() {
                   />
               )}
               {/* Collapsed sidebar titlebar actions end */}
-              <div className={isV2Ui ? 'gn-v2-titlebar-right' : undefined}>
+              <div className="gn-v2-titlebar-right">
+                  <TitleBarSystemActions
+                    aiAssistantLabel={t('app.sidebar.ai_assistant')}
+                    settingsLabel={t('app.sidebar.settings')}
+                    aiActive={aiPanelVisible}
+                    onToggleAI={handleToggleOrFocusAIPanel}
+                    onOpenSettings={handleOpenSettingsModal}
+                  />
                   {isWebRuntime ? (
                       <div
                         onDoubleClick={(e) => e.stopPropagation()}
@@ -8049,19 +8488,19 @@ function App() {
             data-sidebar-panel="true"
             data-sidebar-collapsed={isSidebarCollapsed}
             data-sidebar-actions-placement={isCollapsedSidebarActionsDocked ? 'titlebar' : 'fixed-rail'}
-            className={isV2Ui ? 'gn-v2-app-sider' : undefined}
+            className="gn-v2-app-sider"
             style={{
-                borderRight: isV2Ui ? 'none' : '1px solid rgba(128,128,128,0.2)',
+                borderRight: 'none',
                 position: 'relative',
-                background: isV2Ui ? 'var(--gn-bg-panel-2)' : bgMain,
+                background: 'var(--gn-bg-panel-2)',
                 ['--gonavi-sidebar-collapsed-width' as any]: `${sidebarCollapsedWidth}px`,
+                ['--gonavi-sidebar-resize-inner-hit-width' as any]: `${sidebarResizeHandleWidth / 2}px`,
             }}
           >
             <div
                 ref={sidebarContentRef}
-                id={isV2Ui ? undefined : 'gonavi-sidebar-tree-panel'}
                 data-sidebar-content="true"
-                aria-hidden={isV2Ui ? (isCollapsedSidebarActionsDocked ? true : undefined) : isSidebarCollapsed}
+                aria-hidden={isCollapsedSidebarActionsDocked ? true : undefined}
                 style={{
                     height: '100%',
                     display: 'flex',
@@ -8069,7 +8508,7 @@ function App() {
                     overflow: 'hidden',
                 }}
             >
-                <div style={{ flex: 1, overflow: 'hidden', paddingBottom: isV2Ui ? 0 : 58, paddingRight: isV2Ui || isSidebarCollapsed ? 0 : sidebarResizeHandleWidth, position: 'relative' }}>
+                <div style={{ flex: 1, overflow: 'hidden', paddingBottom: 0, paddingRight: 0, position: 'relative' }}>
                     <div style={{ height: '100%', opacity: connectionWorkbenchState.ready ? 1 : 0.72, pointerEvents: connectionWorkbenchState.ready ? 'auto' : 'none' }}>
                         <Sidebar
                             onCreateConnection={handleCreateConnection}
@@ -8081,17 +8520,16 @@ function App() {
                             onOpenDataSyncWorkbench={handleOpenDataSyncWorkbench}
                             onToggleAI={handleToggleOrFocusAIPanel}
                             onToggleLogPanel={handleToggleLogPanel}
-                            uiVersion={appearance.uiVersion}
                             v2ExplorerContext={v2ExplorerContext}
                             collapsedSidebarActionsTarget={collapsedSidebarActionsTarget}
                             onFocusCommandSearch={handleFocusSidebarSearch}
-                            onCollapseSidebar={isV2Ui ? handleCollapseSidebarPanel : undefined}
-                            onExpandSidebar={isV2Ui ? handleExpandSidebarPanel : undefined}
+                            onCollapseSidebar={handleCollapseSidebarPanel}
+                            onExpandSidebar={handleExpandSidebarPanel}
                             onEnsureSidebarExpanded={isSidebarCollapsed ? handleExpandSidebarPanel : undefined}
                             onTitlebarSnapshotChange={setSidebarTitlebarSnapshot}
-                            collapseSidebarLabel={isV2Ui ? sidebarPanelCollapseLabel : undefined}
+                            collapseSidebarLabel={sidebarPanelCollapseLabel}
                             collapseSidebarButtonRef={sidebarExplorerToggleRef}
-                            expandSidebarLabel={isV2Ui ? sidebarPanelExpandLabel : undefined}
+                            expandSidebarLabel={sidebarPanelExpandLabel}
                             expandSidebarButtonRef={sidebarCollapsedToggleRef}
                         />
                     </div>
@@ -8129,36 +8567,37 @@ function App() {
                             </div>
                         </div>
                     )}
-                    {!isSidebarCollapsed && <div
-                        onMouseDown={handleSidebarMouseDown}
-                        onContextMenu={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                        }}
-                        role="separator"
-                        aria-orientation="vertical"
-                        title={t('app.sidebar.resize_width')}
-                        style={{
-                            position: 'absolute',
-                            right: 0,
-                            top: 0,
-                            bottom: 0,
-                            width: sidebarResizeHandleWidth,
-                            cursor: 'col-resize',
-                            zIndex: 3,
-                            touchAction: 'none',
-                            userSelect: 'none',
-                            WebkitUserSelect: 'none',
-                            background: 'transparent',
-                        }}
-                    />}
                 </div>
 
 
             </div>
+            {!isSidebarCollapsed && <div
+                data-sidebar-resize-handle="true"
+                onMouseDown={handleSidebarMouseDown}
+                onContextMenu={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }}
+                role="separator"
+                aria-orientation="vertical"
+                title={t('app.sidebar.resize_width')}
+                style={{
+                    position: 'absolute',
+                    right: -(sidebarResizeHandleWidth / 2),
+                    top: 0,
+                    bottom: 0,
+                    width: sidebarResizeHandleWidth,
+                    cursor: 'col-resize',
+                    zIndex: 3,
+                    touchAction: 'none',
+                    userSelect: 'none',
+                    WebkitUserSelect: 'none',
+                    background: 'transparent',
+                }}
+            />}
           </Sider>
            <Content
-             style={{ background: isV2Ui ? 'var(--gn-bg-panel-2)' : bgContent, overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}
+             style={{ background: 'var(--gn-bg-panel-2)', overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}
            >
              {isSecurityUpdateBannerVisible && (
                 <SecurityUpdateBanner
@@ -8176,7 +8615,7 @@ function App() {
                 />
              )}
              <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'row', position: 'relative' }}>
-               <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: isV2Ui ? 'transparent' : bgContent, marginBottom: isLogPanelOpen ? 8 : 0, borderRadius: isLogPanelOpen ? 'var(--gonavi-border-radius)' : 0, clipPath: isLogPanelOpen ? 'inset(0 round var(--gonavi-border-radius))' : 'none' }}>
+               <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'transparent', marginBottom: isLogPanelOpen ? 8 : 0, borderRadius: isLogPanelOpen ? 'var(--gonavi-border-radius)' : 0, clipPath: isLogPanelOpen ? 'inset(0 round var(--gonavi-border-radius))' : 'none' }}>
                   <TabManager onFocusSidebarSearch={handleFocusSidebarSearch} />
                   <FloatingWorkbenchWindows />
                   <FloatingQueryResultWindows />
@@ -8317,8 +8756,8 @@ function App() {
                             onClose={handleCloseAIPanel}
                             onDetach={handleDetachAIPanel}
                             onRegisterTerminalGuard={registerAIPanelTerminalGuard}
-                            onOpenSettings={() => {
-                              handleOpenAISettings();
+                            onOpenSettings={(providerId) => {
+                              handleOpenAISettings(providerId);
                             }}
                             overlayTheme={overlayTheme}
                           />
@@ -8333,7 +8772,7 @@ function App() {
                     bgColor={bgContent}
                     overlayTheme={overlayTheme}
                     renderNonce={aiPanelRenderNonce}
-                    onOpenSettings={() => handleOpenAISettings()}
+                    onOpenSettings={(providerId) => handleOpenAISettings(providerId)}
                     onRenderError={handleAIPanelRenderError}
                     onRetryRender={handleRetryAIPanelRender}
                     onRegisterTerminalGuard={registerAIPanelTerminalGuard}
@@ -8357,12 +8796,6 @@ function App() {
             }}
           />
           )}
-          <ConnectionHealthModal
-            open={isConnectionHealthModalOpen}
-            targetConnectionIds={connectionHealthTargetIds}
-            onClose={() => setIsConnectionHealthModalOpen(false)}
-            zIndex={isConnectionGroupManagementOpen ? APP_NESTED_MODAL_Z_INDEX : APP_FOREGROUND_MODAL_Z_INDEX}
-          />
           {isSettingsModalOpen && (() => {
             const toolCenterGroups: SettingsCenterNavigationGroup[] = [
               {
@@ -8377,7 +8810,7 @@ function App() {
                     title: t('app.tools.entry.import.title'),
                     description: t('app.tools.entry.import.description'),
                     onClick: () => {
-                      void handleImportConnections('config');
+                      handleOpenToolCenterPane('config', 'import');
                     },
                   },
                   {
@@ -8386,6 +8819,7 @@ function App() {
                     title: t('app.tools.entry.export.title'),
                     description: t('app.tools.entry.export.description'),
                     onClick: () => {
+                      handleOpenToolCenterPane('config', 'export');
                       void handleExportConnections('config');
                     },
                   },
@@ -8395,7 +8829,7 @@ function App() {
                     title: t('app.tools.entry.connection_health.title'),
                     description: t('app.tools.entry.connection_health.description'),
                     onClick: () => {
-                      handleCancelSettingsCenterPane();
+                      handleOpenToolCenterPane('config', 'connection-health');
                       handleOpenConnectionHealth();
                     },
                   },
@@ -8405,8 +8839,31 @@ function App() {
                     title: t('app.tools.entry.data_root.title'),
                     description: t('app.tools.entry.data_root.description'),
                     onClick: () => {
-                      handleOpenToolCenterPane('config', 'data-root');
+                      handleOpenToolCenterPane('config', 'data-root-application');
                     },
+                    children: [
+                      {
+                        key: 'data-root-application',
+                        icon: <HddOutlined />,
+                        title: t('app.data_root.current_directory'),
+                        description: t('app.data_root.description'),
+                        onClick: () => handleOpenToolCenterPane('config', 'data-root-application'),
+                      },
+                      {
+                        key: 'data-root-agent',
+                        icon: <RobotOutlined />,
+                        title: t('app.data_root.agent_data.title'),
+                        description: t('app.data_root.agent_data.description'),
+                        onClick: () => handleOpenToolCenterPane('config', 'data-root-agent'),
+                      },
+                      {
+                        key: 'data-root-saved-queries',
+                        icon: <FileTextOutlined />,
+                        title: t('app.data_root.saved_query_directory.title'),
+                        description: t('app.data_root.saved_query_directory.description'),
+                        onClick: () => handleOpenToolCenterPane('config', 'data-root-saved-queries'),
+                      },
+                    ],
                   },
                   {
                     key: 'security-update',
@@ -8428,30 +8885,21 @@ function App() {
                 description: t('app.tools.group.workflow.description'),
                 items: [
                   {
-                    key: 'schema-compare',
-                    icon: <AppstoreOutlined />,
-                    title: t('app.tools.entry.schema_compare.title'),
-                    description: t('app.tools.entry.schema_compare.description'),
-                    onClick: () => {
-                      handleOpenDataSyncWorkbench('schemaCompare');
-                    },
-                  },
-                  {
-                    key: 'data-compare',
-                    icon: <SwitcherOutlined />,
-                    title: t('app.tools.entry.data_compare.title'),
-                    description: t('app.tools.entry.data_compare.description'),
-                    onClick: () => {
-                      handleOpenDataSyncWorkbench('dataCompare');
-                    },
-                  },
-                  {
                     key: 'sync',
                     icon: <UploadOutlined rotate={90} />,
                     title: t('app.tools.entry.sync.title'),
                     description: t('app.tools.entry.sync.description'),
                     onClick: () => {
                       handleOpenDataSyncWorkbench('sync');
+                    },
+                  },
+                  {
+                    key: 'compare',
+                    icon: <SwitcherOutlined />,
+                    title: t('app.tools.entry.compare.title'),
+                    description: t('app.tools.entry.compare.description'),
+                    onClick: () => {
+                      handleOpenDataSyncWorkbench('compare');
                     },
                   },
                 ],
@@ -8559,7 +9007,59 @@ function App() {
                 return null;
               }
 
-              if (activeSettingsCenterPane.key === 'connection-package') {
+              if (activeSettingsCenterPane.key === 'import') {
+                return (
+                  <ConnectionImportSettingsPanel
+                    groupOptions={connectionImportGroupOptions}
+                    targetGroupId={connectionImportTargetTagId}
+                    password={connectionPackageDialog.mode === 'import' ? connectionPackageDialog.password : ''}
+                    protectedPackageReady={Boolean(pendingConnectionImportPayload)}
+                    busy={connectionPackageDialog.mode === 'import' && connectionPackageDialog.confirmLoading}
+                    error={connectionPackageDialog.mode === 'import' ? connectionPackageDialog.error : ''}
+                    notice={connectionImportNotice}
+                    onTargetGroupChange={(groupID) => {
+                        setConnectionImportTargetTagId(groupID);
+                        setConnectionImportNotice(null);
+                        setConnectionPackageDialog((current) => ({ ...current, error: '' }));
+                    }}
+                    onChooseFile={() => void handleImportConnections('config')}
+                    onPasswordChange={(value) => {
+                        setConnectionPackageDialog((current) => ({
+                            ...current,
+                            password: value,
+                            error: '',
+                        }));
+                    }}
+                    onConfirmProtectedPackage={() => void handleConfirmConnectionPackageDialog()}
+                    onDiscardProtectedPackage={() => {
+                        setPendingConnectionImportPayload(null);
+                        setConnectionPackageDialog((current) => ({
+                            ...current,
+                            open: false,
+                            password: '',
+                            error: '',
+                            confirmLoading: false,
+                        }));
+                    }}
+                  />
+                );
+              }
+
+              if (isConnectionPackageSettingsPaneKey(activeSettingsCenterPane.key)) {
+                if (!connectionPackageDialog.open) {
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '12px 0' }}>
+                      <div style={utilityPanelStyle}>
+                        <div style={utilityMutedTextStyle}>
+                          {t('app.tools.entry.export.description')}
+                        </div>
+                        <div style={{ marginTop: 12, ...utilityMutedTextStyle }}>
+                          {t('app.connection_package.message.no_connections_to_export')}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
                 return (
                   <ConnectionPackagePasswordModal
                     embedded
@@ -8573,7 +9073,11 @@ function App() {
                     password={connectionPackageDialog.password}
                     error={connectionPackageDialog.error}
                     confirmLoading={connectionPackageDialog.confirmLoading}
-                    connectionOptions={connections.map((item) => ({ value: item.id, label: item.name || item.id }))}
+                    connectionOptions={connections.map((item) => ({
+                      value: item.id,
+                      label: item.name || item.id,
+                      type: item.config?.type,
+                    }))}
                     selectedConnectionIds={connectionPackageDialog.selectedConnectionIds}
                     onSelectedConnectionIdsChange={(ids) => {
                         setConnectionPackageDialog((current) => ({
@@ -8617,29 +9121,25 @@ function App() {
                 );
               }
 
-              if (activeSettingsCenterPane.key === 'data-root') {
+              if (activeSettingsCenterPane.key === 'connection-health') {
+                return (
+                  <ConnectionHealthModal
+                    embedded
+                    open
+                    targetConnectionIds={connectionHealthTargetIds}
+                    onClose={closeConnectionHealthSettingsPane}
+                  />
+                );
+              }
+
+              if (activeSettingsCenterPane.key.startsWith('data-root')) {
+                const dataDirectorySection = activeSettingsCenterPane.key === 'data-root-agent'
+                  ? 'agent'
+                  : activeSettingsCenterPane.key === 'data-root-saved-queries'
+                    ? 'saved-queries'
+                    : 'application';
                 if (isWebRuntime) {
-                  return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '12px 0' }}>
-                      <div style={utilityPanelStyle}>
-                        <div style={{ marginBottom: 10, fontWeight: 600 }}>{t('app.data_root.current_directory')}</div>
-                        <div style={{ display: 'grid', gap: 10 }}>
-                          <Input readOnly value={dataRootInfo?.path || ''} />
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                            <div>
-                              <div style={{ marginBottom: 6, fontWeight: 500 }}>{t('app.data_root.default_directory')}</div>
-                              <div style={utilityMutedTextStyle}>{dataRootInfo?.defaultPath || '-'}</div>
-                            </div>
-                            <div>
-                              <div style={{ marginBottom: 6, fontWeight: 500 }}>{t('app.data_root.driver_directory')}</div>
-                              <div style={utilityMutedTextStyle}>{dataRootInfo?.driverPath || '-'}</div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      {renderSavedQueryDirectorySettings(true)}
-                    </div>
-                  );
+                  return renderDataDirectorySettings(dataDirectorySection, true);
                 }
                 return (
                   <Modal
@@ -8659,84 +9159,7 @@ function App() {
                       footer: { background: 'transparent', borderTop: 'none', paddingTop: 10 },
                     }}
                   >
-                    {dataRootLoading ? (
-                      <div style={{ padding: '16px 0', textAlign: 'center' }}>
-                        <Spin />
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '12px 0' }}>
-                        <div style={utilityPanelStyle}>
-                          <div style={{ marginBottom: 10, fontWeight: 600 }}>{t('app.data_root.current_directory')}</div>
-                          <div style={{ display: 'grid', gap: 10 }}>
-                            <Input readOnly value={dataRootInfo?.path || ''} />
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                              <div>
-                                <div style={{ marginBottom: 6, fontWeight: 500 }}>{t('app.data_root.default_directory')}</div>
-                                <div style={utilityMutedTextStyle}>{dataRootInfo?.defaultPath || '-'}</div>
-                              </div>
-                              <div>
-                                <div style={{ marginBottom: 6, fontWeight: 500 }}>{t('app.data_root.driver_directory')}</div>
-                                <div style={utilityMutedTextStyle}>{dataRootInfo?.driverPath || '-'}</div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                        <div style={utilityPanelStyle}>
-                          <div style={{ marginBottom: 10, fontWeight: 600 }}>{t('app.data_root.switch_target')}</div>
-                          <div style={{ display: 'grid', gap: 10 }}>
-                            <Input
-                              readOnly
-                              value={selectedDataRootPath}
-                              placeholder={t('app.data_root.placeholder.select_new_directory')}
-                            />
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                              <Button
-                                icon={<FolderOpenOutlined />}
-                                disabled={directorySettingsApplying}
-                                onClick={() => void handleSelectDataRoot()}
-                              >
-                                {t('app.data_root.action.select')}
-                              </Button>
-                              <Button onClick={() => void handleOpenDataRoot()}>
-                                {t('app.data_root.action.open_current')}
-                              </Button>
-                              <Button
-                                disabled={directorySettingsApplying}
-                                loading={dataRootApplying}
-                                onClick={() => void handleApplyDataRoot(false, true)}
-                              >
-                                {t('app.data_root.action.restore_default_directory')}
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                        <div style={utilityPanelStyle}>
-                          <div style={{ marginBottom: 10, fontWeight: 600 }}>{t('app.data_root.apply_method')}</div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                            <Button
-                              disabled={directorySettingsApplying}
-                              loading={dataRootApplying}
-                              onClick={() => void handleApplyDataRoot(false)}
-                            >
-                              {t('app.data_root.action.switch_only')}
-                            </Button>
-                            <Button
-                              type="primary"
-                              disabled={directorySettingsApplying}
-                              loading={dataRootApplying}
-                              onClick={() => void handleApplyDataRoot(true)}
-                            >
-                              {t('app.data_root.action.migrate_and_switch')}
-                            </Button>
-                          </div>
-                          <div style={{ ...utilityMutedTextStyle, marginTop: 10 }}>
-                            {t('app.data_root.restart_hint')}
-                          </div>
-                        </div>
-                        {renderSavedQueryDirectorySettings()}
-                        {renderLogDirectorySettings()}
-                      </div>
-                    )}
+                    {renderDataDirectorySettings(dataDirectorySection)}
                   </Modal>
                 );
               }
@@ -9010,84 +9433,7 @@ function App() {
             width={720}
             styles={{ content: utilityModalShellStyle, header: { background: 'transparent', borderBottom: 'none', paddingBottom: 8 }, body: { paddingTop: 8 }, footer: { background: 'transparent', borderTop: 'none', paddingTop: 10 } }}
           >
-            {dataRootLoading ? (
-              <div style={{ padding: '16px 0', textAlign: 'center' }}>
-                <Spin />
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '12px 0' }}>
-                <div style={utilityPanelStyle}>
-                  <div style={{ marginBottom: 10, fontWeight: 600 }}>{t('app.data_root.current_directory')}</div>
-                  <div style={{ display: 'grid', gap: 10 }}>
-                    <Input readOnly value={dataRootInfo?.path || ''} />
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                      <div>
-                        <div style={{ marginBottom: 6, fontWeight: 500 }}>{t('app.data_root.default_directory')}</div>
-                        <div style={utilityMutedTextStyle}>{dataRootInfo?.defaultPath || '-'}</div>
-                      </div>
-                      <div>
-                        <div style={{ marginBottom: 6, fontWeight: 500 }}>{t('app.data_root.driver_directory')}</div>
-                        <div style={utilityMutedTextStyle}>{dataRootInfo?.driverPath || '-'}</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div style={utilityPanelStyle}>
-                  <div style={{ marginBottom: 10, fontWeight: 600 }}>{t('app.data_root.switch_target')}</div>
-                  <div style={{ display: 'grid', gap: 10 }}>
-                    <Input
-                      readOnly
-                      value={selectedDataRootPath}
-                      placeholder={t('app.data_root.placeholder.select_new_directory')}
-                    />
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                      <Button
-                        icon={<FolderOpenOutlined />}
-                        disabled={directorySettingsApplying}
-                        onClick={() => void handleSelectDataRoot()}
-                      >
-                        {t('app.data_root.action.select')}
-                      </Button>
-                      <Button onClick={() => void handleOpenDataRoot()}>
-                        {t('app.data_root.action.open_current')}
-                      </Button>
-                      <Button
-                        disabled={directorySettingsApplying}
-                        loading={dataRootApplying}
-                        onClick={() => void handleApplyDataRoot(false, true)}
-                      >
-                        {t('app.data_root.action.restore_default_directory')}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-                <div style={utilityPanelStyle}>
-                  <div style={{ marginBottom: 10, fontWeight: 600 }}>{t('app.data_root.apply_method')}</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                    <Button
-                      disabled={directorySettingsApplying}
-                      loading={dataRootApplying}
-                      onClick={() => void handleApplyDataRoot(false)}
-                    >
-                      {t('app.data_root.action.switch_only')}
-                    </Button>
-                    <Button
-                      type="primary"
-                      disabled={directorySettingsApplying}
-                      loading={dataRootApplying}
-                      onClick={() => void handleApplyDataRoot(true)}
-                    >
-                      {t('app.data_root.action.migrate_and_switch')}
-                    </Button>
-                  </div>
-                  <div style={{ ...utilityMutedTextStyle, marginTop: 10 }}>
-                    {t('app.data_root.restart_hint')}
-                  </div>
-                </div>
-                {renderSavedQueryDirectorySettings()}
-                {renderLogDirectorySettings()}
-              </div>
-            )}
+            {renderDataDirectorySettings()}
           </Modal>
           )}
           <SecurityUpdateIntroModal
@@ -9108,7 +9454,7 @@ function App() {
             surfaceOpacity={effectiveOpacity}
           />
           <ConnectionPackagePasswordModal
-            open={connectionPackageDialog.open && !(isSettingsModalOpen && activeSettingsCenterPane?.key === 'connection-package')}
+            open={connectionPackageDialog.open && !(isSettingsModalOpen && isConnectionPackageSettingsPaneKey(activeSettingsCenterPane?.key))}
             title={connectionPackageDialog.mode === 'export'
                 ? t('app.connection_package.dialog.export_title')
                 : t('app.connection_package.dialog.import_password_title')}
@@ -9160,19 +9506,6 @@ function App() {
             }}
             onCancel={closeConnectionPackageDialog}
           />
-          <Modal
-            title={renderUtilityModalTitle(<InfoCircleOutlined />, t('app.about.title'), t('app.about.description'))}
-            open={isAboutOpen}
-            onCancel={() => setIsAboutOpen(false)}
-            styles={{ content: utilityModalShellStyle, header: { background: 'transparent', borderBottom: 'none', paddingBottom: 8 }, body: { paddingTop: 8 }, footer: { background: 'transparent', borderTop: 'none', paddingTop: 10, display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'flex-end' } }}
-            footer={renderAboutUpdateActions(
-                'legacy-modal',
-                <Button key="close" onClick={() => setIsAboutOpen(false)}>{t('common.close')}</Button>,
-            )}
-          >
-            {renderAboutSettingsContent()}
-          </Modal>
-
           <UpdateReleaseNotesModal
               open={releaseNotesModalVisible}
               onClose={closeReleaseNotesModal}
