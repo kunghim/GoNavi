@@ -89,6 +89,10 @@ func main() {
 	// 会导致 RSS 单调爬升到峰值后不下降。这里收紧到 50，让 GC 更早触发。
 	// 代价是 CPU 开销略增，但导出/导入场景属 I/O 密集型，GC 开销可忽略。
 	debug.SetGCPercent(50)
+	if err := waitForWindowsRestartParent(os.Args[1:]); err != nil {
+		logger.Errorf("等待旧 GoNavi 进程退出失败：%v", err)
+		return
+	}
 
 	executablePath, executableErr := os.Executable()
 	if executableErr == nil {
@@ -110,6 +114,13 @@ func main() {
 		}
 		return
 	}
+	isWindowsDesktop := strings.EqualFold(strings.TrimSpace(runtime.GOOS), "windows")
+	// The process identity must be fixed before Wails creates its HWND. If it
+	// is assigned from OnStartup, Explorer may already have grouped the window
+	// under the executable's default identity and keep its old taskbar icon.
+	if err := app.InitializeWindowsApplicationIdentity(); err != nil {
+		logger.Warnf("初始化 Windows 应用任务栏身份失败：%v", err)
+	}
 	primaryActivator := &primaryWindowActivator{show: wailsRuntime.WindowShow}
 	if executableErr != nil {
 		logger.Warnf("检测 MSI 单实例模式失败：%v", executableErr)
@@ -129,7 +140,6 @@ func main() {
 			defer releaseSingleInstance()
 		}
 	}
-
 	// Create an instance of the app structure
 	application := app.NewApp()
 	aiService := aiservice.NewServiceWithConfigChangeHandler(app.NewCloudBackupChangeHandler(application))
@@ -164,6 +174,16 @@ func main() {
 		}, windowChrome.Frameless)
 	}
 
+	// Keep the first native window hidden until the selected Windows icon has
+	// been bound. This prevents the taskbar from caching Wails' embedded icon
+	// while the frontend is still hydrating its persisted brand selection.
+	startupNativeIconReady := make(chan struct{})
+	var signalStartupNativeIconReadyOnce sync.Once
+	signalStartupNativeIconReady := func() {
+		signalStartupNativeIconReadyOnce.Do(func() { close(startupNativeIconReady) })
+	}
+	var showInitialWindowOnce sync.Once
+
 	// Create application with options
 	err = wails.Run(&options.App{
 		Title:              "GoNavi",
@@ -175,6 +195,7 @@ func main() {
 		MinWidth:           900,
 		MinHeight:          600,
 		WindowStartState:   resolveInitialWindowStartState(runtime.GOOS),
+		StartHidden:        isWindowsDesktop,
 		Frameless:          windowChrome.Frameless,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
@@ -182,7 +203,18 @@ func main() {
 		BackgroundColour: backgroundColour,
 		Menu:             appMenu,
 		OnStartup: func(ctx context.Context) {
+			defer signalStartupNativeIconReady()
 			runtimeCtx = ctx
+			if isWindowsDesktop {
+				if err := app.InitializePersistedNativeBrandIcon(application, ctx); err != nil {
+					logger.Warnf("启动时应用已保存的 Windows 品牌图标失败：%v", err)
+				}
+			}
+			// The icon is now ready; the remaining lifecycle services may continue
+			// initializing without delaying the first visible frame. Bind queued
+			// second-instance activations only after this barrier as they may show
+			// the native window immediately.
+			signalStartupNativeIconReady()
 			primaryActivator.bindRuntimeContext(ctx)
 			lifecycleCtx := ctx
 			if nativeWindowManager != nil {
@@ -198,12 +230,16 @@ func main() {
 				logger.Warnf("自动修复本地 MCP 客户端配置失败：%v", err)
 			}
 		},
-		OnDomReady: func(_ context.Context) {
+		OnDomReady: func(ctx context.Context) {
 			// 每次 WebView 导航完成（含用户刷新前端）都会触发。
 			// 刷新会让 SQL 编辑器的待提交事务 ID 随组件内存一起丢失，
 			// 但后端事务仍开着并持有行锁：不清理的话，重新执行同一条 DML 会卡满
 			// innodb_lock_wait_timeout 并报 Error 1205，只能重启应用恢复。
 			app.HandleFrontendDomReady(application)
+			if isWindowsDesktop {
+				<-startupNativeIconReady
+				showInitialWindowOnce.Do(func() { wailsRuntime.WindowShow(ctx) })
+			}
 		},
 		OnShutdown: func(ctx context.Context) {
 			nativewindow.ShutdownLifecycle(nativeWindowManager)

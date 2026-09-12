@@ -43,7 +43,6 @@ import Sidebar, {
   resolveSidebarTreeHorizontalScrollLeft,
   resolveSidebarTreeHorizontalWheelDelta,
   shouldKeepSidebarSwitcherCollapsedWhileLoading,
-  shouldClearSidebarActiveContextOnEmptySelect,
   shouldSkipSidebarLoadOnExpandWhileDragging,
   shouldSkipSidebarSelectWhileDragging,
   shouldLoadSidebarNodeOnExpand,
@@ -98,7 +97,7 @@ const readSidebarSource = () => [
   readSourceFile('./sidebar/sidebarHelpers.ts'),
   readSourceFile('./sidebar/SidebarConnectionRail.tsx'),
   readSourceFile('./sidebar/SidebarSearchPanel.tsx'),
-  readSourceFile('./sidebar/sidebarLegacyNodeMenu.tsx'),
+  readSourceFile('./sidebar/sidebarNodeMenu.tsx'),
   readSourceFile('./sidebar/sidebarMetadataLoaders.ts'),
   readSourceFile('./sidebar/useSidebarBatchExport.ts'),
   readSourceFile('./sidebar/SidebarExternalSqlWorkflow.tsx'),
@@ -113,7 +112,7 @@ const readSidebarSource = () => [
   readSourceFile('./sidebar/useSidebarTitleRender.tsx'),
   readSourceFile('./sidebarV2Utils.ts'),
 ].join('\n');
-const readLegacyNodeMenuSource = () => readSourceFile('./sidebar/sidebarLegacyNodeMenu.tsx');
+const readNodeMenuSource = () => readSourceFile('./sidebar/sidebarNodeMenu.tsx');
 
 const mocks = vi.hoisted(() => ({
   noop: vi.fn(),
@@ -134,7 +133,6 @@ const mocks = vi.hoisted(() => ({
       enabled: true,
       opacity: 1,
       blur: 0,
-      uiVersion: 'v2',
       sidebarHiddenObjectGroups: [],
     } as any,
     shortcutOptions: null as any,
@@ -350,7 +348,6 @@ describe('Sidebar locate toolbar', () => {
       enabled: true,
       opacity: 1,
       blur: 0,
-      uiVersion: 'v2',
       sidebarHiddenObjectGroups: [],
     };
     mocks.state.shortcutOptions = cloneShortcutOptions(DEFAULT_SHORTCUT_OPTIONS);
@@ -594,11 +591,6 @@ describe('Sidebar locate toolbar', () => {
       selectedKeys: [],
       connectionIds: ['local', 'dev240', 'dev241'],
     })).toBe('');
-  });
-
-  it('does not clear v2 active context when rc-tree emits an empty deselect', () => {
-    expect(shouldClearSidebarActiveContextOnEmptySelect(true)).toBe(false);
-    expect(shouldClearSidebarActiveContextOnEmptySelect(false)).toBe(true);
   });
 
   it('builds v2 rail groups from existing connection tags while preserving ungrouped hosts', () => {
@@ -875,7 +867,7 @@ describe('Sidebar locate toolbar', () => {
   });
 
   it('renders the current table locate action in the explorer toolbar', () => {
-    const markup = renderSidebarMarkup({ uiVersion: 'v2' });
+    const markup = renderSidebarMarkup({  });
     const locateActionIndex = markup.indexOf('data-sidebar-locate-current-tab-action="true"');
 
     expect(locateActionIndex).toBeGreaterThanOrEqual(0);
@@ -908,9 +900,8 @@ describe('Sidebar locate toolbar', () => {
     expect(markup).not.toContain('data-sidebar-legacy-toolbar-item="true"');
   });
 
-  it('renders exactly seven expanded v2 explorer actions in task order', () => {
+  it('renders exactly five expanded v2 explorer actions after moving global actions to the titlebar', () => {
     const markup = renderSidebarMarkup({
-      uiVersion: 'v2',
       v2ExplorerContext: {
         active: true,
         connectionName: '开发环境',
@@ -949,8 +940,6 @@ describe('Sidebar locate toolbar', () => {
       t('sidebar.action.locate_current_table'),
       t('sidebar.action.scroll_to_top'),
       t('sidebar.active_connection.actions'),
-      t('app.sidebar.ai_assistant'),
-      t('app.sidebar.settings'),
       t('app.sidebar.collapse'),
     ]);
   });
@@ -977,7 +966,6 @@ describe('Sidebar locate toolbar', () => {
       tooltip: `${connectionName} · ${databaseName} · ${objectName}`,
     };
     const markup = renderSidebarMarkup({
-      uiVersion: 'v2',
       v2ExplorerContext,
       onCollapseSidebar: mocks.noop,
       collapseSidebarLabel: t('app.sidebar.collapse'),
@@ -1044,7 +1032,6 @@ describe('Sidebar locate toolbar', () => {
   it('centers a connection-only active selection within the fixed three-line context height', () => {
     const css = readV2ThemeCss();
     const markup = renderSidebarMarkup({
-      uiVersion: 'v2',
       v2ExplorerContext: {
         active: true,
         connectionName: '开发240',
@@ -1083,7 +1070,6 @@ describe('Sidebar locate toolbar', () => {
       tooltip: '未选择 Host',
     };
     const markup = renderSidebarMarkup({
-      uiVersion: 'v2',
       v2ExplorerContext,
       onCollapseSidebar: mocks.noop,
       collapseSidebarLabel: t('app.sidebar.collapse'),
@@ -1123,7 +1109,7 @@ describe('Sidebar locate toolbar', () => {
     const source = readSourceFile('./Sidebar.tsx');
     const appCss = readSourceFile('../App.css');
     const css = readV2ThemeCss();
-    expect(source).toContain('{isV2Ui && <SidebarConnectionRail {...v2ConnectionRailProps} />}');
+    expect(source).toContain('<SidebarConnectionRail {...v2ConnectionRailProps} />');
     expect(appCss).toMatch(/body\[data-ui-version=(["'])v2\1\]\s+\.ant-layout-sider\[data-sidebar-collapsed=(["'])false\2\]\s+\.gn-v2-connection-rail\s*\{[^}]*display:\s*none;/s);
     expect(appCss).not.toMatch(/body\[data-ui-version=(["'])v2\1\]\s+\.ant-layout-sider\[data-sidebar-collapsed=(["'])true\2\]\s+\.gn-v2-connection-rail\s*\{[^}]*display:\s*none;/s);
     expect(css).toMatch(/\.gn-v2-explorer-actions\s*\{[^}]*min-width:\s*0;[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*hidden;/s);
@@ -1150,10 +1136,10 @@ describe('Sidebar locate toolbar', () => {
 
     expect(actionsSource).toContain("key: 'data-workflow'");
     expect(actionsSource).toContain('label: v2DataWorkflowLabel');
-    expect(actionsSource).toContain("key: 'schema-compare'");
-    expect(actionsSource).toContain("action: 'schema-compare'");
-    expect(actionsSource).toContain("key: 'data-compare'");
-    expect(actionsSource).toContain("action: 'data-compare'");
+    expect(actionsSource).toContain("key: 'compare'");
+    expect(actionsSource).toContain("action: 'compare'");
+    expect(actionsSource).not.toContain("key: 'schema-compare'");
+    expect(actionsSource).not.toContain("key: 'data-compare'");
     expect(actionsSource).toContain("key: 'sync'");
     expect(actionsSource).toContain("action: 'sync'");
     expect(actionsSource).not.toContain("key: 'batch-actions'");
@@ -1186,7 +1172,7 @@ describe('Sidebar locate toolbar', () => {
   });
 
   it('renders the fixed v2 rail, titlebar quick actions, explorer filters and workbench actions', () => {
-    const markup = renderSidebarMarkup({ uiVersion: 'v2', onCreateConnection: mocks.noop });
+    const markup = renderSidebarMarkup({ onCreateConnection: mocks.noop });
     const source = readSidebarSource();
     const titlebarQuickActionsSource = readSourceFile('./TitleBarQuickActions.tsx');
 
@@ -1237,21 +1223,21 @@ describe('Sidebar locate toolbar', () => {
     expect(source).toContain("app.tools.group.workflow.title");
     expect(source).toContain("key: 'sql-tools'");
     expect(source).toContain("sidebar.action.sql_tools");
-    expect(source).toContain("key: 'schema-compare'");
-    expect(source).toContain("onOpenSettingsNavigation?.({ group: 'workflow', action: 'schema-compare' })");
-    expect(source).toContain("key: 'data-compare'");
-    expect(source).toContain("onOpenSettingsNavigation?.({ group: 'workflow', action: 'data-compare' })");
+    expect(source).toContain("key: 'compare'");
+    expect(source).toContain("onOpenSettingsNavigation?.({ group: 'workflow', action: 'compare' })");
+    expect(source).not.toContain("key: 'schema-compare'");
+    expect(source).not.toContain("key: 'data-compare'");
     expect(source).toContain("key: 'sync'");
     expect(source).toContain("onOpenSettingsNavigation?.({ group: 'workflow', action: 'sync' })");
     expect(source).toContain('showObjectActions: false');
     expect(source).not.toContain("key: 'locate-current-table'");
     expect(markup).not.toContain('data-gonavi-new-query-action="true"');
     expect(markup).not.toContain('data-gonavi-create-connection-action="true"');
-    expect(markup).toContain('aria-label="AI 助手"');
-    expect(markup).toContain('data-gonavi-ai-entry-action="true"');
+    expect(markup).not.toContain('aria-label="AI 助手"');
+    expect(markup).not.toContain('data-gonavi-ai-entry-action="true"');
     expect(markup).not.toContain('aria-label="工具"');
     expect(markup).not.toContain('data-gonavi-open-tools-action="true"');
-    expect(markup).toContain('aria-label="设置"');
+    expect(markup).not.toContain('aria-label="设置"');
     const contextMenuFunction = source.slice(
       source.indexOf('const openV2ConnectionContextMenu = ('),
       source.indexOf('const getV2TreeMetaText = (node: any): string => {'),
@@ -1266,14 +1252,15 @@ describe('Sidebar locate toolbar', () => {
     }];
     mocks.state.activeContext = { connectionId: 'pg-1', dbName: 'app' };
 
-    const markup = renderSidebarMarkup({ uiVersion: 'v2' });
+    const markup = renderSidebarMarkup({  });
     const locateActionIndex = markup.indexOf('data-sidebar-locate-current-tab-action="true"');
     const explorerFilterTabsIndex = markup.indexOf('class="gn-v2-explorer-filter-tabs"');
 
     expect(explorerFilterTabsIndex).toBeGreaterThan(locateActionIndex);
-    expect(markup).toContain('全部');
-    expect(markup).toContain('视图');
-    expect(markup).toContain('函数');
+    expect(markup).toContain(`aria-label="${t('sidebar.command_search.object_kind.all')}"`);
+    expect(markup).toContain(`aria-label="${t('sidebar.command_search.object_kind.views')}"`);
+    expect(markup).toContain(`aria-label="${t('sidebar.command_search.object_kind.routines')}"`);
+    expect(markup).toContain('data-object-kind-filter="all"');
     expect(markup).toContain('aria-pressed="true"');
   });
 
@@ -1291,11 +1278,12 @@ describe('Sidebar locate toolbar', () => {
       type: 'settings',
     }];
 
-    const markup = renderSidebarMarkup({ uiVersion: 'v2' });
+    const markup = renderSidebarMarkup({  });
 
     expect(markup).toContain('gn-v2-explorer-filter-tabs');
-    expect(markup).toContain(`>${t('sidebar.command_search.object_kind.all')}<`);
-    expect(markup).toContain(`>${t('sidebar.command_search.object_kind.tables')}<`);
+    expect(markup).toContain(`aria-label="${t('sidebar.command_search.object_kind.all')}"`);
+    expect(markup).toContain(`aria-label="${t('sidebar.command_search.object_kind.tables')}"`);
+    expect(markup).not.toContain(`>${t('sidebar.command_search.object_kind.tables')}<`);
   });
 
   it('keeps relational object-kind filters hidden without an active host when only dedicated workbenches exist', () => {
@@ -1316,7 +1304,7 @@ describe('Sidebar locate toolbar', () => {
       type: 'settings',
     }];
 
-    const markup = renderSidebarMarkup({ uiVersion: 'v2' });
+    const markup = renderSidebarMarkup({  });
 
     expect(markup).not.toContain('gn-v2-explorer-filter-tabs');
   });
@@ -1329,7 +1317,7 @@ describe('Sidebar locate toolbar', () => {
     }];
     mocks.state.activeContext = { connectionId: 'nacos-1', dbName: 'public' };
 
-    const markup = renderSidebarMarkup({ uiVersion: 'v2' });
+    const markup = renderSidebarMarkup({  });
 
     expect(markup).not.toContain('gn-v2-explorer-filter-tabs');
     expect(markup).not.toContain(`>${t('sidebar.command_search.object_kind.tables')}<`);
@@ -1353,7 +1341,7 @@ describe('Sidebar locate toolbar', () => {
       dbName: 'topics',
     }];
 
-    const markup = renderSidebarMarkup({ uiVersion: 'v2' });
+    const markup = renderSidebarMarkup({  });
 
     expect(markup).toContain('data-v2-command-search-icon-only="true"');
     expect(markup).toContain('data-sidebar-command-search-action="true"');
@@ -1365,11 +1353,11 @@ describe('Sidebar locate toolbar', () => {
     expect(markup).not.toContain(`>${t('sidebar.command_search.object_kind.routines')}<`);
   });
 
-  it('can render the v2 sidebar with legacy persistent filter input', () => {
+  it('can render the sidebar with the persistent filter input', () => {
     mocks.state.appearance.v2SidebarSearchMode = 'filter';
     mocks.state.appearance.v2SidebarPersistedFilter = 'fs_org';
 
-    const markup = renderSidebarMarkup({ uiVersion: 'v2' });
+    const markup = renderSidebarMarkup({  });
 
     expect(markup).toContain('data-v2-sidebar-search-mode="filter"');
     expect(markup).toContain('gn-v2-explorer-search');
@@ -1383,7 +1371,7 @@ describe('Sidebar locate toolbar', () => {
     mocks.state.shortcutOptions = cloneShortcutOptions(DEFAULT_SHORTCUT_OPTIONS);
     mocks.state.shortcutOptions.focusSidebarSearch.mac = { combo: 'Meta+F', enabled: true };
 
-    const markup = renderSidebarMarkup({ uiVersion: 'v2' });
+    const markup = renderSidebarMarkup({  });
 
     expect(markup).toContain('data-v2-command-search-icon-only="true"');
     expect(markup).not.toContain('gn-v2-search-shortcut');
@@ -1393,28 +1381,6 @@ describe('Sidebar locate toolbar', () => {
   });
 
   it('localizes the v2 command search scope shell and object filters through catalog keys', () => {
-    const source = readSidebarSource();
-    const objectKindSource = source.slice(
-      source.indexOf('const V2_EXPLORER_FILTER_OPTIONS'),
-      source.indexOf('const V2_EXPLORER_FILTER_GROUP_KEYS'),
-    );
-    const searchScopeSource = source.slice(
-      source.indexOf('const SEARCH_SCOPE_OPTIONS'),
-      source.indexOf('const SEARCH_SCOPE_ICON_MAP'),
-    );
-    const scopePanelSource = source.slice(
-      source.indexOf('const currentLanguage = getCurrentLanguage();'),
-      source.indexOf('const getConnectionHostSearchText = (node: TreeNode): string => {'),
-    );
-    const scopeTriggerSource = source.slice(
-      source.indexOf('content={searchScopePopoverContent}'),
-      source.indexOf('{isV2Ui && (', source.indexOf('content={searchScopePopoverContent}')),
-    );
-    const objectFilterRenderSource = source.slice(
-      source.indexOf('{isV2Ui && (', source.indexOf('content={searchScopePopoverContent}')),
-      source.indexOf('{/* Toolbar */}', source.indexOf('{isV2Ui && (', source.indexOf('content={searchScopePopoverContent}'))),
-    );
-
     const keys = [
       'sidebar.command_search.object_kind.all',
       'sidebar.command_search.object_kind.tables',
@@ -1489,7 +1455,7 @@ describe('Sidebar locate toolbar', () => {
       'All',
       'users',
     ]);
-    expect(buildV2UtilsSidebarTableChildrenForUi('conn-main-tables', tableNodes, true, translate).map((node) => node.title)).toEqual([
+    expect(buildV2UtilsSidebarTableChildrenForUi('conn-main-tables', tableNodes, translate).map((node) => node.title)).toEqual([
       'Pinned',
       'orders',
       'All',
@@ -1543,11 +1509,10 @@ describe('Sidebar locate toolbar', () => {
       enabled: true,
       opacity: 1,
       blur: 0,
-      uiVersion: 'v2',
       sidebarHiddenObjectGroups: [],
     };
 
-    const markup = renderSidebarMarkup({ uiVersion: 'v2', onCreateConnection: mocks.noop });
+    const markup = renderSidebarMarkup({ onCreateConnection: mocks.noop });
     expect(markup).toContain('gn-v2-explorer-actions');
     expect(markup).not.toContain('data-gonavi-new-query-action="true"');
     expect(markup).not.toContain('data-gonavi-create-connection-action="true"');
@@ -1557,8 +1522,9 @@ describe('Sidebar locate toolbar', () => {
     const css = readV2ThemeCss();
 
     expect(css).toMatch(/\.gn-v2-explorer-filter-tabs \{[^}]*flex-wrap: nowrap;[^}]*overflow-x: auto;[^}]*overflow-y: hidden;[^}]*overscroll-behavior-x: contain;/s);
-    expect(css).toMatch(/\.gn-v2-explorer-filter-tabs button \{[^}]*flex: 1 0 calc\(3em \+ 4px \* var\(--gn-v2-explorer-scale\)\);[^}]*min-width: calc\(3em \+ 4px \* var\(--gn-v2-explorer-scale\)\);[^}]*height: calc\(28px \* var\(--gn-v2-explorer-scale\)\);/s);
-    expect(css).toMatch(/\.gn-v2-explorer-filter-tabs button \{[^}]*font-size: var\(--gn-sidebar-tree-font-size, var\(--gn-font-size-sm, 12px\)\);[^}]*white-space: nowrap;[^}]*cursor: pointer;/s);
+    expect(css).toMatch(/\.gn-v2-explorer-filter-tabs button \{[^}]*flex: 1 1 0;[^}]*min-width: calc\(28px \* var\(--gn-v2-explorer-scale\)\);[^}]*height: calc\(28px \* var\(--gn-v2-explorer-scale\)\);/s);
+    expect(css).toMatch(/\.gn-v2-explorer-filter-tabs button \{[^}]*overflow: hidden;[^}]*cursor: pointer;/s);
+    expect(css).toMatch(/\.gn-v2-explorer-filter-tabs button \.anticon \{[^}]*font-size: calc\(14px \* var\(--gn-v2-explorer-scale\)\);/s);
   });
 
   it('shows a pending state while a database node is loading', () => {
@@ -1575,7 +1541,7 @@ describe('Sidebar locate toolbar', () => {
     const css = readV2ThemeCss();
     const source = readSidebarSource();
     expect(css).toMatch(/\.gn-v2-explorer-tree-shell \{[^}]*--gn-v2-tree-horizontal-scroll-reserve: 32px;[^}]*--gn-v2-tree-trailing-inset: 12px;[^}]*overflow: hidden !important;/s);
-    expect(css).toMatch(/\.gn-v2-explorer-tree-shell \.sidebar-tree-scroll-content \{[^}]*display: flex;[^}]*height: 100%;[^}]*padding: 6px 8px 8px;/s);
+    expect(css).toMatch(/\.gn-v2-explorer-tree-shell \.sidebar-tree-scroll-content \{[^}]*display: flex;[^}]*height: 100%;[^}]*padding: 6px max\(8px, var\(--gonavi-sidebar-resize-inner-hit-width, 8px\)\) 8px 8px;/s);
     expect(css).toMatch(/\.gn-v2-explorer-tree-shell \.ant-tree \{[^}]*flex: 1 1 auto;[^}]*width: 100%;[^}]*min-width: 0;[^}]*height: 100%;/s);
     expect(css).toMatch(/\.gn-v2-explorer-tree-shell \.ant-tree-list \{[^}]*position: relative;[^}]*height: 100%;[^}]*min-height: 0;[^}]*box-sizing: border-box;/s);
     expect(css).toMatch(/\.gn-v2-explorer-tree-shell \.ant-tree-list-holder-inner \{[^}]*width: 100%;[^}]*min-width: 100%;/s);
@@ -1704,10 +1670,11 @@ describe('Sidebar locate toolbar', () => {
     const css = readV2ThemeCss();
     const source = readSourceFile('./Sidebar.tsx');
 
-    expect(source).toContain("isTreeScrolling ? ' is-vertical-scrolling' : ''");
+    expect(source).toContain("classList.add('is-vertical-scrolling')");
     expect(source).toContain('onWheelCapture={handleTreeWheel}');
     expect(source).toContain('onTouchMoveCapture={markTreeScrollActivity}');
-    expect(source).toContain('setIsTreeScrolling(false)');
+    expect(source).toContain("classList.remove('is-vertical-scrolling')");
+    expect(source).not.toContain('setIsTreeScrolling');
     expect(source).toContain('SIDEBAR_TREE_SCROLL_IDLE_DELAY_MS = 2000');
     expect(source).toContain('}, SIDEBAR_TREE_SCROLL_IDLE_DELAY_MS);');
 
@@ -1731,6 +1698,23 @@ describe('Sidebar locate toolbar', () => {
     );
     expect(movingScrollbarCss).toContain('visibility: visible !important;');
     expect(movingScrollbarCss).toContain('pointer-events: auto;');
+  });
+
+  it('uses exact row geometry for the V2 tree virtual scrolling fast path', () => {
+    const source = readSourceFile('./Sidebar.tsx');
+    const treePatch = readSourceFile('../../patches/rc-tree+5.13.1.patch');
+    const virtualListPatch = readSourceFile('../../patches/rc-virtual-list+3.19.2.patch');
+
+    expect(source).toContain('itemHeight={30}');
+    expect(source).toContain('itemHeightResolver={resolveSidebarTreeRowHeight}');
+    expect(treePatch).toContain('itemHeightResolver: itemHeightResolver');
+    expect(treePatch).toContain('itemHeightResolver?: (item: TreeDataType, index: number) => number;');
+    expect(virtualListPatch).toContain('fixedItemOffsets[startMid + 1] >= fixedOffsetTop');
+    expect(virtualListPatch).toContain('var nativeVerticalScroll = !!(inVirtual && (itemHeightFixed || !!fixedItemOffsets));');
+    expect(virtualListPatch).toContain('var fixedStartIndex = Math.max(0, startLow - 6);');
+    expect(virtualListPatch).toContain('var fixedEndIndex = Math.min(fixedDataLen - 1, endLow + 6);');
+    expect(virtualListPatch).toContain('useScrollTo(componentRef, mergedData, heights, itemHeight');
+    expect(virtualListPatch).toContain('fixedItemOffsets, itemHeightFixed');
   });
 
   it('estimates a v2 tree scroll width only when content is wider than the viewport', () => {
@@ -1838,11 +1822,10 @@ describe('Sidebar locate toolbar', () => {
       enabled: true,
       opacity: 1,
       blur: 0,
-      uiVersion: 'v2',
       sidebarHiddenObjectGroups: [],
     };
 
-    const markup = renderSidebarMarkup({ uiVersion: 'v2' });
+    const markup = renderSidebarMarkup({  });
 
     expect(markup).toContain('gn-v2-connection-rail');
     expect(markup).toContain('gn-v2-explorer-actions');
@@ -1872,11 +1855,10 @@ describe('Sidebar locate toolbar', () => {
       enabled: true,
       opacity: 1,
       blur: 0,
-      uiVersion: 'v2',
       sidebarHiddenObjectGroups: [],
     };
 
-    const markup = renderSidebarMarkup({ uiVersion: 'v2' });
+    const markup = renderSidebarMarkup({  });
 
     expect(markup).toContain('gn-v2-explorer-actions');
     expect(markup).not.toContain('gn-v2-active-connection-header');
@@ -2113,10 +2095,9 @@ describe('Sidebar locate toolbar', () => {
 
     expect(source).toContain('onDragOverCapture={handleSidebarTreeDragOverCapture}');
     expect(source).toContain('onDropCapture={handleSidebarTreeDropCapture}');
-    expect(source).toContain('if (!isV2Ui) return null;');
     expect(source).toContain('resolveSidebarDropDomHit(event)');
     expect(source).toContain('resolveSidebarHostGroupDropDestination({');
-    expect(source).toContain('sidebarTreeDragPreviewElementRef.current = isV2Ui');
+    expect(source).toContain('sidebarTreeDragPreviewElementRef.current = createSidebarTreeDragPreview(event, node)');
     expect(source).toContain("&& sidebarTreeDragNodeRef.current?.type === 'connection'");
     expect(source).toContain('dataTransfer.setDragImage(preview, 18, 15)');
     expect(source).toContain('SIDEBAR_GROUP_HOVER_EXPAND_DELAY_MS = 500');
@@ -2316,6 +2297,7 @@ describe('Sidebar locate toolbar', () => {
           engine: 'InnoDB',
         }}
         supportsTruncate
+        supportsClear
       />,
     );
 
@@ -2351,8 +2333,20 @@ describe('Sidebar locate toolbar', () => {
     expect(markup).toContain('用 AI 解释这张表');
     expect(markup).toContain('用 AI 生成查询');
     expect(markup).toContain('截断表 · TRUNCATE');
+    expect(markup).toContain('清空表 · DELETE');
     expect(markup).toContain('删除表 · DROP');
-    expect(markup).not.toContain('清空表');
+  });
+
+  it('hides clear-table when the caller marks the database as unsupported', () => {
+    const unsupportedMarkup = renderToStaticMarkup(
+      <V2TableContextMenuView tableName="search-index" supportsClear={false} />,
+    );
+    const supportedMarkup = renderToStaticMarkup(
+      <V2TableContextMenuView tableName="orders" supportsClear />,
+    );
+
+    expect(unsupportedMarkup).not.toContain('清空表');
+    expect(supportedMarkup).toContain('清空表 · DELETE');
   });
 
   it('renders the v2 table context menu pinned state', () => {
@@ -2641,15 +2635,12 @@ describe('Sidebar locate toolbar', () => {
     });
   });
 
-  it('keeps legacy sidebar table groups flat and ignores v2 pin sections', () => {
+  it('builds pinned table sections for sidebar table groups', () => {
     const tableNodes = [
       { title: 'orders', key: 'orders', type: 'table' as const, dataRef: { pinnedSidebarTable: true } },
       { title: 'users', key: 'users', type: 'table' as const, dataRef: { pinnedSidebarTable: false } },
     ];
-    const source = readSidebarSource();
-
-    expect(buildSidebarTableChildrenForUi('conn-main-tables', tableNodes, false)).toBe(tableNodes);
-    expect(buildSidebarTableChildrenForUi('conn-main-tables', tableNodes, true).map((node) => node.title)).toEqual([
+    expect(buildSidebarTableChildrenForUi('conn-main-tables', tableNodes).map((node) => node.title)).toEqual([
       '置顶',
       'orders',
       '全部',
@@ -2817,12 +2808,14 @@ describe('Sidebar locate toolbar', () => {
     setCurrentLanguage('en-US');
 
     const markup = renderToStaticMarkup(
-      <V2TableContextMenuView tableName="t1" supportsTruncate />,
+      <V2TableContextMenuView tableName="t1" supportsTruncate supportsClear />,
     );
 
     expect(markup).toContain('Truncate table · TRUNCATE');
+    expect(markup).toContain('Clear table · DELETE');
     expect(markup).toContain('Delete table · DROP');
     expect(markup).toContain('TRUNCATE');
+    expect(markup).toContain('DELETE');
     expect(markup).toContain('DROP');
     expect(markup).not.toContain('截断表 · TRUNCATE');
     expect(markup).not.toContain('删除表 · DROP');
@@ -2879,7 +2872,7 @@ describe('Sidebar locate toolbar', () => {
     expect(resolveSidebarDatabaseNameForCopy({ title: ' fallback_db ' })).toBe('fallback_db');
     expect(resolveSidebarDatabaseNameForCopy(null)).toBe('');
 
-    const legacySource = readLegacyNodeMenuSource();
+    const nodeMenuSource = readNodeMenuSource();
     const menuSource = readSourceFile('./V2TableContextMenu.tsx');
     const actionSource = readSourceFile('./sidebar/useSidebarV2ActionHandlers.tsx');
     const objectActionSource = readSourceFile('./sidebar/useSidebarObjectActions.tsx');
@@ -3334,6 +3327,11 @@ describe('Sidebar locate toolbar', () => {
 
     const treeTitleSource = readSourceFile('./sidebar/SidebarTreeTitle.tsx');
     const sidebarHelpersSource = readSourceFile('./sidebar/sidebarHelpers.ts');
+
+    expect(treeTitleSource).toContain('title={renderHoverInfo}');
+    expect(treeTitleSource).toContain('const renderHoverInfo = React.useCallback(');
+    expect(treeTitleSource).not.toContain('title={<SidebarTableHoverInfo');
+    expect(treeTitleSource).toContain("node.type === 'table' && sidebarTableMetadataFields.length > 0");
 
     const css = readV2ThemeCss();
     expect(css).toMatch(/\.gn-v2-tree-table-comment \{[^}]*max-width: 24em;[^}]*text-overflow: ellipsis;/s);

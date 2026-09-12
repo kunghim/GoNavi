@@ -695,6 +695,9 @@ func resolveDDLDBType(config connection.ConnectionConfig) string {
 	if dbType == "intersystems" || dbType == "intersystemsiris" || dbType == "inter-systems" || dbType == "inter-systems-iris" {
 		return "iris"
 	}
+	if dbType == "cache" || dbType == "caché" || dbType == "intersystems cache" || dbType == "intersystems caché" || dbType == "intersystems-cache" || dbType == "intersystems-caché" || dbType == "intersystemscache" || dbType == "intersystemscaché" || dbType == "inter-systems-cache" || dbType == "inter-systems-caché" || dbType == "intersystems-cache-database" || dbType == "cache-db" || dbType == "cachedb" {
+		return "iris"
+	}
 	if dbType == "oceanbase" && isOceanBaseOracleProtocol(config) {
 		return "oracle"
 	}
@@ -731,6 +734,8 @@ func resolveDDLDBType(config connection.ConnectionConfig) string {
 	case "vastbase":
 		return "vastbase"
 	case "iris", "intersystems", "intersystemsiris", "inter-systems", "inter-systems-iris":
+		return "iris"
+	case "cache", "caché", "intersystems cache", "intersystems caché", "intersystems-cache", "intersystems-caché", "intersystemscache", "intersystemscaché", "inter-systems-cache", "inter-systems-caché", "intersystems-cache-database", "cache-db", "cachedb":
 		return "iris"
 	case "oceanbase":
 		return "oceanbase"
@@ -1331,6 +1336,16 @@ func (a *App) DBQuery(config connection.ConnectionConfig, dbName string, query s
 	})
 }
 
+// DBQueryApplicationWithCancel exposes DBQuery's cancellation support without
+// classifying an application-owned read as query-editor execution history.
+func (a *App) DBQueryApplicationWithCancel(config connection.ConnectionConfig, dbName string, query string, queryID string) connection.QueryResult {
+	return a.dbQueryWithCancel(config, dbName, query, queryID, dbQueryAuditOptions{
+		auditAll:    a.webRuntime,
+		auditWrites: true,
+		source:      "application_api",
+	})
+}
+
 func (a *App) DBQueryWithCancel(config connection.ConnectionConfig, dbName string, query string, queryID string) connection.QueryResult {
 	explicitQuery := strings.TrimSpace(queryID) != ""
 	auditSource := "query_editor"
@@ -1414,7 +1429,12 @@ func (a *App) dbQueryWithCancel(
 		requestTrace.SetRequestMetadata("", "", deadline)
 	}
 	requestTrace.AddEvent("driver.dispatched", nil)
-	cleanupRunningQuery, setRunningQueryCancellable := a.registerRunningQueryWithCancellationCapability(queryID, cancel, true)
+	cleanupRunningQuery, setRunningQueryCancellable := a.registerRunningQueryWithCancellationCapability(
+		queryID,
+		cancel,
+		true,
+		optionalDriverTypeForConnectionConfig(runConfig),
+	)
 	defer func() {
 		cancel()
 		cleanupRunningQuery()
@@ -1673,7 +1693,12 @@ func (a *App) dbQueryMulti(
 		requestTrace.SetRequestMetadata("", "", deadline)
 	}
 	requestTrace.AddEvent("driver.dispatched", nil)
-	cleanupRunningQuery, setRunningQueryCancellable := a.registerRunningQueryWithCancellationCapability(queryID, cancel, true)
+	cleanupRunningQuery, setRunningQueryCancellable := a.registerRunningQueryWithCancellationCapability(
+		queryID,
+		cancel,
+		true,
+		optionalDriverTypeForConnectionConfig(runConfig),
+	)
 	defer func() {
 		cancel()
 		cleanupRunningQuery()
@@ -1698,10 +1723,9 @@ func (a *App) dbQueryMulti(
 	}()
 	legacyCancellationUnsupported := false
 
-	// 尝试使用驱动原生多结果集支持。
-	// 注意：原生 conn.Query() 执行写操作（UPDATE/INSERT/DELETE）时，
-	// sql.Rows 不暴露 RowsAffected，导致影响行数丢失。
-	// 因此仅在全部语句皆为读操作时才使用原生路径。
+	// 尝试使用驱动原生多结果集支持。普通 database/sql 驱动仅在安全的
+	// 读取场景使用该路径；Navicat ntunnel_mysql.php 则可用一个请求的
+	// 多个 q[] 同时保留会话状态和每条写语句的 affectedRows。
 	statements := splitSQLStatementsForDialect(resolvedDBType, query)
 	statementCount := 0
 	for _, statement := range statements {
@@ -1755,9 +1779,24 @@ func (a *App) dbQueryMulti(
 			break
 		}
 	}
-	useNativeMultiResult := shouldUseNativeMultiResultBatch(resolvedDBType, statements, allReadOnly)
+	supportsStatementBatch := func(inst db.Database) bool {
+		querier, ok := inst.(db.StatementBatchMultiResultQuerierContext)
+		return ok && querier.SupportsStatementBatchMultiResult()
+	}
+	useNativeMultiResult := shouldUseNativeMultiResultBatch(resolvedDBType, statements, allReadOnly) || supportsStatementBatch(dbInst)
 
 	runMultiQuery := func(inst db.Database) ([]connection.ResultSetData, []string, error) {
+		if q, ok := inst.(db.StatementBatchMultiResultQuerierContext); ok && q.SupportsStatementBatchMultiResult() {
+			setRunningQueryCancellable(true)
+			var (
+				results []connection.ResultSetData
+				err     error
+			)
+			measureQueryExecution(func() {
+				results, err = q.QueryStatementsMultiContext(ctx, statements)
+			})
+			return results, nil, err
+		}
 		if !useNativeMultiResult {
 			return nil, nil, nil // 包含写操作，走逐条执行路径
 		}
@@ -1908,7 +1947,7 @@ func (a *App) dbQueryMulti(
 	var sessionExecTarget db.StatementExecer
 	var sessionBatchTarget db.BatchWriteExecer
 	closeExecTarget := func() {}
-	if provider, ok := dbInst.(db.SessionExecerProvider); ok {
+	if provider, ok := dbInst.(db.SessionExecerProvider); ok && runtimeSupportsSessionExecer(dbInst) {
 		setRunningQueryCancellable(true)
 		sessionExecer, sessionErr := provider.OpenSessionExecer(ctx)
 		if sessionErr != nil {
@@ -2275,7 +2314,7 @@ func applyRowBudgetTruncation(results []connection.ResultSetData, budget *db.Row
 }
 
 func normalizeNativeResultStatementIndexes(dbType string, statements []string, results []connection.ResultSetData) {
-	if !isSQLServerDBType(dbType) || len(results) == 0 {
+	if len(results) == 0 {
 		return
 	}
 	hasExplicitStatementIndex := false
@@ -2286,6 +2325,28 @@ func normalizeNativeResultStatementIndexes(dbType string, statements []string, r
 		}
 	}
 	if hasExplicitStatementIndex {
+		return
+	}
+
+	if supportsSequentialNativeSelectIndexes(dbType) {
+		if len(results) > len(statements) {
+			return
+		}
+		for _, statement := range statements {
+			if sqlDataOperationKeyword(statement, dbType) != "select" {
+				return
+			}
+		}
+		// MySQL-family native batches are used only for read-only statements.
+		// A regular SELECT contributes one result set, and a row budget may stop
+		// scanning at any leading prefix, so prefix indexes remain exact.
+		for idx := range results {
+			results[idx].StatementIndex = idx + 1
+		}
+		return
+	}
+
+	if !isSQLServerDBType(dbType) {
 		return
 	}
 
@@ -2313,6 +2374,15 @@ func normalizeNativeResultStatementIndexes(dbType string, statements []string, r
 			results[resultIdx].StatementIndex = statementIdx + 1
 			results[resultIdx+1].StatementIndex = statementIdx + 1
 		}
+	}
+}
+
+func supportsSequentialNativeSelectIndexes(dbType string) bool {
+	switch normalizeExplainLexicalDBType(dbType) {
+	case "mysql", "mariadb", "oceanbase", "diros", "starrocks", "goldendb", "sphinx", "tidb":
+		return true
+	default:
+		return false
 	}
 }
 

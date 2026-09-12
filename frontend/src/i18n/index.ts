@@ -117,6 +117,9 @@ const driverModalCatalogAliases: Record<string, CatalogAlias> = {
   "driver.modal.confirm.removeAll.content": { aliasKey: "driver_manager.confirm.remove_all.content" },
   "driver.modal.confirm.removeAll.ok": { aliasKey: "driver_manager.confirm.remove_all.ok" },
   "driver.modal.confirm.removeAll.title": { aliasKey: "driver_manager.confirm.remove_all.title" },
+  "driver.modal.confirm.reinstallInUse.content": { aliasKey: "driver_manager.confirm.reinstall_in_use.content" },
+  "driver.modal.confirm.reinstallInUse.ok": { aliasKey: "driver_manager.confirm.reinstall_in_use.ok" },
+  "driver.modal.confirm.reinstallInUse.title": { aliasKey: "driver_manager.confirm.reinstall_in_use.title" },
   "driver.modal.empty.noData": { aliasKey: "driver_manager.empty.default" },
   "driver.modal.empty.noMatch": { aliasKey: "driver_manager.empty.search" },
   "driver.modal.error.installDriver": { aliasKey: "driver_manager.message.install_failed" },
@@ -197,6 +200,27 @@ const driverModalCatalogAliases: Record<string, CatalogAlias> = {
 
 const catalogAliases: Record<string, CatalogAlias> = {
   ...driverModalCatalogAliases,
+  "connection_modal.title.step1": {
+    aliasKey: "connection_modal.title.select_type",
+  },
+  "connection_modal.description.step1": {
+    aliasKey: "connection_modal.title.select_type_description",
+  },
+  "connection_modal.typeWarning.unavailable": {
+    aliasKey: "connection_modal.message.driver_unavailable_title",
+  },
+  "connection_modal.driver.installAction": {
+    aliasKey: "connection_modal.action.open_driver_manager",
+  },
+  "connection_modal.driver.unavailableTitle": {
+    aliasKey: "connection_modal.message.driver_unavailable_title",
+  },
+  "connection_modal.driver.unavailableFallback": {
+    aliasKey: "connection_modal.message.driver_not_enabled_with_name",
+  },
+  "connection_modal.driver.unavailableAlert": {
+    aliasKey: "connection_modal.message.current_driver_not_enabled",
+  },
   "connection_modal.field.driver.label": {
     aliasKey: "connection_modal.field.driver_name",
   },

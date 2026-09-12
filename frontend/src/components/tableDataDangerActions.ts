@@ -54,6 +54,20 @@ const resolveCustomDriverDialect = (driver: string): string => {
     case 'inter-systems':
     case 'inter-systems-iris':
       return 'iris';
+    case 'cache':
+    case 'caché':
+    case 'intersystems cache':
+    case 'intersystems caché':
+    case 'intersystems-cache':
+    case 'intersystems-caché':
+    case 'intersystemscache':
+    case 'intersystemscaché':
+    case 'inter-systems-cache':
+    case 'inter-systems-caché':
+    case 'intersystems-cache-database':
+    case 'cache-db':
+    case 'cachedb':
+      return 'iris';
     default:
       break;
   }
@@ -77,7 +91,7 @@ const resolveCustomDriverDialect = (driver: string): string => {
 export const resolveTableDataActionDBType = (type: string, driver?: string): string => {
   const normalizedType = String(type || '').trim().toLowerCase();
   if (normalizedType !== 'custom') {
-    return normalizedType;
+    return resolveCustomDriverDialect(normalizedType);
   }
   return resolveCustomDriverDialect(driver || '');
 };
@@ -101,6 +115,37 @@ export const supportsTableTruncateAction = (type: string, driver?: string): bool
     case 'dameng':
     case 'clickhouse':
     case 'duckdb':
+      return true;
+    default:
+      return false;
+  }
+};
+
+export const supportsTableClearAction = (type: string, driver?: string): boolean => {
+  switch (resolveTableDataActionDBType(type, driver)) {
+    case 'mysql':
+    case 'goldendb':
+    case 'mariadb':
+    case 'oceanbase':
+    case 'diros':
+    case 'starrocks':
+    case 'sphinx':
+    case 'postgres':
+    case 'kingbase':
+    case 'highgo':
+    case 'vastbase':
+    case 'opengauss':
+    case 'gaussdb':
+    case 'sqlserver':
+    case 'sqlite':
+    case 'duckdb':
+    case 'oracle':
+    case 'dameng':
+    case 'iris':
+    case 'tdengine':
+    case 'clickhouse':
+    case 'trino':
+    case 'mongodb':
       return true;
     default:
       return false;

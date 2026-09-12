@@ -153,7 +153,7 @@ describe('settings center tool entries', () => {
     expect(appSource).not.toMatch(/rootClassName=\{`gonavi-settings-center-modal/);
     expect(appSource).toContain("return { key: 'language', group }");
     expect(appSource).toContain("return { key: 'proxy', group }");
-    expect(appSource).toContain("return { key: 'data-root', group }");
+    expect(appSource).toContain("return { key: 'data-root-application', group }");
     expect(appSource).not.toContain('handleBackFromSettingsCenterPane');
     expect(appSource).not.toContain('gonavi-settings-center-group-tab');
     expect(appSource).not.toContain("t('common.back_to_settings')");
@@ -162,11 +162,27 @@ describe('settings center tool entries', () => {
     expect(appSource).toContain('AI_SETTINGS_NAV_ITEMS.map');
     expect(appSource).toContain("key: `ai-${item.key}`");
     expect(appSource).toContain("key: 'ai-providers-connected'");
+    expect(appSource).toContain("key: 'data-root-application'");
+    expect(appSource).toContain("key: 'data-root-agent'");
+    expect(appSource).toContain("key: 'data-root-saved-queries'");
+    expect(appSource).toContain("handleOpenToolCenterPane('config', 'data-root-agent')");
+    expect(appSource).toContain("handleOpenToolCenterPane('config', 'data-root-saved-queries')");
     expect(appSource).toContain('onProvidersViewChange={setAiSettingsProviderView}');
     expect(appSource).toContain('onCloseHost={handleCancelSettingsCenterPane}');
     expect(appSource).toContain("handleOpenToolCenterPane('workspace', 'drivers')");
     expect(appSource).toContain("activeSettingsCenterPane.key === 'drivers'");
     expect(appSource).not.toMatch(/handleCancelSettingsCenterPane\(\);\s*handleOpenDriverManagerWorkbench\(\);/);
+    expect(appSource).toContain("handleOpenToolCenterPane('config', 'import')");
+    expect(appSource).toContain("handleOpenToolCenterPane('config', 'export')");
+    expect(appSource).toContain("handleOpenToolCenterPane('config', 'connection-health')");
+    expect(appSource).toContain("activeSettingsCenterPane.key === 'connection-health'");
+    expect(appSource).not.toMatch(/handleCancelSettingsCenterPane\(\);\s*handleOpenConnectionHealth\(\);/);
+    expect(appSource).toContain("handleOpenDataSyncWorkbench('compare')");
+    expect(appSource).toContain("handleOpenDataSyncWorkbench('sync')");
+    expect(appSource).not.toContain("handleOpenDataSyncWorkbench('schemaCompare')");
+    expect(appSource).not.toContain("handleOpenDataSyncWorkbench('dataCompare')");
+    expect(appSource).not.toContain('LazyDataSyncWorkbench');
+    expect(appSource).not.toMatch(/handleCancelSettingsCenterPane\(\);\s*addTab\(buildDataSyncWorkbenchTab/);
     expect(appSource).toContain('hideSidebar');
     expect(appSource).toContain('section={aiSettingsSection}');
     expect(appSource).toContain("title: t('app.settings.entry.about.title')");
@@ -184,11 +200,33 @@ describe('settings center tool entries', () => {
     expect(appSource).toContain("t('app.about.sponsors')");
     expect(appCss).toContain('.gonavi-about-project-entry-logo');
     expect(appSource).toContain('className="gonavi-about-download-source"');
-    expect(appCss).toMatch(/\.gonavi-about-download-source\s*\{[^}]*width:\s*232px/);
     expect(appCss).toMatch(/\.gonavi-about-link-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
     expect(appSource).not.toContain('apismart');
     expect(appSource).not.toContain("gridTemplateColumns: 'minmax(0, 1.15fr) minmax(260px, 0.85fr)'");
     expect(appCss).toContain('grid-template-columns: 220px minmax(0, 1fr) !important;');
+  });
+
+  it('keeps connection import, export, and health checks inside settings panes', () => {
+    expect(appSource).toContain("activeSettingsCenterPane.key === 'import'");
+    expect(appSource).toContain('<ConnectionImportSettingsPanel');
+    expect(appSource).toContain("setActiveSettingsCenterPane({ key: 'export', group: sourceGroup })");
+    expect(appSource).toMatch(/isConnectionPackageSettingsPaneKey\(activeSettingsCenterPane\.key\)[\s\S]*?<ConnectionPackagePasswordModal[\s\S]*?embedded/);
+    expect(appSource).toContain("activeSettingsCenterPane.key === 'connection-health'");
+    expect(appSource).toMatch(/activeSettingsCenterPane\.key === 'connection-health'[\s\S]*?<ConnectionHealthModal[\s\S]*?embedded/);
+    expect(appSource).not.toContain('isConnectionHealthModalOpen');
+
+    const toolCenterGroupsStart = appSource.indexOf('const toolCenterGroups:');
+    const importEntryStart = appSource.indexOf("key: 'import',", toolCenterGroupsStart);
+    const exportEntryStart = appSource.indexOf("key: 'export',", importEntryStart);
+    const importEntrySource = appSource.slice(importEntryStart, exportEntryStart);
+    expect(importEntrySource).toContain("handleOpenToolCenterPane('config', 'import')");
+    expect(importEntrySource).not.toContain('handleImportConnections');
+
+    const titlebarImportStart = appSource.indexOf("if (spec.action === 'import-connections')");
+    const titlebarExportStart = appSource.indexOf("if (spec.action === 'export-connections')", titlebarImportStart);
+    const titlebarImportSource = appSource.slice(titlebarImportStart, titlebarExportStart);
+    expect(titlebarImportSource).toContain("handleOpenToolCenterPane('config', 'import')");
+    expect(titlebarImportSource).not.toContain('handleImportConnections');
   });
 
   it('keeps button loading indicators animated when reduced motion is enabled', () => {

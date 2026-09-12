@@ -220,6 +220,7 @@ type driverStatusItem struct {
 	NeedsUpdate         bool   `json:"needsUpdate,omitempty"`
 	UpdateReason        string `json:"updateReason,omitempty"`
 	AffectedConnections int    `json:"affectedConnections,omitempty"`
+	ActiveConnections   int    `json:"activeConnections,omitempty"`
 	ReasonCode          string `json:"reasonCode,omitempty"`
 	Message             string `json:"message,omitempty"`
 }
@@ -419,6 +420,7 @@ const builtinDriverManifestJSON = `{
     "opengauss": { "engine": "go", "version": "1.11.1", "checksumPolicy": "off", "downloadUrl": "builtin://activate/opengauss" },
     "gaussdb":   { "engine": "go", "version": "v1.0.0-rc1", "checksumPolicy": "off", "downloadUrl": "builtin://activate/gaussdb" },
     "iris":      { "engine": "go", "version": "0.2.1", "checksumPolicy": "off", "downloadUrl": "builtin://activate/iris" },
+    "cache":     { "engine": "go", "version": "0.2.1", "checksumPolicy": "off", "downloadUrl": "builtin://activate/cache" },
     "mongodb":   { "engine": "go", "version": "1.17.9", "checksumPolicy": "off", "downloadUrl": "builtin://activate/mongodb" },
     "tdengine":  { "engine": "go", "version": "3.7.8", "checksumPolicy": "off", "downloadUrl": "builtin://activate/tdengine" },
     "iotdb":     { "engine": "go", "version": "1.3.7", "checksumPolicy": "off", "downloadUrl": "builtin://activate/iotdb" },
@@ -488,6 +490,7 @@ var latestDriverVersionMap = map[string]string{
 	"opengauss":     "1.11.1",
 	"gaussdb":       "v1.0.0-rc1",
 	"iris":          "0.2.1",
+	"cache":         "0.2.1",
 	"mongodb":       "2.5.0",
 	"tdengine":      "3.7.8",
 	"iotdb":         "1.3.7",
@@ -516,6 +519,7 @@ var driverGoModulePathMap = map[string]string{
 	"opengauss":     "github.com/lib/pq",
 	"gaussdb":       "github.com/HuaweiCloudDeveloper/gaussdb-go",
 	"iris":          "github.com/caretdev/go-irisnative",
+	"cache":         "github.com/caretdev/go-irisnative",
 	"mongodb":       "go.mongodb.org/mongo-driver/v2",
 	"tdengine":      "github.com/taosdata/driver-go/v3",
 	"iotdb":         "github.com/apache/iotdb-client-go",
@@ -1212,6 +1216,7 @@ func (a *App) GetDriverStatusList(downloadDir string, manifestURL string) connec
 	triggerDriverVersionMetadataWarmup(definitions)
 	packageSizeBytesMap := readCachedOptionalDriverPackageSizes(definitions)
 	usageCounts := a.savedConnectionDriverUsageCounts()
+	activeUsageCounts := a.activeConnectionDriverUsageCounts()
 	items := make([]driverStatusItem, 0, len(definitions))
 	for _, definition := range definitions {
 		engine := effectiveDriverEngine(definition)
@@ -1241,6 +1246,7 @@ func (a *App) GetDriverStatusList(downloadDir string, manifestURL string) connec
 			NeedsUpdate:         needsUpdate,
 			UpdateReason:        updateReason,
 			AffectedConnections: usageCounts[normalizeDriverType(definition.Type)],
+			ActiveConnections:   activeUsageCounts[normalizeDriverType(definition.Type)],
 		}
 		if !runtimeAvailable && db.IsOptionalGoDriver(definition.Type) && !db.IsOptionalGoDriverBuildIncluded(definition.Type) {
 			item.ReasonCode = driverStatusReasonSlimBuildMissingDriver
@@ -1440,6 +1446,9 @@ func (a *App) checkDriverNetworkStatusWithProbe(probe driverNetworkProbeFunc) co
 }
 
 func (a *App) InstallLocalDriverPackage(driverType string, filePath string, downloadDir string, version string) connection.QueryResult {
+	a.driverInstallMu.Lock()
+	defer a.driverInstallMu.Unlock()
+
 	definition, ok := resolveDriverDefinition(driverType)
 	if !ok {
 		return connection.QueryResult{Success: false, Message: a.appText("driver_manager.backend.error.unsupported_driver_type", nil)}
@@ -1469,7 +1478,7 @@ func (a *App) InstallLocalDriverPackage(driverType string, filePath string, down
 	if err := a.localizeDriverSelectionError(definition, validateDriverSelectedVersion(definition, selectedVersion)); err != nil {
 		return connection.QueryResult{Success: false, Message: err.Error()}
 	}
-	meta, installErr := installOptionalDriverAgentFromLocalPath(definition, filePath, resolvedDir, selectedVersion)
+	meta, installErr := installOptionalDriverAgentFromLocalPath(a, definition, filePath, resolvedDir, selectedVersion)
 	if installErr != nil {
 		errText := localizedDriverBackendErrorMessage(a, installErr)
 		a.emitDriverDownloadProgress(definition.Type, "error", 0, 0, errText)
@@ -1501,6 +1510,9 @@ func (a *App) InstallLocalDriverPackage(driverType string, filePath string, down
 }
 
 func (a *App) DownloadDriverPackage(driverType string, version string, downloadURL string, downloadDir string) connection.QueryResult {
+	a.driverInstallMu.Lock()
+	defer a.driverInstallMu.Unlock()
+
 	definition, ok := resolveDriverDefinition(driverType)
 	if !ok {
 		return connection.QueryResult{Success: false, Message: a.appText("driver_manager.backend.error.unsupported_driver_type", nil)}
@@ -1601,6 +1613,9 @@ func (a *App) DownloadDriverPackage(driverType string, version string, downloadU
 }
 
 func (a *App) RemoveDriverPackage(driverType string, downloadDir string) connection.QueryResult {
+	a.driverInstallMu.Lock()
+	defer a.driverInstallMu.Unlock()
+
 	definition, ok := resolveDriverDefinition(driverType)
 	if !ok {
 		return connection.QueryResult{Success: false, Message: a.appText("driver_manager.backend.error.unsupported_driver_type", nil)}
@@ -1927,6 +1942,8 @@ func normalizeDriverType(driverType string) string {
 		return "rabbitmq"
 	case "intersystems", "intersystemsiris", "inter-systems-iris", "inter-systems":
 		return "iris"
+	case "cache", "caché", "intersystems cache", "intersystems caché", "intersystems-cache", "intersystems-caché", "intersystemscache", "intersystemscaché", "inter-systems-cache", "inter-systems-caché", "intersystems-cache-database", "cache-db", "cachedb":
+		return "cache"
 	case "milvusdb", "milvus-db":
 		return "milvus"
 	default:
@@ -2017,6 +2034,7 @@ func allDriverDefinitionsWithPackages(packages map[string]pinnedDriverPackage) [
 		buildOptionalGoDriverDefinition("opengauss", "OpenGauss", packages),
 		buildOptionalGoDriverDefinition("gaussdb", "GaussDB", packages),
 		buildOptionalGoDriverDefinition("iris", "InterSystems IRIS", packages),
+		buildOptionalGoDriverDefinition("cache", "InterSystems Caché", packages),
 		buildOptionalGoDriverDefinition("mongodb", "MongoDB", packages),
 		buildOptionalGoDriverDefinition("tdengine", "TDengine", packages),
 		buildOptionalGoDriverDefinition("iotdb", "Apache IoTDB", packages),
@@ -3616,11 +3634,18 @@ func localizeOptionalDriverActivateError(displayName string, activateErr error) 
 	return newLocalizedDriverBackendError("driver_manager.backend.error.activate_agent_failed", map[string]any{"name": name}, wrapped)
 }
 
-func promoteOptionalDriverAgentFromStaging(driverType string, stagingPath string, installPath string, runtimePath string, selectedVersion string) error {
+func promoteOptionalDriverAgentFromStaging(a *App, driverType string, stagingPath string, installPath string, runtimePath string, selectedVersion string) error {
 	targetPaths := optionalDriverInstallTargetPaths(driverType, installPath, runtimePath)
 	snapshots, err := snapshotOptionalDriverInstallTargets(filepath.Dir(stagingPath), targetPaths)
 	if err != nil {
 		return err
+	}
+	if a != nil {
+		_, finish, prepareErr := a.beginOptionalDriverReplacement(driverType, targetPaths)
+		if prepareErr != nil {
+			return prepareErr
+		}
+		defer finish()
 	}
 	rollback := func(installErr error) error {
 		if restoreErr := restoreOptionalDriverInstallTargets(snapshots); restoreErr != nil {
@@ -3683,7 +3708,7 @@ func installOptionalDriverAgentPackage(a *App, definition driverDefinition, sele
 			return installedDriverPackage{}, newLocalizedDriverBackendError("driver_manager.backend.error.named_agent_hash_failed", map[string]any{"name": resolveDriverDisplayName(definition)}, err)
 		}
 	}
-	if activateErr := promoteOptionalDriverAgentFromStaging(driverType, stagingPath, installPath, runtimePath, selectedVersion); activateErr != nil {
+	if activateErr := promoteOptionalDriverAgentFromStaging(a, driverType, stagingPath, installPath, runtimePath, selectedVersion); activateErr != nil {
 		return installedDriverPackage{}, localizeOptionalDriverActivateError(resolveDriverDisplayName(definition), activateErr)
 	}
 	if strings.TrimSpace(downloadSource) == "" {
@@ -3702,7 +3727,7 @@ func installOptionalDriverAgentPackage(a *App, definition driverDefinition, sele
 	}, nil
 }
 
-func installOptionalDriverAgentFromLocalPath(definition driverDefinition, filePath string, resolvedDir string, selectedVersion string) (installedDriverPackage, error) {
+func installOptionalDriverAgentFromLocalPath(a *App, definition driverDefinition, filePath string, resolvedDir string, selectedVersion string) (installedDriverPackage, error) {
 	driverType := normalizeDriverType(definition.Type)
 	displayName := resolveDriverDisplayName(definition)
 	pathText := strings.TrimSpace(filePath)
@@ -3779,7 +3804,7 @@ func installOptionalDriverAgentFromLocalPath(definition driverDefinition, filePa
 	if hashErr != nil {
 		return installedDriverPackage{}, newLocalizedDriverBackendError("driver_manager.backend.error.named_agent_hash_failed", map[string]any{"name": displayName}, hashErr)
 	}
-	if activateErr := promoteOptionalDriverAgentFromStaging(driverType, stagingPath, installPath, runtimePath, selectedVersion); activateErr != nil {
+	if activateErr := promoteOptionalDriverAgentFromStaging(a, driverType, stagingPath, installPath, runtimePath, selectedVersion); activateErr != nil {
 		return installedDriverPackage{}, localizeOptionalDriverActivateError(displayName, activateErr)
 	}
 	return installedDriverPackage{
@@ -4898,6 +4923,8 @@ func optionalDriverBuildTag(driverType string, selectedVersion string) (string, 
 		return "gonavi_gaussdb_driver", nil
 	case "iris":
 		return "gonavi_iris_driver", nil
+	case "cache":
+		return "gonavi_cache_driver", nil
 	case "mongodb":
 		if resolveMongoDriverMajorFromVersion(selectedVersion) == 1 {
 			return "gonavi_mongodb_driver_v1", nil

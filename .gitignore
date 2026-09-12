@@ -23,8 +23,8 @@ frontend/dist.zip
 docker.*.env
 GoNavi-Wails
 GoNavi-Wails.exe
-optional-driver-agent
-optional-driver-agent.exe
+/optional-driver-agent
+/optional-driver-agent.exe
 .ace-tool/
 .superpowers/
 .gemini/
@@ -39,6 +39,8 @@ docs
 !docs/
 docs/*
 !docs/download-cdn-operations.md
+!docs/blog/
+!docs/blog/**
 .tmp_superpowers_edit
 
 # gonavi-scan 本机测试连接（含密码/API Token，不提交）

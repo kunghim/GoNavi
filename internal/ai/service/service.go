@@ -37,6 +37,7 @@ type Service struct {
 	mcpServers         []ai.MCPServerConfig
 	mcpHTTPConfig      ai.MCPHTTPServerConfig
 	skills             []ai.SkillConfig
+	resultMasking      ai.ResultMaskingSettings
 	guard              *safety.Guard
 	configDir          string // 配置存储目录
 	secretStore        secretstore.SecretStore
@@ -59,6 +60,7 @@ type Service struct {
 	agentHarnessInitialized        bool
 	agentHarnessInitialization     error
 	agentHarnessShutdown           bool
+	agentDataMaintenanceMu         sync.Mutex
 	agentPolicyMu                  sync.Mutex
 	// agentPolicyWatcherMu protects the lifecycle of the lightweight file
 	// watcher that keeps an already-running desktop Harness in sync with policy
@@ -483,9 +485,13 @@ func (s *Service) AISaveProvider(config ai.ProviderConfig) error {
 	if err := s.validateProviderModelPreferencesLocked(config); err != nil {
 		return err
 	}
-	if err := validateSubscriptionCLIProviderAuth(config); err != nil {
+	if err := validateLocalCLIProviderAuthMode(config); err != nil {
 		return err
 	}
+	// These fields belonged to controls removed from the provider editor. Clear
+	// them at the service boundary as well, so stale or older clients cannot keep
+	// hidden values alive in memory or on disk.
+	config = clearRemovedProviderEditorFields(config)
 	localCLIAuth := isLocalCLIAuthProvider(config)
 	if localCLIAuth {
 		config = clearLocalCLIProviderSecrets(config)
@@ -613,7 +619,7 @@ func (s *Service) AIDeleteProvider(id string) error {
 	return s.saveConfig()
 }
 
-// AITestProvider 返回实际执行的检查范围。订阅 CLI 不发送聊天消息；
+// AITestProvider 返回实际执行的检查范围。本机认证 CLI 不发送聊天消息；
 // 其他兼容路径可能发送最小探测请求，只有读到模型回复才标记 modelVerified。
 func (s *Service) AITestProvider(config ai.ProviderConfig) map[string]interface{} {
 	localCLIAuth := isLocalCLIAuthProvider(config)
@@ -729,7 +735,7 @@ func (s *Service) AITestProvider(config ai.ProviderConfig) map[string]interface{
 		}
 	case "codex-cli":
 		checkKind = "local-auth"
-		if authErr := validateSubscriptionCLIProviderAuth(config); authErr != nil {
+		if authErr := validateLocalCLIProviderAuthMode(config); authErr != nil {
 			err = authErr
 		} else {
 			err = codexCLIHealthCheckFunc(config)
@@ -739,14 +745,14 @@ func (s *Service) AITestProvider(config ai.ProviderConfig) map[string]interface{
 		err = codebuddyCLIHealthCheckFunc(config)
 	case "grok-cli":
 		checkKind = "model-list"
-		if authErr := validateSubscriptionCLIProviderAuth(config); authErr != nil {
+		if authErr := validateLocalCLIProviderAuthMode(config); authErr != nil {
 			err = authErr
 		} else {
 			err = grokCLIHealthCheckFunc(config)
 		}
 	case "cursor-cli":
 		checkKind = "local-auth"
-		if authErr := validateSubscriptionCLIProviderAuth(config); authErr != nil {
+		if authErr := validateLocalCLIProviderAuthMode(config); authErr != nil {
 			err = authErr
 		} else {
 			err = cursorCLIHealthCheckFunc(config)
@@ -835,13 +841,13 @@ func singletonCLIProviderIdentity(config ai.ProviderConfig) string {
 	return ""
 }
 
-func validateSubscriptionCLIProviderAuth(config ai.ProviderConfig) error {
+func validateLocalCLIProviderAuthMode(config ai.ProviderConfig) error {
 	format := strings.ToLower(strings.TrimSpace(config.APIFormat))
 	if format != "codex-cli" && format != "grok-cli" && format != "cursor-cli" {
 		return nil
 	}
 	if !isLocalCLIAuthProvider(config) {
-		return fmt.Errorf("%s provider requires its Subscription preset with local-cli authentication", format)
+		return fmt.Errorf("%s provider requires local-cli authentication; the CLI may use OAuth or an API key", format)
 	}
 	return nil
 }
@@ -855,9 +861,10 @@ func clearLocalCLIProviderSecrets(config ai.ProviderConfig) ai.ProviderConfig {
 	return config
 }
 
-// applyStoredLocalCLIExecutionConfig restores only the hidden CLI environment
-// when a public, secretless provider view is submitted back by the settings UI.
-// API credentials stay cleared and can never cross into subscription checks.
+// applyStoredLocalCLIExecutionConfig restores the hidden CLI environment when
+// a public, secretless provider view is submitted back by the settings UI.
+// Direct-provider fields stay cleared; CLI-owned OAuth and API-key credentials
+// remain available through the CLI's own store or its preserved CLIEnv.
 func (s *Service) applyStoredLocalCLIExecutionConfig(config ai.ProviderConfig) ai.ProviderConfig {
 	if !isLocalCLIAuthProvider(config) || len(config.CLIEnv) > 0 || strings.TrimSpace(config.ID) == "" {
 		config.CLIEnv = cloneStringMap(config.CLIEnv)
@@ -1041,7 +1048,16 @@ func applyChatSendOptionsToProviderConfig(config ai.ProviderConfig, options ai.C
 	}
 	// 思考强度以聊天面板/会话级覆盖为准，不回写供应商配置。
 	if intensity := strings.TrimSpace(options.ThinkingIntensity); intensity != "" {
-		config.ThinkingIntensity = intensity
+		if isLocalCLIAuthProvider(config) {
+			switch strings.ToLower(intensity) {
+			case "off", "none", "disabled", "default":
+				config.Effort = ""
+			default:
+				config.Effort = intensity
+			}
+		} else {
+			config.ThinkingIntensity = intensity
+		}
 	}
 	return config
 }
@@ -1272,6 +1288,22 @@ func (s *Service) AIListModels() map[string]interface{} {
 	}
 
 	config = normalizeProviderConfig(config)
+	return listProviderModels(config, localizer, true)
+}
+
+// AIListProviderModels refreshes model choices for an unsaved provider draft.
+// It never writes the draft or changes the active provider; saved credentials
+// are resolved by ID when the editor intentionally retains its existing secret.
+func (s *Service) AIListProviderModels(config ai.ProviderConfig) map[string]interface{} {
+	localizer := s.serviceLocalizerForLanguage()
+	resolved, err := s.resolveProviderConfigSecrets(config)
+	if err != nil {
+		return map[string]interface{}{"success": false, "models": []string{}, "error": err.Error()}
+	}
+	return listProviderModels(normalizeProviderConfig(resolved), localizer, false)
+}
+
+func listProviderModels(config ai.ProviderConfig, localizer *i18n.Localizer, allowConfiguredFallback bool) map[string]interface{} {
 	if isLocalCLIAuthProvider(config) || normalizedProviderType(config) == "codebuddy-cli" {
 		return map[string]interface{}{
 			"success": true,
@@ -1286,7 +1318,7 @@ func (s *Service) AIListModels() map[string]interface{} {
 	models, err := fetchModelsFunc(config, localizer)
 	if err != nil {
 		// 回退到配置中的静态模型列表
-		if len(config.Models) > 0 || len(config.CustomModels) > 0 {
+		if allowConfiguredFallback && (len(config.Models) > 0 || len(config.CustomModels) > 0) {
 			return map[string]interface{}{"success": true, "models": selectableProviderModels(config, config.Models), "source": "static"}
 		}
 		return map[string]interface{}{"success": false, "models": []string{}, "error": err.Error()}
@@ -1500,6 +1532,28 @@ func (s *Service) AISetSafetyLevel(level string) {
 	_ = s.saveConfig()
 }
 
+// AIGetResultMaskingSettings returns the global rules applied only to built-in
+// execute_sql responses.
+func (s *Service) AIGetResultMaskingSettings() ai.ResultMaskingSettings {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return ai.NormalizeResultMaskingSettings(s.resultMasking)
+}
+
+// AISaveResultMaskingSettings validates and persists the global masking rules.
+func (s *Service) AISaveResultMaskingSettings(settings ai.ResultMaskingSettings) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	previous := s.resultMasking
+	s.resultMasking = ai.NormalizeResultMaskingSettings(settings)
+	if err := s.saveConfig(); err != nil {
+		s.resultMasking = previous
+		return err
+	}
+	return nil
+}
+
 // --- 上下文控制 ---
 
 // AIGetContextLevel 获取上下文传递级别
@@ -1538,7 +1592,10 @@ func (s *Service) AIGetCLIModelCatalog(config ai.ProviderConfig) (map[string]int
 	if ok {
 		catalog, err = capability.ModelCatalogWithConfig(context.Background(), config)
 	}
-	return map[string]interface{}{"models": catalog.Models, "source": catalog.Source, "stale": catalog.Stale}, err
+	return map[string]interface{}{
+		"models": catalog.Models, "source": catalog.Source, "stale": catalog.Stale,
+		"defaultModel": catalog.DefaultModel, "modelCapabilities": catalog.ModelCapabilities,
+	}, err
 }
 
 // AISetContextLevel 设置上下文传递级别
@@ -1624,6 +1681,7 @@ func (s *Service) loadConfig() {
 	s.mcpServers = normalizeMCPServerConfigs(snapshot.MCPServers)
 	s.mcpHTTPConfig = normalizeMCPHTTPServerConfig(snapshot.MCPHTTPServer)
 	s.skills = normalizeSkillConfigs(snapshot.Skills, s.serviceLocalizerForLanguage())
+	s.resultMasking = ai.NormalizeResultMaskingSettings(snapshot.ResultMasking)
 
 	status := mcpHTTPStatusFromConfig(s.mcpHTTPConfig, s.serviceText("ai_settings.mcp_http.status.not_running", nil))
 	s.mcpHTTPMu.Lock()
@@ -1643,6 +1701,7 @@ func (s *Service) saveConfig() error {
 		MCPServers:         s.mcpServers,
 		MCPHTTPServer:      s.mcpHTTPConfig,
 		Skills:             s.skills,
+		ResultMasking:      s.resultMasking,
 	})
 	if err == nil && s.configChanged != nil {
 		s.configChanged()

@@ -244,6 +244,128 @@ public static class GoNaviShortcutShellNotification
     }
 }
 
+function Set-GoNaviShortcutRelaunchProperties {
+    param(
+        [string]$ShortcutPath,
+        [string]$TargetPath,
+        [string]$IconPath,
+        [string]$ApplicationUserModelID = 'Syngnat.GoNavi'
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ApplicationUserModelID)) {
+        $ApplicationUserModelID = 'Syngnat.GoNavi'
+    }
+    try {
+        if (-not ('GoNaviShortcutPropertyStore' -as [type])) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class GoNaviShortcutPropertyStore
+{
+    private const uint GPS_READWRITE = 0x00000002;
+    private const ushort VT_LPWSTR = 31;
+    private static readonly Guid IID_IPropertyStore = new Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99");
+    private static readonly Guid PKEY_AppUserModel = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3");
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PROPERTYKEY
+    {
+        public Guid fmtid;
+        public uint pid;
+
+        public PROPERTYKEY(Guid formatId, uint propertyId)
+        {
+            fmtid = formatId;
+            pid = propertyId;
+        }
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct PROPVARIANT
+    {
+        [FieldOffset(0)] public ushort vt;
+        [FieldOffset(8)] public IntPtr pointerValue;
+    }
+
+    [ComImport]
+    [Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IPropertyStore
+    {
+        [PreserveSig] int GetCount(out uint count);
+        [PreserveSig] int GetAt(uint index, out PROPERTYKEY key);
+        [PreserveSig] int GetValue(ref PROPERTYKEY key, IntPtr value);
+        [PreserveSig] int SetValue(ref PROPERTYKEY key, ref PROPVARIANT value);
+        [PreserveSig] int Commit();
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern int SHGetPropertyStoreFromParsingName(
+        string path,
+        IntPtr bindContext,
+        uint flags,
+        ref Guid interfaceId,
+        [MarshalAs(UnmanagedType.Interface)] out IPropertyStore store);
+
+    private static void SetString(IPropertyStore store, PROPERTYKEY key, string value)
+    {
+        IntPtr text = Marshal.StringToCoTaskMemUni(value ?? String.Empty);
+        PROPVARIANT variant = new PROPVARIANT { vt = VT_LPWSTR, pointerValue = text };
+        try
+        {
+            Marshal.ThrowExceptionForHR(store.SetValue(ref key, ref variant));
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(text);
+        }
+    }
+
+    public static bool SetRelaunchProperties(string shortcutPath, string targetPath, string iconPath, string applicationUserModelID)
+    {
+        if (String.IsNullOrWhiteSpace(applicationUserModelID))
+        {
+            applicationUserModelID = "Syngnat.GoNavi";
+        }
+        IPropertyStore store = null;
+        Guid interfaceId = IID_IPropertyStore;
+        int result = SHGetPropertyStoreFromParsingName(
+            shortcutPath,
+            IntPtr.Zero,
+            GPS_READWRITE,
+            ref interfaceId,
+            out store);
+        Marshal.ThrowExceptionForHR(result);
+        try
+        {
+            // AppUserModel.ID must be written last. Windows uses that write to
+            // notify the taskbar that the preceding relaunch values changed.
+            SetString(store, new PROPERTYKEY(PKEY_AppUserModel, 2), targetPath);
+            SetString(store, new PROPERTYKEY(PKEY_AppUserModel, 3), iconPath + ",0");
+            SetString(store, new PROPERTYKEY(PKEY_AppUserModel, 4), "GoNavi");
+            SetString(store, new PROPERTYKEY(PKEY_AppUserModel, 5), applicationUserModelID);
+            Marshal.ThrowExceptionForHR(store.Commit());
+            return true;
+        }
+        finally
+        {
+            if (store != null)
+            {
+                Marshal.ReleaseComObject(store);
+            }
+        }
+    }
+}
+'@
+        }
+        return [GoNaviShortcutPropertyStore]::SetRelaunchProperties($ShortcutPath, $TargetPath, $IconPath, $ApplicationUserModelID)
+    } catch {
+        Write-ShortcutRepairLog ("shortcut relaunch property update failed for " + $ShortcutPath + ": " + $_.Exception.Message)
+        return $false
+    }
+}
+
 function Repair-LegacyGoNaviTaskbarPins {
     param(
         [string]$TargetPath,
@@ -271,6 +393,11 @@ function Repair-LegacyGoNaviTaskbarPins {
             return $repairCount
         }
 
+        $normalizedPinsDirectory = Get-NormalizedFilePath $PinsDirectory
+        $applicationData = [Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData)
+        $knownTaskbarDirectory = Get-NormalizedFilePath (Join-Path $applicationData 'Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar')
+        $useTaskbarPropertyStore = Test-SameFilePath $normalizedPinsDirectory $knownTaskbarDirectory
+
         $shell = New-Object -ComObject WScript.Shell
         $pins = Get-ChildItem -LiteralPath $PinsDirectory -Filter '*.lnk' -File -Force -ErrorAction Stop
         foreach ($pin in $pins) {
@@ -283,6 +410,14 @@ function Repair-LegacyGoNaviTaskbarPins {
                     continue
                 }
 
+                if ($useTaskbarPropertyStore) {
+                    if (Set-GoNaviShortcutRelaunchProperties -ShortcutPath $pin.FullName -TargetPath $normalizedTargetPath -IconPath $normalizedTargetPath) {
+                        Send-ShellItemUpdatedNotification $pin.FullName
+                        $repairCount++
+                        Write-ShortcutRepairLog ("repaired legacy taskbar pin properties: " + $pin.Name)
+                    }
+                    continue
+                }
                 $shortcut.IconLocation = $normalizedTargetPath + ',0'
                 $shortcut.Save()
                 Send-ShellItemUpdatedNotification $pin.FullName
@@ -296,4 +431,157 @@ function Repair-LegacyGoNaviTaskbarPins {
         Write-ShortcutRepairLog ("taskbar pin repair failed: " + $_.Exception.Message)
     }
     return $repairCount
+}
+
+function Get-GoNaviShortcutAppUserModelID {
+    param([string]$ShortcutPath)
+
+    try {
+        $folderPath = Split-Path -LiteralPath $ShortcutPath -Parent
+        $fileName = Split-Path -LiteralPath $ShortcutPath -Leaf
+        $namespace = (New-Object -ComObject Shell.Application).Namespace($folderPath)
+        if ($null -eq $namespace) {
+            return ''
+        }
+        $item = $namespace.ParseName($fileName)
+        if ($null -eq $item) {
+            return ''
+        }
+        return [string]$item.ExtendedProperty('System.AppUserModel.ID')
+    } catch {
+        return ''
+    }
+}
+
+function Set-GoNaviShortcutBrandIcon {
+    param(
+        [string]$TargetPath,
+        [string]$IconPath,
+        [string]$ApplicationUserModelID = 'Syngnat.GoNavi',
+        [string[]]$ShortcutDirectories,
+        [string]$TaskbarDirectory
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ApplicationUserModelID)) {
+        $ApplicationUserModelID = 'Syngnat.GoNavi'
+    }
+    $updatedCount = 0
+    try {
+        $normalizedTargetPath = Get-NormalizedFilePath $TargetPath
+        $normalizedIconPath = Get-NormalizedFilePath $IconPath
+        if ([string]::IsNullOrWhiteSpace($normalizedTargetPath) -or
+            [string]::IsNullOrWhiteSpace($normalizedIconPath) -or
+            -not (Test-Path -LiteralPath $normalizedTargetPath -PathType Leaf) -or
+            -not (Test-Path -LiteralPath $normalizedIconPath -PathType Leaf)) {
+            return $updatedCount
+        }
+
+        if ($null -eq $ShortcutDirectories -or $ShortcutDirectories.Count -eq 0) {
+            $applicationData = [Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData)
+            $ShortcutDirectories = @(
+                [Environment]::GetFolderPath([Environment+SpecialFolder]::DesktopDirectory),
+                [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonDesktopDirectory),
+                [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs),
+                [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonPrograms),
+                (Join-Path $applicationData 'Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar')
+            )
+        }
+
+        if ([string]::IsNullOrWhiteSpace($TaskbarDirectory)) {
+            $applicationData = [Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData)
+            $TaskbarDirectory = Join-Path $applicationData 'Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar'
+        }
+        $taskbarDirectory = Get-NormalizedFilePath $TaskbarDirectory
+        $taskbarPrefix = $taskbarDirectory
+        if (-not [string]::IsNullOrWhiteSpace($taskbarPrefix) -and -not $taskbarPrefix.EndsWith([IO.Path]::DirectorySeparatorChar)) {
+            $taskbarPrefix += [IO.Path]::DirectorySeparatorChar
+        }
+
+        $shell = New-Object -ComObject WScript.Shell
+        $visitedDirectories = @{}
+        foreach ($directory in $ShortcutDirectories) {
+            $normalizedDirectory = Get-NormalizedFilePath $directory
+            if ([string]::IsNullOrWhiteSpace($normalizedDirectory) -or
+                $visitedDirectories.ContainsKey($normalizedDirectory) -or
+                -not (Test-Path -LiteralPath $normalizedDirectory -PathType Container)) {
+                continue
+            }
+            $visitedDirectories[$normalizedDirectory] = $true
+            $shortcuts = Get-ChildItem -LiteralPath $normalizedDirectory -Filter '*.lnk' -File -Recurse -Force -ErrorAction SilentlyContinue
+            foreach ($shortcutFile in $shortcuts) {
+                try {
+                    $shortcut = $shell.CreateShortcut($shortcutFile.FullName)
+                    $matchesTarget = Test-SameFilePath $shortcut.TargetPath $normalizedTargetPath
+                    $isTaskbarShortcut = -not [string]::IsNullOrWhiteSpace($taskbarPrefix) -and
+                        $shortcutFile.FullName.StartsWith($taskbarPrefix, [StringComparison]::OrdinalIgnoreCase)
+                    $isGoNaviTaskbarShortcut = $false
+                    # A development/portable build can be running while the
+                    # pinned shortcut still targets the installed GoNavi.exe.
+                    # Recognize that same GoNavi taskbar identity, but keep its
+                    # original launch target below instead of redirecting it.
+                    # Brand-icon selections rotate the identity inside the
+                    # Syngnat.GoNavi family so Explorer re-renders the cached
+                    # group icon; every family member must be recognized here.
+                    if (-not $matchesTarget -and $isTaskbarShortcut) {
+                        $shortcutName = [IO.Path]::GetFileNameWithoutExtension($shortcutFile.Name)
+                        $targetName = [IO.Path]::GetFileName($shortcut.TargetPath)
+                        $looksLikeGoNaviPin =
+                            $shortcutName -match '^GoNavi(?:[-_.].*)?$' -and
+                            $targetName -match '^GoNavi(?:[-_.].*)?\.exe$'
+                        $isGoNaviTaskbarShortcut = $looksLikeGoNaviPin -or
+                            ((Get-GoNaviShortcutAppUserModelID $shortcutFile.FullName) -match '^Syngnat\.GoNavi(?:\.Icon\.[0-9a-f]+)?$')
+                    }
+                    if (-not $matchesTarget -and -not $isGoNaviTaskbarShortcut) {
+                        continue
+                    }
+                    $shortcutTargetPath = $normalizedTargetPath
+                    if (-not $matchesTarget) {
+                        $shortcutTargetPath = Get-NormalizedFilePath $shortcut.TargetPath
+                        if ([string]::IsNullOrWhiteSpace($shortcutTargetPath)) {
+                            continue
+                        }
+                    }
+                    if ($isTaskbarShortcut) {
+                        # Windows 11 may keep rendering a pinned shortcut's
+                        # standard IconLocation even after the AppUserModel
+                        # relaunch icon changed. Save both representations,
+                        # then write the AppUserModel properties last because
+                        # WScript.Shell.Save can discard custom properties.
+                        $shortcutUpdated = $false
+                        $wantedIconLocation = $normalizedIconPath + ',0'
+                        if (-not [string]::Equals([string]$shortcut.IconLocation, $wantedIconLocation, [StringComparison]::OrdinalIgnoreCase)) {
+                            $shortcut.IconLocation = $wantedIconLocation
+                            $shortcut.Save()
+                            $shortcutUpdated = $true
+                        }
+                        if (Set-GoNaviShortcutRelaunchProperties -ShortcutPath $shortcutFile.FullName -TargetPath $shortcutTargetPath -IconPath $normalizedIconPath -ApplicationUserModelID $ApplicationUserModelID) {
+                            $shortcutUpdated = $true
+                        }
+                        if ($shortcutUpdated) {
+                            $updatedCount++
+                        }
+                        Send-ShellItemUpdatedNotification $shortcutFile.FullName
+                        continue
+                    }
+                    $wantedIconLocation = $normalizedIconPath + ',0'
+                    $needsSave = $false
+                    if (-not [string]::Equals([string]$shortcut.IconLocation, $wantedIconLocation, [StringComparison]::OrdinalIgnoreCase)) {
+                        $shortcut.IconLocation = $wantedIconLocation
+                        $needsSave = $true
+                    }
+                    if ($needsSave) {
+                        $shortcut.Save()
+                        $updatedCount++
+                    }
+                    Send-ShellItemUpdatedNotification $shortcutFile.FullName
+                } catch {
+                    Write-ShortcutRepairLog ("brand icon update failed for " + $shortcutFile.FullName + ": " + $_.Exception.Message)
+                }
+            }
+        }
+        Send-ShellItemUpdatedNotification $normalizedIconPath
+    } catch {
+        Write-ShortcutRepairLog ("brand icon shortcut update failed: " + $_.Exception.Message)
+    }
+    return $updatedCount
 }

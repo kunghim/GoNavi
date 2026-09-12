@@ -79,7 +79,6 @@ type SidebarSearchModelArgs = {
   treeViewportWidth: number;
   treeHeight: number;
   expandedKeys: React.Key[];
-  isV2Ui: boolean;
   isV2CommandSearchOpen: boolean;
   connections: SavedConnection[];
   connectionIds: string[];
@@ -119,7 +118,6 @@ export const useSidebarSearchModel = ({
   treeViewportWidth,
   treeHeight,
   expandedKeys,
-  isV2Ui,
   isV2CommandSearchOpen,
   connections,
   connectionIds,
@@ -309,6 +307,14 @@ export const useSidebarSearchModel = ({
     return String(name || '').toLowerCase();
   };
 
+  // Table comments live on dataRef regardless of whether the user displays
+  // them, so the keyword should match them in both smart and object scopes.
+  const getObjectCommentSearchText = (node: TreeNode): string => (
+    isV2SidebarObjectNode(node)
+      ? String(node?.dataRef?.tableComment || '').toLowerCase()
+      : ''
+  );
+
   const matchByScopes = (node: TreeNode, keyword: string, scopes: SearchScope[]): boolean => {
     const title = String(node.title || '').toLowerCase();
     if (
@@ -327,7 +333,7 @@ export const useSidebarSearchModel = ({
     if (
       scopes.includes('object')
       && (isV2SidebarObjectNode(node) || node.type === 'object-group' || node.type === 'message-object-group')
-      && title.includes(keyword)
+      && (title.includes(keyword) || getObjectCommentSearchText(node).includes(keyword))
     ) {
       return true;
     }
@@ -353,7 +359,7 @@ export const useSidebarSearchModel = ({
       const titleMatch = String(item.title || '').toLowerCase().includes(keyword);
       const smartMatch = item.type === 'connection'
         ? getConnectionNameSearchText(item).includes(keyword) || getConnectionHostSearchText(item).includes(keyword)
-        : titleMatch;
+        : titleMatch || getObjectCommentSearchText(item).includes(keyword);
       const scopedMatch = matchByScopes(item, keyword, searchScopes);
       const selfMatch = isSmartMode ? smartMatch : scopedMatch;
       const filteredChildren = item.children ? loop(item.children, keyword) : [];
@@ -436,11 +442,15 @@ export const useSidebarSearchModel = ({
             || '',
           ).trim();
           const displayName = String(node.title || extractObjectName(objectName) || objectName).trim();
+          const tableComment = String(dataRef.tableComment || '').trim();
           result.push({
             key: `node-${node.key}`,
             kind: 'node',
             title: displayName,
-            meta: [conn?.name || dataRef.id, dataRef.dbName].filter(Boolean).join(' · '),
+            meta: [
+              [conn?.name || dataRef.id, dataRef.dbName].filter(Boolean).join(' · '),
+              tableComment,
+            ].filter(Boolean).join(' — '),
             icon: node.type === 'table'
               ? <TableOutlined />
               : (node.type === 'sequence'
@@ -646,7 +656,7 @@ export const useSidebarSearchModel = ({
     ),
     [expandedKeys, sidebarTableMetadataFields, treeViewportWidth, v2VisibleTreeData],
   );
-  const effectiveTreeHeight = resolveSidebarTreeVirtualHeight(treeHeight, isV2Ui);
+  const effectiveTreeHeight = resolveSidebarTreeVirtualHeight(treeHeight);
   const v2TreeMetrics = useMemo(() => {
     const databaseTableCounts = new Map<React.Key, number>();
     const objectGroupCounts = new Map<React.Key, number>();

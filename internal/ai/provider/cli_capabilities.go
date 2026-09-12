@@ -20,7 +20,7 @@ import (
 // 也不能用退出码统一判成败：
 //
 //   - 档位 flag 形态不同：claude/grok 有专用 flag，codex 只能走 -c 配置键。
-//   - 档位值域不同：codex 6 个、claude 5 个、grok 4 个，交集只有 low/medium/high/xhigh。
+//   - 档位值域不同：Codex 还会随模型目录变化，claude 5 个、grok 4 个。
 //   - 非法值的失败语义不同：codex 非零退出；grok 退出码仍为 0、错误只在 stdout；
 //     claude 直接静默降级为默认档位并把请求跑完。
 //
@@ -92,8 +92,8 @@ var cliCapabilities = map[string]CLICapability{
 		ModelCatalogSource: "codex-cache",
 		EffortStyle:        CLIEffortConfigKV,
 		EffortConfigKey:    "model_reasoning_effort",
-		EffortValues:       []string{"minimal", "low", "medium", "high", "xhigh", "max"},
-		// codex 在配置加载期不校验该键，非法值不会被立刻拒绝，因此值域取自二进制字符串。
+		EffortValues:       []string{"minimal", "low", "medium", "high", "xhigh", "max", "ultra"},
+		// 此处是旧版目录的兼容并集；支持 model/list 的版本以前端拿到的单模型值域为准。
 		EffortValuesVerified: false,
 		Rejection:            CLIRejectHardFailNonZero,
 		ConfigRelPath:        []string{".codex", "config.toml"},
@@ -327,7 +327,7 @@ func CLICapabilityViews() []ai.CLICapabilityView {
 			SupportsEffort:         capability.SupportsEffort(),
 			EffortValues:           append([]string(nil), capability.EffortValues...),
 			EffortValuesVerified:   capability.EffortValuesVerified,
-			SupportsModelDiscovery: len(capability.ModelDiscoveryArgs) > 0,
+			SupportsModelDiscovery: len(capability.ModelDiscoveryArgs) > 0 || capability.ModelCatalogSource == "codex-cache",
 			HasConfigSource:        len(capability.ConfigRelPath) > 0,
 			DefaultModel:           defaultModel,
 			DefaultEffort:          defaultEffort,
@@ -341,7 +341,7 @@ var modelDiscoveryTimeout = 15 * time.Second
 
 var cliModelLookPath = lookupLocalCLICommand
 var cliModelCommandOutput = func(ctx context.Context, command string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, command, args...)
+	cmd := newLocalCLICommand(exec.CommandContext, ctx, command, args...)
 	// A CLI wrapper may leave inherited output pipes open after it is killed.
 	cmd.WaitDelay = time.Second
 	cmd.Env = EnrichCLICommandPATH(cmd.Environ(), command)
@@ -382,7 +382,7 @@ func (c CLICapability) DiscoverModelsWithConfig(ctx context.Context, config ai.P
 	if strings.TrimSpace(config.CLIPath) == "" && len(config.CLIEnv) == 0 {
 		output, runErr = cliModelCommandOutput(ctx, command, c.ModelDiscoveryArgs...)
 	} else {
-		cmd := exec.CommandContext(ctx, command, c.ModelDiscoveryArgs...)
+		cmd := newLocalCLICommand(exec.CommandContext, ctx, command, c.ModelDiscoveryArgs...)
 		cmd.WaitDelay = time.Second
 		cmd.Env = MergeProviderCLIEnv(EnrichCLICommandPATH(cmd.Environ(), command), config.CLIEnv)
 		output, runErr = cmd.CombinedOutput()
