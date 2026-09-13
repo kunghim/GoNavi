@@ -1,16 +1,13 @@
 version: 2
-scan_id: full-new-20260913-e7e3eb74-1789320000
-head_commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
+scan_id: full-new-20260913-46cb0628-v4
+head_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
 source:
   ref: current_worktree
-  commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
-started_at: 2026-09-13T03:02:47+08:00
-# 快照在 UI 构建启动前重新固定：构建（wails build）改写了 frontend/wailsjs 绑定与 package.json.md5，
-# 依 scan-artifacts 规则不沿用旧快照。build.workspace_fingerprint = sha256:60949282ccfb1965d608d52ba6d1d5225092ef0fcd3599404075b5d810075c94
-# 启动来源：.claude/scripts/build-and-run.ps1（pwsh），应用 PID 29632，产物为当前工作区构建。
+  commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+started_at: 2026-09-13T13:12:00+08:00
 workspace_snapshot:
-  status: 有未提交改动
-  fingerprint: sha256:9931c976305e33f518dab8e14549932d57c4ece64f72719ebdfe6952759067d1
+  status: 干净
+  fingerprint: sha256:cf123195e02216ace4bbe7310ccb85d3e2eee7a1c8a67dd8578ab89f2d30285a
   staged_fingerprint: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-  unstaged_fingerprint: sha256:8bdfcb74fe720b61fc2f3b821f75e8c3949f7ddae97cd3ed947f4b516f612375
+  unstaged_fingerprint: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
   untracked_fingerprint: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855

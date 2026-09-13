@@ -1,5 +1,5 @@
-scan_id: full-new-20260913-e7e3eb74-1789320000
-head_commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
+scan_id: full-new-20260913-46cb0628-v4
+head_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
 active_findings:
   - id: FIND-DB-IRIS-WRITE-OUTCOME-001
     title: IRIS ApplyChanges 不支持取消且提交失败不标记写入结果未知
@@ -70,7 +70,7 @@ active_findings:
       operation: external
       data_state: unknown
       server_side_effect: unknown
-      security_constraints: &a10
+      security_constraints: &a1
         - 验证仅使用合成数据、本地内存数据或只读源码。
         - 不记录真实凭据、业务数据或完整连接串。
     reproduction:
@@ -162,7 +162,7 @@ active_findings:
       operation: external
       data_state: unknown
       server_side_effect: unknown
-      security_constraints: *a10
+      security_constraints: *a1
     reproduction:
       preconditions:
         - Elasticsearch 连接
@@ -186,3 +186,878 @@ active_findings:
       - 全部成功用例行为不变
     verification_commands:
       - go test ./internal/db -run ElasticsearchBulk -count=1
+  - id: FIND-PM-REQUEST-DIAGNOSTICS-I18N-001
+    title: 请求诊断工作台不响应应用语言设置
+    status: 待修复
+    type: 产品缺口
+    severity: P3
+    confidence: 高
+    affected_capabilities:
+      - CAP-OPS-A06
+    conclusion: 请求诊断入口、标签、工作台和复现包面板的用户文案固定为中文且未读取现有 i18n 状态，切换为非中文语言后该完整诊断流程仍保持中文。
+    evidence:
+      - frontend/src/utils/requestDiagnosticsTab.ts:5-8
+      - frontend/src/App.tsx:8951-8958
+      - frontend/src/components/requestDiagnostics/RequestDiagnosticsWorkbench.tsx:92-442
+      - frontend/src/components/requestDiagnostics/ReproductionBundlePanel.tsx:41-260
+    impact: 非中文用户在低频但关键的故障诊断流程中需要跨语言识别按钮、错误、状态和恢复动作，已打开标签也无法随语言切换更新。
+    recommendation: 将入口、tab 标题、工作台及复现包全部用户文案接入共享语言目录，协议枚举保留稳定内部值并仅翻译展示。
+    acceptance_criteria:
+      - zh-CN 与 en-US 下入口、标签、空态、错误、诊断包和复现包文案一致切换
+      - 已打开的请求诊断标签在语言切换后同步更新
+      - 协议枚举值不因展示翻译而变化
+    first_seen_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+    affected_paths:
+      - frontend/src/utils/requestDiagnosticsTab.ts
+      - frontend/src/App.tsx
+      - frontend/src/components/requestDiagnostics/RequestDiagnosticsWorkbench.tsx
+      - frontend/src/components/requestDiagnostics/ReproductionBundlePanel.tsx
+    verification_status: 代码证据确认
+    verification_path: 检查语言状态读取、入口和两个工作台的文本来源，并运行双语言组件测试。
+    verification_details:
+      mode: 只读验证
+      instance_id: current-head-scan
+      verified_at: 2026-09-13T14:10:00+08:00
+      result: 源码确认四个连续入口均固定中文且没有 i18n 读取；现有测试直接锁定中文。
+    review_history:
+      - scan_id: full-new-20260913-46cb0628-v4
+        checked_at: 2026-09-13T14:10:00+08:00
+        commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+        action: 全量新问题扫描
+        result: 主 agent 按本轮源码与测试证据接受。
+    last_checked_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+    last_checked_result: 本轮新发现：请求诊断工作台不响应应用语言设置
+    source_views:
+      - product
+    target_task: 切换应用语言后使用请求追踪、诊断包和最小复现包完成故障诊断
+    current_boundary: 诊断功能和导出/重放动作存在，但入口到结果的所有用户文案只提供中文。
+    checked_surfaces:
+      - frontend/src/App.tsx
+      - frontend/src/utils/requestDiagnosticsTab.ts
+      - frontend/src/components/requestDiagnostics/RequestDiagnosticsWorkbench.tsx
+      - frontend/src/components/requestDiagnostics/ReproductionBundlePanel.tsx
+      - shared/i18n
+  - id: FIND-PM-SYNC-SCHEDULE-CONTROL-002
+    title: 当前 dev 的同步调度清单仍缺少集中操作和状态刷新
+    status: 待修复
+    type: 产品缺口
+    severity: P3
+    confidence: 高
+    affected_capabilities:
+      - CAP-SYNC-A09
+    conclusion: 当前 Schedules 清单只展示计划名称、表达式、时区和下次运行时间并提供手工刷新；启停、立即运行和运行恢复分散在 Tasks/Runs，任务生命周期变更后 schedules 快照也不会自动失效或重取。历史 FIND-PM-SYNC-SCHEDULE-CONTROL-001 虽按修复分支归档，但修复提交 88841af9 未合入当前 dev，因此当前集成基线仍存在该缺口。
+    evidence:
+      - frontend/src/components/data-sync/DataSyncWorkbenchShell.tsx:750-838
+      - frontend/src/components/data-sync/DataSyncWorkbenchShell.tsx:1687-1727
+      - frontend/src/components/data-sync/DataSyncOperationalViews.tsx:755-790
+      - .claude/gonavi-scan/findings-archive.md:113
+    impact: 周期性运维用户需要返回 Tasks 逐项定位和操作，并在变更后手工刷新才能确认计划状态；旧快照可能导致对启停状态和下次运行的错误判断。
+    recommendation: 将已完成修复分支的调度治理能力合入或等价实现于当前 dev，并在任务状态变化和进入 Schedules 时协调权威快照。
+    acceptance_criteria:
+      - Schedules 每行可启用、暂停/恢复和立即运行，并复用现有预检与影响范围确认
+      - 成功变更后清单立即显示权威状态，失败时不伪造本地状态
+      - 可从计划行进入最近运行和错误详情
+      - enabled→paused、paused→enabled 与 A/B 任务状态隔离均有回归测试
+    first_seen_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+    affected_paths:
+      - frontend/src/components/data-sync/DataSyncWorkbenchShell.tsx
+      - frontend/src/components/data-sync/DataSyncOperationalViews.tsx
+    verification_status: 代码证据确认
+    verification_path: 对照当前 dev 与 88841af9 的 Schedules 组件和网关调用；运行跨视图状态回归测试。
+    verification_details:
+      mode: 只读验证
+      instance_id: current-head-scan
+      verified_at: 2026-09-13T14:10:00+08:00
+      result: 当前源码确认清单只有展示/刷新；git 历史确认归档修复提交不在当前 HEAD 祖先链。
+    review_history:
+      - scan_id: full-new-20260913-46cb0628-v4
+        checked_at: 2026-09-13T14:10:00+08:00
+        commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+        action: 全量新问题扫描
+        result: 主 agent 按本轮源码与测试证据接受。
+    last_checked_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+    last_checked_result: 本轮新发现：当前 dev 的同步调度清单仍缺少集中操作和状态刷新
+    source_views:
+      - product
+    target_task: 在一个调度清单中查看权威状态并启停、立即运行或进入最近失败详情
+    current_boundary: Tasks 有单任务生命周期动作、Runs 有运行恢复，Schedules 只有只读摘要和手工刷新，且任务变更不自动刷新该快照。
+    checked_surfaces:
+      - frontend/src/components/data-sync/DataSyncWorkbenchShell.tsx
+      - frontend/src/components/data-sync/DataSyncOperationalViews.tsx
+      - internal/syncjob
+      - .claude/gonavi-scan/findings-archive.md
+    related_findings:
+      - FIND-PM-SYNC-SCHEDULE-CONTROL-001
+    history_relation: 历史项依据未合入当前 dev 的修复分支归档；本条恢复当前集成基线的 active 跟踪。
+  - id: FIND-DB-APPLY-CHANGES-OUTCOME-UNKNOWN-001
+    title: 数据网格提交丢失写入结果未知标记并允许整批重试
+    status: 待修复
+    type: 事务一致性缺陷
+    severity: P1
+    confidence: 高
+    affected_capabilities:
+      - CAP-DATA-A07
+      - CAP-DATA-A15
+      - CAP-ES-A08
+      - CAP-VECTOR-A03
+      - CAP-VECTOR-A04
+      - CAP-VECTOR-A05
+    conclusion: 驱动和 QueryResult 已定义写入结果未知契约，但 App.ApplyChanges 的错误分支只返回普通失败，DataGrid 保留全部待提交变化并允许再次提交，非事务批量路径可能重放已成功部分。
+    evidence: &a2
+      - internal/connection/types.go:394-406
+      - internal/app/methods_file.go:4997-5004
+      - frontend/src/components/DataGrid.tsx:4003-4045
+      - internal/db/optional_driver_agent_impl.go:345
+    impact: 向量、MongoDB、Elasticsearch 等非事务或部分成功路径发生网络/批次失败时，用户无法判断已生效范围；再次整批提交可能重复插入、删除或更新。
+    recommendation: 在 ApplyChanges 映射 OutcomeUnknown，并让 DataGrid 对未知结果刷新权威状态、显示明确风险且禁止无确认的整批重放。
+    acceptance_criteria: &a3
+      - BatchApplier 返回 MarkWriteOutcomeUnknown 时 Wails 结果的 outcomeUnknown 为 true
+      - DataGrid 对未知结果显示专用提示并刷新权威数据
+      - 未知结果不会直接提供无确认整批重试
+    first_seen_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+    affected_paths:
+      - internal/connection/types.go
+      - internal/app/methods_file.go
+      - frontend/src/components/DataGrid.tsx
+    verification_status: 代码证据确认
+    verification_path: 使用 fake BatchApplier 返回 MarkWriteOutcomeUnknown，断言 Wails 映射与 DataGrid 消费。
+    verification_details:
+      mode: 只读验证
+      instance_id: current-head-scan
+      verified_at: 2026-09-13T14:10:00+08:00
+      result: 静态调用链确认驱动标记在 App.ApplyChanges 被丢弃，DataGrid 仅依据 success 分支处理。
+    review_history:
+      - scan_id: full-new-20260913-46cb0628-v4
+        checked_at: 2026-09-13T14:10:00+08:00
+        commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+        action: 全量新问题扫描
+        result: 主 agent 按本轮源码与测试证据接受。
+    last_checked_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+    last_checked_result: 本轮新发现：数据网格提交丢失写入结果未知标记并允许整批重试
+    source_views: []
+    affected_symbols:
+      - connection.QueryResult.OutcomeUnknown
+      - App.ApplyChanges
+      - DataGrid.commitChanges
+    verification_boundary: 未连接真实非事务服务；确定性映射缺失由源码确认，需用 fake 覆盖端到端结果。
+    failure_mode: unknown_write_outcome_downgraded_to_retryable_failure
+    operation: transaction
+    data_state: test_fixture
+    server_side_effect: unknown
+    related_findings: []
+    issue_projection:
+      title: "[DB][P1] 数据网格提交丢失写入结果未知标记并允许整批重试"
+      labels:
+        - bug
+        - database
+        - ai-ready
+      body_sections:
+        summary: 驱动和 QueryResult 已定义写入结果未知契约，但 App.ApplyChanges 的错误分支只返回普通失败，DataGrid 保留全部待提交变化并允许再次提交，非事务批量路径可能重放已成功部分。
+        affected_behavior: 向量、MongoDB、Elasticsearch 等非事务或部分成功路径发生网络/批次失败时，用户无法判断已生效范围；再次整批提交可能重复插入、删除或更新。
+        reproduction:
+          preconditions: &a4
+            - BatchApplier 在部分步骤成功后返回 MarkWriteOutcomeUnknown
+          steps: &a5
+            - 通过 App.ApplyChanges 提交 ChangeSet
+            - 检查 QueryResult.outcomeUnknown
+            - 在 DataGrid 失败后再次提交
+        expected: 前端明确未知结果并先刷新权威状态。
+        actual: 结果为普通失败，全部待提交变化保留并可整批重试。
+        root_cause: App.ApplyChanges 没有把 db.IsWriteOutcomeUnknown(err) 映射到 connection.QueryResult.OutcomeUnknown，DataGrid 因而无法进入专用处理。
+        affected_files: *a2
+        fix_boundary:
+          allowed_paths: &a6
+            - internal/app/methods_file.go
+            - frontend/src/components/DataGrid.tsx
+            - 相关 Go 与前端测试
+          preserve: &a7
+            - 事务型驱动的成功/回滚语义
+            - 现有 SQL 预览和审计
+          out_of_scope: &a8
+            - 重构所有驱动批量协议
+        acceptance_tests: *a3
+        validation_commands: &a9
+          - go test ./internal/app -run ApplyChanges -count=1
+          - npm --prefix frontend test -- --run src/components/DataGrid.ddl.test.tsx
+        risk_and_rollback: 需避免把确定失败误标为未知；未知结果分支应刷新而不自动重放。
+        verification_boundary: 未连接真实非事务服务；确定性映射缺失由源码确认，需用 fake 覆盖端到端结果。
+      operation: transaction
+      data_state: test_fixture
+      server_side_effect: unknown
+      security_constraints: &a12
+        - 仅使用合成数据、本地测试或只读源码验证。
+        - 不连接生产服务，不记录真实连接信息。
+    reproduction:
+      preconditions: *a4
+      steps: *a5
+      expected: 前端明确未知结果并先刷新权威状态。
+      actual: 结果为普通失败，全部待提交变化保留并可整批重试。
+    root_cause: App.ApplyChanges 没有把 db.IsWriteOutcomeUnknown(err) 映射到 connection.QueryResult.OutcomeUnknown，DataGrid 因而无法进入专用处理。
+    fix_boundary:
+      allowed_paths: *a6
+      preserve: *a7
+      out_of_scope: *a8
+    regression_risk: 需避免把确定失败误标为未知；未知结果分支应刷新而不自动重放。
+    regression_tests: *a3
+    verification_commands: *a9
+  - id: FIND-DB-MYSQL-BACKTICK-IDENT-001
+    title: MySQL/GoldenDB 数据编辑无法更新或删除含反引号的合法标识符
+    status: 待修复
+    type: 功能缺陷
+    severity: P2
+    confidence: 高
+    affected_capabilities:
+      - CAP-DS-MYSQL
+      - CAP-DS-GOLDENDB
+      - CAP-DATA-A06
+      - CAP-DATA-A07
+    conclusion: MySQL/GoldenDB 的 ApplyChanges update/delete 分支直接把表名和列名插入反引号，没有把标识符内部反引号双写；同函数 insert 分支已调用 escapeMySQLBacktickIdent，导致合法特殊名称只能插入而无法编辑或删除。
+    evidence: &a10
+      - internal/db/mysql_impl.go:1383-1456
+    impact: 带反引号的合法表或列可被浏览和插入，但数据网格更新/删除会生成无效 SQL并回滚，普通名称不受影响。
+    recommendation: 对 update/delete 的表名、更新列和定位列统一使用 escapeMySQLBacktickIdent，并为独立实现分别增加 sqlmock 与真实隔离实例测试。
+    acceptance_criteria: &a11
+      - 表名、更新列和定位列中的反引号均生成双反引号
+      - 普通标识符 SQL 保持不变
+      - insert、update 和 delete 使用一致的标识符引用契约
+    first_seen_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+    affected_paths:
+      - internal/db/mysql_impl.go
+    verification_status: 代码证据确认
+    verification_path: 为 MySQL/GoldenDB ApplyChanges 增加 sqlmock，精确断言特殊表列名的 SQL。
+    verification_details:
+      mode: 只读验证
+      instance_id: current-head-scan
+      verified_at: 2026-09-13T14:10:00+08:00
+      result: 静态字符串生成路径确定性确认；insert 对照路径已正确转义。
+    review_history:
+      - scan_id: full-new-20260913-46cb0628-v4
+        checked_at: 2026-09-13T14:10:00+08:00
+        commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+        action: 全量新问题扫描
+        result: 主 agent 按本轮源码与测试证据接受。
+    last_checked_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+    last_checked_result: 本轮新发现：MySQL/GoldenDB 数据编辑无法更新或删除含反引号的合法标识符
+    source_views: []
+    affected_symbols:
+      - MySQLDB.ApplyChangesContext
+      - escapeMySQLBacktickIdent
+    verification_boundary: 未连接真实 MySQL/MariaDB；SQL 生成缺失由确定性源码确认。
+    failure_mode: invalid_sql_for_quoted_identifier
+    operation: transaction
+    data_state: test_fixture
+    server_side_effect: none
+    related_findings: []
+    issue_projection:
+      title: "[DB][P2] MySQL/GoldenDB 数据编辑无法更新或删除含反引号的合法标识符"
+      labels:
+        - bug
+        - database
+        - ai-ready
+      body_sections:
+        summary: MySQL/GoldenDB 的 ApplyChanges update/delete 分支直接把表名和列名插入反引号，没有把标识符内部反引号双写；同函数 insert 分支已调用 escapeMySQLBacktickIdent，导致合法特殊名称只能插入而无法编辑或删除。
+        affected_behavior: 带反引号的合法表或列可被浏览和插入，但数据网格更新/删除会生成无效 SQL并回滚，普通名称不受影响。
+        reproduction:
+          preconditions: &a13
+            - 表名或列名含合法反引号字符
+            - 从 DataGrid 提交 update 或 delete
+          steps: &a14
+            - 构造含反引号的表和定位列
+            - 提交修改或删除
+            - 检查生成 SQL 和事务结果
+        expected: 标识符内部反引号被双写，语句正常执行。
+        actual: 内部反引号提前结束定界标识符，语句失败并回滚。
+        root_cause: MySQL/GoldenDB 的 update/delete 是独立字符串拼接路径，未复用 insert 已使用的 escapeMySQLBacktickIdent。
+        affected_files: *a10
+        fix_boundary:
+          allowed_paths: &a15
+            - internal/db/mysql_impl.go
+            - internal/db/mysql_impl_test.go
+          preserve: &a16
+            - 值参数化
+            - 单行影响数校验
+            - 事务回滚和未知结果分类
+          out_of_scope: &a17
+            - 其他方言引用器重构
+        acceptance_tests: *a11
+        validation_commands: &a18
+          - go test ./internal/db -run 'MySQL.*ApplyChanges' -count=1
+        risk_and_rollback: 修复只应改变特殊标识符的引用，不改变值绑定或事务顺序。
+        verification_boundary: 未连接真实 MySQL/MariaDB；SQL 生成缺失由确定性源码确认。
+      operation: transaction
+      data_state: test_fixture
+      server_side_effect: none
+      security_constraints: *a12
+    reproduction:
+      preconditions: *a13
+      steps: *a14
+      expected: 标识符内部反引号被双写，语句正常执行。
+      actual: 内部反引号提前结束定界标识符，语句失败并回滚。
+    root_cause: MySQL/GoldenDB 的 update/delete 是独立字符串拼接路径，未复用 insert 已使用的 escapeMySQLBacktickIdent。
+    fix_boundary:
+      allowed_paths: *a15
+      preserve: *a16
+      out_of_scope: *a17
+    regression_risk: 修复只应改变特殊标识符的引用，不改变值绑定或事务顺序。
+    regression_tests: *a11
+    verification_commands: *a18
+  - id: FIND-DB-MARIADB-BACKTICK-IDENT-001
+    title: MariaDB 数据编辑无法更新或删除含反引号的合法标识符
+    status: 待修复
+    type: 功能缺陷
+    severity: P2
+    confidence: 高
+    affected_capabilities:
+      - CAP-DS-MARIADB
+      - CAP-DATA-A06
+      - CAP-DATA-A07
+    conclusion: MariaDB 的 ApplyChanges update/delete 分支直接把表名和列名插入反引号，没有把标识符内部反引号双写；同函数 insert 分支已调用 escapeMySQLBacktickIdent，导致合法特殊名称只能插入而无法编辑或删除。
+    evidence: &a19
+      - internal/db/mariadb_impl.go:376-440
+    impact: 带反引号的合法表或列可被浏览和插入，但数据网格更新/删除会生成无效 SQL并回滚，普通名称不受影响。
+    recommendation: 对 update/delete 的表名、更新列和定位列统一使用 escapeMySQLBacktickIdent，并为独立实现分别增加 sqlmock 与真实隔离实例测试。
+    acceptance_criteria: &a20
+      - 表名、更新列和定位列中的反引号均生成双反引号
+      - 普通标识符 SQL 保持不变
+      - insert、update 和 delete 使用一致的标识符引用契约
+    first_seen_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+    affected_paths:
+      - internal/db/mariadb_impl.go
+    verification_status: 代码证据确认
+    verification_path: 为 MariaDB ApplyChanges 增加 sqlmock，精确断言特殊表列名的 SQL。
+    verification_details:
+      mode: 只读验证
+      instance_id: current-head-scan
+      verified_at: 2026-09-13T14:10:00+08:00
+      result: 静态字符串生成路径确定性确认；insert 对照路径已正确转义。
+    review_history:
+      - scan_id: full-new-20260913-46cb0628-v4
+        checked_at: 2026-09-13T14:10:00+08:00
+        commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+        action: 全量新问题扫描
+        result: 主 agent 按本轮源码与测试证据接受。
+    last_checked_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+    last_checked_result: 本轮新发现：MariaDB 数据编辑无法更新或删除含反引号的合法标识符
+    source_views: []
+    affected_symbols:
+      - MariaDB.ApplyChangesContext
+      - escapeMySQLBacktickIdent
+    verification_boundary: 未连接真实 MySQL/MariaDB；SQL 生成缺失由确定性源码确认。
+    failure_mode: invalid_sql_for_quoted_identifier
+    operation: transaction
+    data_state: test_fixture
+    server_side_effect: none
+    related_findings: []
+    issue_projection:
+      title: "[DB][P2] MariaDB 数据编辑无法更新或删除含反引号的合法标识符"
+      labels:
+        - bug
+        - database
+        - ai-ready
+      body_sections:
+        summary: MariaDB 的 ApplyChanges update/delete 分支直接把表名和列名插入反引号，没有把标识符内部反引号双写；同函数 insert 分支已调用 escapeMySQLBacktickIdent，导致合法特殊名称只能插入而无法编辑或删除。
+        affected_behavior: 带反引号的合法表或列可被浏览和插入，但数据网格更新/删除会生成无效 SQL并回滚，普通名称不受影响。
+        reproduction:
+          preconditions: &a21
+            - 表名或列名含合法反引号字符
+            - 从 DataGrid 提交 update 或 delete
+          steps: &a22
+            - 构造含反引号的表和定位列
+            - 提交修改或删除
+            - 检查生成 SQL 和事务结果
+        expected: 标识符内部反引号被双写，语句正常执行。
+        actual: 内部反引号提前结束定界标识符，语句失败并回滚。
+        root_cause: MariaDB 的 update/delete 是独立字符串拼接路径，未复用 insert 已使用的 escapeMySQLBacktickIdent。
+        affected_files: *a19
+        fix_boundary:
+          allowed_paths: &a23
+            - internal/db/mariadb_impl.go
+            - internal/db/mariadb_impl_test.go
+          preserve: &a24
+            - 值参数化
+            - 单行影响数校验
+            - 事务回滚和未知结果分类
+          out_of_scope: &a25
+            - 其他方言引用器重构
+        acceptance_tests: *a20
+        validation_commands: &a26
+          - go test ./internal/db -run 'MariaDB.*ApplyChanges' -count=1
+        risk_and_rollback: 修复只应改变特殊标识符的引用，不改变值绑定或事务顺序。
+        verification_boundary: 未连接真实 MySQL/MariaDB；SQL 生成缺失由确定性源码确认。
+      operation: transaction
+      data_state: test_fixture
+      server_side_effect: none
+      security_constraints: *a12
+    reproduction:
+      preconditions: *a21
+      steps: *a22
+      expected: 标识符内部反引号被双写，语句正常执行。
+      actual: 内部反引号提前结束定界标识符，语句失败并回滚。
+    root_cause: MariaDB 的 update/delete 是独立字符串拼接路径，未复用 insert 已使用的 escapeMySQLBacktickIdent。
+    fix_boundary:
+      allowed_paths: *a23
+      preserve: *a24
+      out_of_scope: *a25
+    regression_risk: 修复只应改变特殊标识符的引用，不改变值绑定或事务顺序。
+    regression_tests: *a20
+    verification_commands: *a26
+  - id: FIND-DB-REDIS-COMMAND-LOG-001
+    title: 失败的 Redis 原始命令会以明文写入持久日志
+    status: 待修复
+    type: 安全缺陷
+    severity: P1
+    confidence: 高
+    affected_capabilities:
+      - CAP-DS-REDIS
+      - CAP-REDIS-A05
+      - CAP-AUDIT-A02
+    conclusion: RedisExecuteCommand 失败时将完整 command 写入 gonavi.log；日志读取只识别 SQL 字段，通用错误脱敏不会处理 AUTH 后的裸参数，而项目已有 Redis RedactQuery 未接入此链。
+    evidence: &a27
+      - internal/app/methods_redis.go:1179-1196
+      - internal/app/methods_file.go:1349-1351
+      - internal/logger/logger.go:19-27
+      - internal/logger/logger.go:313-327
+      - internal/sqlaudit/redact.go:43-54
+      - internal/sqlaudit/redact.go:145-169
+      - internal/sqlaudit/redact.go:200-218
+    impact: 失败的认证、配置或写命令中的敏感参数和业务值可在本机日志轮转中长期保留，并可能通过日志查看或诊断分享链再次暴露。
+    recommendation: 记录命令前调用 sqlaudit.RedactQuery("redis", command)，并让日志读取识别命令字段作为纵深防护。
+    acceptance_criteria: &a28
+      - 失败的 AUTH 与 HELLO AUTH 日志不包含原始参数
+      - 普通失败命令保留足够的命令名和键定位信息
+      - ReadAppLogTail 与磁盘日志均通过 Redis 脱敏回归测试
+    first_seen_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+    affected_paths:
+      - internal/app/methods_redis.go
+      - internal/app/methods_file.go
+      - internal/logger/logger.go
+      - internal/sqlaudit/redact.go
+    verification_status: 代码证据确认
+    verification_path: 使用 fake Redis client 让带合成参数的命令失败，检查实际日志和 ReadAppLogTail 输出。
+    verification_details:
+      mode: 只读验证
+      instance_id: current-head-scan
+      verified_at: 2026-09-13T14:10:00+08:00
+      result: 从失败日志格式、持久文件到读取脱敏的确定性字符串流已闭合，现有 Redis 脱敏器明确未被调用。
+    review_history:
+      - scan_id: full-new-20260913-46cb0628-v4
+        checked_at: 2026-09-13T14:10:00+08:00
+        commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+        action: 全量新问题扫描
+        result: 主 agent 按本轮源码与测试证据接受。
+    last_checked_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+    last_checked_result: 本轮新发现：失败的 Redis 原始命令会以明文写入持久日志
+    source_views: []
+    affected_symbols:
+      - App.RedisExecuteCommand
+      - App.ReadAppLogTail
+      - sqlaudit.RedactQuery
+      - sqlaudit.RedactError
+    verification_boundary: 未把合成命令写入真实用户日志；结论由确定性字符串流确认，仍需隔离日志目录回归测试。
+    failure_mode: sensitive_redis_arguments_persisted_in_log
+    operation: runtime
+    data_state: test_fixture
+    server_side_effect: none
+    related_findings: []
+    issue_projection:
+      title: "[DB][P1] 失败的 Redis 原始命令会以明文写入持久日志"
+      labels:
+        - bug
+        - database
+        - ai-ready
+      body_sections:
+        summary: RedisExecuteCommand 失败时将完整 command 写入 gonavi.log；日志读取只识别 SQL 字段，通用错误脱敏不会处理 AUTH 后的裸参数，而项目已有 Redis RedactQuery 未接入此链。
+        affected_behavior: 失败的认证、配置或写命令中的敏感参数和业务值可在本机日志轮转中长期保留，并可能通过日志查看或诊断分享链再次暴露。
+        reproduction:
+          preconditions: &a29
+            - Redis fake client 对带合成敏感参数的命令返回错误
+            - 日志目录指向隔离临时目录
+          steps: &a30
+            - 调用 RedisExecuteCommand
+            - 刷新日志
+            - 读取文件及 ReadAppLogTail
+        expected: 日志只保留脱敏后的命令结构。
+        actual: 完整 command 进入日志，裸 AUTH 参数不会被通用错误脱敏处理。
+        root_cause: 失败分支直接格式化 command，未调用 Redis-aware RedactQuery；日志尾读取器也只查找 SQL 字段。
+        affected_files: *a27
+        fix_boundary:
+          allowed_paths: &a31
+            - internal/app/methods_redis.go
+            - internal/app/methods_file.go
+            - internal/app 相关日志测试
+          preserve: &a32
+            - 驱动错误的安全摘要
+            - 普通命令故障定位能力
+          out_of_scope: &a33
+            - 改变 Redis 命令执行协议
+        acceptance_tests: *a28
+        validation_commands: &a34
+          - go test ./internal/app -run Redis.*Log -count=1
+          - go test ./internal/sqlaudit -run Redis -count=1
+        risk_and_rollback: 修复必须避免日志二次暴露，同时保留命令名和必要键定位信息。
+        verification_boundary: 未把合成命令写入真实用户日志；结论由确定性字符串流确认，仍需隔离日志目录回归测试。
+      operation: runtime
+      data_state: test_fixture
+      server_side_effect: none
+      security_constraints: *a12
+    reproduction:
+      preconditions: *a29
+      steps: *a30
+      expected: 日志只保留脱敏后的命令结构。
+      actual: 完整 command 进入日志，裸 AUTH 参数不会被通用错误脱敏处理。
+    root_cause: 失败分支直接格式化 command，未调用 Redis-aware RedactQuery；日志尾读取器也只查找 SQL 字段。
+    fix_boundary:
+      allowed_paths: *a31
+      preserve: *a32
+      out_of_scope: *a33
+    regression_risk: 修复必须避免日志二次暴露，同时保留命令名和必要键定位信息。
+    regression_tests: *a28
+    verification_commands: *a34
+  - id: FIND-DEV-ORACLE-ALIAS-TEST-CONTRACT-001
+    title: Oracle 表别名回归测试断言与共享方言契约相反
+    status: 待修复
+    type: 调用链/契约缺陷
+    severity: P2
+    confidence: 高
+    affected_capabilities:
+      - CAP-QUERY-A05
+      - CAP-QUERY-A18
+    conclusion: 组件回归测试要求 Oracle 表别名包含 AS，但共享 sqlDialect 契约及其单元测试明确要求 Oracle 使用裸别名；当前实现返回正确的裸别名却导致全套前端测试失败。
+    evidence:
+      - frontend/src/components/QueryEditor.external-sql-save.test.tsx:10620-10649
+      - frontend/src/utils/sqlDialect.ts:235-249
+      - frontend/src/utils/sqlDialect.test.ts:77-84
+    impact: 任何遵循 Oracle 方言契约的补全实现都会被错误断言阻塞，当前默认前端质量闸门稳定失败。
+    recommendation: 把组件断言改为 AAA3_NJ an，并保留共享方言单元测试作为 Oracle 与支持 AS 方言的对照。
+    acceptance_criteria:
+      - Oracle 数据库限定表补全使用裸别名
+      - MySQL/PostgreSQL 等既有 AS 行为不变
+      - 定向组件测试和全套前端测试通过
+    first_seen_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+    affected_paths:
+      - frontend/src/components/QueryEditor.external-sql-save.test.tsx
+      - frontend/src/utils/sqlDialect.ts
+      - frontend/src/utils/sqlDialect.test.ts
+    verification_status: 自动化测试确认
+    verification_path: 运行单条 Oracle 补全测试并对照 sqlDialect 单元测试。
+    verification_details:
+      mode: 只读验证
+      instance_id: current-head-scan
+      verified_at: 2026-09-13T14:10:00+08:00
+      result: 定向组件测试稳定失败，expected 含 AS、actual 为裸别名；共享方言测试 65 项通过。
+    review_history:
+      - scan_id: full-new-20260913-46cb0628-v4
+        checked_at: 2026-09-13T14:10:00+08:00
+        commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+        action: 全量新问题扫描
+        result: 主 agent 按本轮源码与测试证据接受。
+    last_checked_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+    last_checked_result: 本轮新发现：Oracle 表别名回归测试断言与共享方言契约相反
+    source_views: []
+    affected_symbols:
+      - resolveTableAliasSyntax
+      - appendTableAlias
+      - QueryEditor completion documentation localization test
+    contract_boundary: QueryEditor 组件测试与共享 SQL 方言别名生成契约
+    verification_boundary: 未连接真实 Oracle；问题位于确定性的测试契约，运行行为由共享单元测试确认。
+    reproduction:
+      preconditions:
+        - 当前日期与服务无关
+        - 运行 Oracle 数据库限定表补全测试
+      steps:
+        - 运行目标组件测试
+        - 运行 sqlDialect 单元测试作对照
+      expected: 组件断言与 Oracle bare alias 契约一致。
+      actual: 组件断言要求 AS 并阻塞测试套件。
+    root_cause: 新增组件断言复制了通用 AS 预期，没有调用或遵循共享方言契约。
+    fix_boundary:
+      allowed_paths:
+        - frontend/src/components/QueryEditor.external-sql-save.test.tsx
+      preserve:
+        - Oracle 裸别名实现
+        - 其他方言补全行为
+      out_of_scope:
+        - 修改生产补全逻辑
+    regression_risk: 错误地改生产实现会生成 Oracle 不接受的表别名。
+    regression_tests:
+      - Oracle 裸别名组件回归
+      - 支持 AS 方言的对照回归
+    verification_commands:
+      - npm --prefix frontend test -- --run src/components/QueryEditor.external-sql-save.test.tsx -t "deduplicates Oracle-style"
+      - npm --prefix frontend test -- --run src/utils/sqlDialect.test.ts
+    issue:
+      title: "[开发][P2] Oracle 表别名回归测试断言与共享方言契约相反"
+      labels:
+        - bug
+        - developer
+        - ai-ready
+      operation: query
+      data_state: test_fixture
+      server_side_effect: none
+      security_constraints: *a12
+  - id: FIND-DEV-AI-OBSERVABILITY-TIME-TEST-001
+    title: AI 可观测性组件测试使用固定历史日期并随日历时间失效
+    status: 待修复
+    type: 调用链/契约缺陷
+    severity: P2
+    confidence: 高
+    affected_capabilities:
+      - CAP-AI-A07
+    conclusion: 组件默认筛选 today，而测试 fixture 固定为 2026-09-09；日期推进后 fixture 被正确过滤为空，依赖图表和模型行的 3 个断言同时失败。
+    evidence:
+      - frontend/src/components/ai/AISettingsAnalysisSection.test.tsx:20-24
+      - frontend/src/components/ai/AISettingsAnalysisSection.test.tsx:69-156
+      - frontend/src/components/ai/AISettingsAnalysisSection.tsx:85-89
+      - frontend/src/components/ai/aiObservability.ts:177-192
+    impact: 前端全套测试会在 fixture 日期后的任意一天持续失败，无法可靠区分真实 AI 可观测性回归。
+    recommendation: 固定 fake time 到 fixture 当天，或以测试当前时间动态构造 today 记录，并增加 today 边界的纯函数用例。
+    acceptance_criteria:
+      - 测试在任意系统日期得到相同结果
+      - today 范围仍排除历史日期
+      - 图表、单位和模型统计断言继续执行而非因空数据跳失
+    first_seen_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+    affected_paths:
+      - frontend/src/components/ai/AISettingsAnalysisSection.test.tsx
+      - frontend/src/components/ai/AISettingsAnalysisSection.tsx
+      - frontend/src/components/ai/aiObservability.ts
+    verification_status: 自动化测试确认
+    verification_path: 在当前日期运行组件测试，并对照 aiObservability 纯函数测试。
+    verification_details:
+      mode: 只读验证
+      instance_id: current-head-scan
+      verified_at: 2026-09-13T14:10:00+08:00
+      result: 组件 4 项中 3 项失败，均由 today 过滤后的空集合触发；纯 helper 11 项通过。
+    review_history:
+      - scan_id: full-new-20260913-46cb0628-v4
+        checked_at: 2026-09-13T14:10:00+08:00
+        commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+        action: 全量新问题扫描
+        result: 主 agent 按本轮源码与测试证据接受。
+    last_checked_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+    last_checked_result: 本轮新发现：AI 可观测性组件测试使用固定历史日期并随日历时间失效
+    source_views: []
+    affected_symbols:
+      - AISettingsAnalysisSection
+      - filterAIRequestEvents
+      - AISettingsAnalysisSection test fixture
+    contract_boundary: 组件默认时间范围与测试 fixture 的时钟控制契约
+    verification_boundary: 生产数据过滤行为没有失败；确认的是测试确定性缺陷。
+    reproduction:
+      preconditions:
+        - 系统日期晚于 2026-09-09
+        - 运行 AISettingsAnalysisSection 测试
+      steps:
+        - 渲染默认 today 组件
+        - 查找图表和模型统计节点
+      expected: fixture 属于受控的当前日，断言稳定执行。
+      actual: fixture 被过滤，3 个下游断言失败。
+    root_cause: 测试使用绝对历史日期但没有冻结系统时钟，组件默认 today 依赖真实当前日期。
+    fix_boundary:
+      allowed_paths:
+        - frontend/src/components/ai/AISettingsAnalysisSection.test.tsx
+        - 必要的测试时钟 setup
+      preserve:
+        - 生产 today 过滤语义
+        - 时区边界处理
+      out_of_scope:
+        - 修改 AI 账本生产数据
+    regression_risk: 动态日期仍需避免本地午夜和时区造成边界波动。
+    regression_tests:
+      - 冻结日期的组件渲染
+      - today 与历史边界的纯函数测试
+    verification_commands:
+      - npm --prefix frontend test -- --run src/components/ai/AISettingsAnalysisSection.test.tsx
+      - npm --prefix frontend test -- --run src/components/ai/aiObservability.test.ts
+    issue:
+      title: "[开发][P2] AI 可观测性组件测试使用固定历史日期并随日历时间失效"
+      labels:
+        - bug
+        - developer
+        - ai-ready
+      operation: runtime
+      data_state: test_fixture
+      server_side_effect: none
+      security_constraints: *a12
+  - id: FIND-DEV-SOURCE-TEXT-TEST-GATE-001
+    title: 两个新增前端测试违反源码文本断言质量闸门
+    status: 待修复
+    type: 调用链/契约缺陷
+    severity: P2
+    confidence: 高
+    affected_capabilities:
+      - CAP-OPS-A12
+      - CAP-CONN-A15
+    conclusion: 测试策略明确禁止新增逐文件读取源码并断言文本的用例，但侧栏命中区和连接导入面板两个新测试直接 readFileSync 生产源码，质量闸门因此稳定列出两个 offender。
+    evidence:
+      - frontend/src/testPolicy.test.ts:5-20
+      - frontend/src/testPolicy.test.ts:49-67
+      - frontend/src/App.sidebar-resize-hit-area.test.ts:1-17
+      - frontend/src/components/settings/ConnectionImportSettingsPanel.test.ts:1-15
+    impact: 默认前端测试无法通过；这两项测试也不会执行真实组件行为，并会在等价重构时产生误报。
+    recommendation: 把两项测试改为渲染/调用行为断言；只有真正全仓不变式才加入 sanctioned scanner，不扩大存量基线。
+    acceptance_criteria:
+      - testPolicy 不再报告两个 offender
+      - 侧栏命中区通过交互或渲染结果验证
+      - 连接导入面板通过公开行为验证
+      - 不向 source-reading baseline 添加新债务
+    first_seen_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+    affected_paths:
+      - frontend/src/testPolicy.test.ts
+      - frontend/src/App.sidebar-resize-hit-area.test.ts
+      - frontend/src/components/settings/ConnectionImportSettingsPanel.test.ts
+    verification_status: 自动化测试确认
+    verification_path: 运行 testPolicy 并单独执行替换后的两个行为测试。
+    verification_details:
+      mode: 只读验证
+      instance_id: current-head-scan
+      verified_at: 2026-09-13T14:10:00+08:00
+      result: testPolicy 3 项中 1 项失败，实际 offender 数组精确包含两个文件。
+    review_history:
+      - scan_id: full-new-20260913-46cb0628-v4
+        checked_at: 2026-09-13T14:10:00+08:00
+        commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+        action: 全量新问题扫描
+        result: 主 agent 按本轮源码与测试证据接受。
+    last_checked_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+    last_checked_result: 本轮新发现：两个新增前端测试违反源码文本断言质量闸门
+    source_views: []
+    affected_symbols:
+      - readsSourceFromDisk
+      - "test policy: no new source-text assertions"
+      - sidebar resize hit area test
+      - ConnectionImportSettingsPanel test
+    contract_boundary: 前端回归测试实现与仓库测试策略守卫
+    verification_boundary: 确认的是测试与质量闸门；未将相关 UI 呈现声明为实测问题。
+    reproduction:
+      preconditions:
+        - 运行当前前端测试策略守卫
+      steps:
+        - 枚举测试文件
+        - 检查新增源码读取型测试
+        - 比较基线
+      expected: offenders 为空。
+      actual: 稳定报告两个新增文件。
+    root_cause: 两个新测试以 readFileSync 加 toContain/正则断言实现细节，且未进入允许的全仓扫描类别。
+    fix_boundary:
+      allowed_paths:
+        - frontend/src/App.sidebar-resize-hit-area.test.ts
+        - frontend/src/components/settings/ConnectionImportSettingsPanel.test.ts
+        - 必要的组件测试辅助文件
+      preserve:
+        - 现有测试策略守卫
+        - 被测行为的回归覆盖
+      out_of_scope:
+        - 增加 baseline 绕过规则
+        - 清理全部存量源码文本测试
+    regression_risk: 替换测试需通过公开行为覆盖原本要保护的命中区和导入输入契约。
+    regression_tests:
+      - 侧栏 resize 可操作命中区行为
+      - 连接导入 accept 与错误反馈行为
+      - testPolicy 全局守卫
+    verification_commands:
+      - npm --prefix frontend test -- --run src/testPolicy.test.ts src/App.sidebar-resize-hit-area.test.ts src/components/settings/ConnectionImportSettingsPanel.test.ts
+    issue:
+      title: "[开发][P2] 两个新增前端测试违反源码文本断言质量闸门"
+      labels:
+        - bug
+        - developer
+        - ai-ready
+      operation: delivery
+      data_state: test_fixture
+      server_side_effect: none
+      security_constraints: *a12
+  - id: FIND-DEV-RELEASE-WAILS-PATH-001
+    title: 本地发布脚本绕开项目固定的 Wails CLI
+    status: 待修复
+    type: 调用链/契约缺陷
+    severity: P2
+    confidence: 高
+    affected_capabilities:
+      - CAP-OPS-A12
+      - CAP-OPS-A13
+      - CAP-CLI-A07
+      - CAP-WEB-A03
+    conclusion: 项目文档和工具要求 Wails 安装在 .tools/bin 并由 project-tools 调用，但 build-release.sh 的 7 个平台分支直接执行裸 wails build；只有文档化本地工具而无全局 PATH 安装时发布立即失败或误用其他版本。
+    evidence:
+      - README.md:285-307
+      - tools/project-tools.mjs:10-64
+      - tools/wails-fast-dev.mjs:13
+      - build-release.sh:166
+      - build-release.sh:224
+      - build-release.sh:241
+      - build-release.sh:264
+      - build-release.sh:286
+      - build-release.sh:312
+      - build-release.sh:333
+    impact: 按 README 准备的本地发布环境无法运行发布脚本；若 PATH 恰有其他 Wails 版本，构建可能绕过固定版本并产生不可复现产物。
+    recommendation: 在 build-release.sh 解析并校验项目本地 Wails 路径，或统一通过 project-tools 调用，所有平台分支复用同一变量。
+    acceptance_criteria:
+      - 只安装 .tools/bin/wails 时 build-release 能进入平台构建
+      - 没有本地 CLI 时给出 project-tools install 指令并停止
+      - PATH 中其他版本不会覆盖项目固定版本
+      - 7 个平台分支使用同一已验证命令
+    first_seen_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+    affected_paths:
+      - build-release.sh
+      - tools/project-tools.mjs
+      - tools/wails-fast-dev.mjs
+      - README.md
+    verification_status: 代码证据确认
+    verification_path: 在隔离 PATH 中放置记录参数的 .tools/bin/wails stub，运行非发布 dry-run/脚本测试并核对所有分支。
+    verification_details:
+      mode: 只读验证
+      instance_id: current-head-scan
+      verified_at: 2026-09-13T14:10:00+08:00
+      result: 源码确认 7 处裸调用；当前 shell 无全局 wails，project-tools 按预期要求安装项目本地 CLI，bash 语法检查通过。
+    review_history:
+      - scan_id: full-new-20260913-46cb0628-v4
+        checked_at: 2026-09-13T14:10:00+08:00
+        commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+        action: 全量新问题扫描
+        result: 主 agent 按本轮源码与测试证据接受。
+    last_checked_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+    last_checked_result: 本轮新发现：本地发布脚本绕开项目固定的 Wails CLI
+    source_views: []
+    affected_symbols:
+      - package_macos_release
+      - build-release.sh platform build branches
+      - project-tools Wails resolver
+    contract_boundary: 文档化项目本地 CLI 工具链与发布脚本命令解析边界
+    verification_boundary: 未执行会删除 dist 并构建全部平台的真实发布；代码路径和当前环境缺口已确认。
+    reproduction:
+      preconditions:
+        - 按 README 仅安装项目本地 Wails CLI
+        - 全局 PATH 不含 wails
+      steps:
+        - 运行 build-release.sh
+        - 进入任一平台构建分支
+      expected: 脚本使用项目固定版本的 .tools/bin/wails。
+      actual: shell 查找裸 wails 并返回 command not found。
+    root_cause: 发布脚本早于项目本地工具规范，后续未把 7 个直接调用迁移到统一工具解析器。
+    fix_boundary:
+      allowed_paths:
+        - build-release.sh
+        - 对应发布脚本测试
+      preserve:
+        - CI 工作流的隔离全局安装
+        - 平台参数、签名和打包顺序
+      out_of_scope:
+        - 重构 GitHub Actions 发布矩阵
+    regression_risk: 命令封装需保持参数、退出码和信号行为，不得破坏 CI。
+    regression_tests:
+      - 隔离 PATH 下项目本地 stub 被调用
+      - 本地 CLI 缺失时错误信息
+      - 所有平台分支命令一致性
+    verification_commands:
+      - bash -n build-release.sh
+      - python3 -m unittest tools/windows-release-artifacts.test.py
+    issue:
+      title: "[开发][P2] 本地发布脚本绕开项目固定的 Wails CLI"
+      labels:
+        - bug
+        - developer
+        - ai-ready
+      operation: delivery
+      data_state: test_fixture
+      server_side_effect: none
+      security_constraints: *a12
