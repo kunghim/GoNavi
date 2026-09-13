@@ -49,6 +49,7 @@ active_findings:
     operation: external
     data_state: unknown
     server_side_effect: unknown
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1234
     issue_projection:
       title: "[P3] IRIS ApplyChanges 不支持取消且提交失败不标记写入结果未知"
       labels:
@@ -141,6 +142,7 @@ active_findings:
     operation: external
     data_state: unknown
     server_side_effect: unknown
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1235
     issue_projection:
       title: "[P3] Elasticsearch 批量操作部分失败只返回第一条原因且无成功明细"
       labels:
