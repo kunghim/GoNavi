@@ -1,11 +1,11 @@
 version: 1
-scan_id: full-new-20260913-e7e3eb74-1789320000
-head_commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
+scan_id: full-new-20260913-46cb0628-v4
+head_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
 summary:
   entry_groups: 13
   workbench_tab_types: 30
   builtin_data_sources: 12
-  optional_go_data_sources: 21
+  optional_go_data_sources: 22
   custom_data_sources: 1
   special_connection_types: 2
 entries:
@@ -77,6 +77,7 @@ entries:
       - CAP-EXP-001
       - CAP-QUERY-A01
       - CAP-DATA-002
+      - CAP-QUERY-A19
     enumerated_items:
       - 新建查询
       - 新建连接
@@ -110,6 +111,9 @@ entries:
       - CAP-AI-001
       - CAP-MCP-001
       - CAP-SYNC-001
+      - CAP-OPS-A06
+      - CAP-QUERY-001
+      - CAP-OPS-A12
     enumerated_items:
       - 外观与自定义主题
       - 工作区布局
@@ -124,6 +128,9 @@ entries:
       - 数据目录
       - 安全更新
       - 结构/数据比较与同步
+      - 请求诊断中心
+      - SQL snippets 管理
+      - 下载源配置
     coverage_status: 已映射
     uncovered_reason: ""
     next_validation: 入口变化时复核调用及多入口门控；未执行桌面、Web 和跨平台端到端验证。
@@ -715,9 +722,10 @@ entries:
       - elasticsearch
       - trino
       - custom
-    coverage_status: 已映射
-    uncovered_reason: ""
-    next_validation: 入口变化时复核调用及多入口门控；未执行各平台 driver-agent 安装及真实数据库矩阵。
+      - cache
+    coverage_status: 部分映射
+    uncovered_reason: Caché 是独立连接与驱动身份，但能力注册表尚无 CAP-DS-CACHE；暂不能引用不存在的稳定 ID。
+    next_validation: 新增稳定 CAP-DS-CACHE 后补入 capability_ids，并复核 IRIS/Caché 共享 SQL profile 与独立产品身份。
     scan_evidence:
       - internal/db/driver_support.go:34-56
       - internal/db/database.go:1105
@@ -725,6 +733,7 @@ entries:
       - optionalGoDrivers 共21项，Custom 走独立注册路径，分开说明而非把 Custom 当作 optionalGoDrivers 成员。
     coverage_gaps:
       - 未执行各平台 driver-agent 安装及真实数据库矩阵。
+      - 缺少 Caché 独立稳定能力 ID。
   - id: ENTRY-SPECIALIZED-WORKBENCH
     category: 专用数据源工作台
     code_locations:
@@ -835,6 +844,7 @@ entries:
       - frontend/src/utils/connectionExcelGroups.ts
     capability_ids:
       - CAP-CONN-001
+      - CAP-CONN-A17
     enumerated_items:
       - excel-batch-import
       - excel-batch-export

@@ -1,40 +1,44 @@
-artifact_schema: 3
+artifact_schema: 4
 manifest_path: scan-manifest.yaml
 coverage_path: coverage.yaml
-scan_id: full-new-20260913-e7e3eb74-1789320000
-head_commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
-baseline_status: not_used
+campaign_id: full-new-campaign-20260913
+scan_id: full-new-20260913-46cb0628-v4
+head_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+baseline_status: ok
 scan_mode: 全量新问题扫描
 review_views:
   - product
   - db
   - developer
-  - ui
 developer_scan_mode: contract_first
 execution: parallel
 scan_scope: full_repository
 history_recheck: not_applicable
 history_recheck_status: not_applicable
 full_scan_status: partial
-coverage_units_total: 73
-coverage_units_completed: 0
+coverage_units_total: 37
+coverage_units_completed: 27
 coverage_status_counts:
-  completed: 0
-  partial: 34
-  blocked: 39
+  queued: 0
+  in_progress: 5
+  completed: 27
+  blocked: 5
   not_applicable: 0
 adjudication_counts:
-  accepted: 2
+  accepted: 10
   duplicates: 0
-  rejected: 4
-  pending_verification: 2
-started_at: 2026-09-13T02:55:00+08:00
-completed_at: 2026-09-13T03:40:00+08:00
-start_commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
-workspace_status: 有未提交改动
+  rejected: 3
+  pending_verification: 4
+ui_execution: null
+started_at: 2026-09-13T13:12:00+08:00
+completed_at: 2026-09-13T14:12:00+08:00
+start_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+workspace_status: 干净
 included_scope:
-  - GoNavi 当前工作区全部能力注册表、入口账本及 product/db/developer/ui 四视角
+  - 当前 HEAD 的 240 个稳定能力 ID
+  - product 16 条用户任务链、db 6 条风险任务链、developer 15 条工程任务链
+  - 源码追链、反例、Go/前端定向测试、全套测试、TypeScript 构建和生产依赖审计
 excluded_scope:
-  - 真实外部服务写操作
-  - 原生 Wails 跨平台行为
-  - 未列为 checked 的具体能力与状态
+  - UI 页面和原生交互审查（用户本轮明确排除）
+  - 真实外部服务写操作与 34 类服务兼容认证
+  - Windows/Linux 原生安装和更新产物实测
