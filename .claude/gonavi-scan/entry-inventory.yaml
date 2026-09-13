@@ -1,8 +1,8 @@
 version: 1
-scan_id: full-new-20260908-380530b-1788834183
-head_commit: 380530bc17882f024a24a97106d24a11a7ebd84b
+scan_id: full-new-20260913-e7e3eb74-1789320000
+head_commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
 summary:
-  entry_groups: 12
+  entry_groups: 13
   workbench_tab_types: 30
   builtin_data_sources: 12
   optional_go_data_sources: 21
@@ -827,3 +827,26 @@ entries:
       - Agent Harness 不等于 MCP Server；按独立入口组记录，不复用旧 CLI 工具枚举。
     coverage_gaps:
       - 现有能力注册表只有聚合 AI/CLI 能力，缺少 Agent 运行审批/恢复细粒度 ID；本轮不修改注册表。
+  - id: ENTRY-CONN-EXCEL
+    category: 连接导入导出
+    code_locations:
+      - frontend/src/App.tsx
+      - internal/app/connection_package_excel.go
+      - frontend/src/utils/connectionExcelGroups.ts
+    capability_ids:
+      - CAP-CONN-001
+    enumerated_items:
+      - excel-batch-import
+      - excel-batch-export
+      - group-path-import
+    coverage_status: 部分映射
+    uncovered_reason: 本轮上游新增入口（9acf8810），仅静态确认入口与后端实现存在，未做导入导出端到端验证。
+    next_validation: 实际导出为 Excel 并重新导入，验证分组路径落位。
+    scan_evidence:
+      - internal/app/connection_package_excel.go
+      - frontend/src/utils/connectionExcelGroups.ts
+    negative_checks:
+      - 导出保存对话框同时提供 GoNavi 包与 Excel 过滤器（commit 9acf8810 说明与代码分流入口）。
+    coverage_gaps:
+      - 未执行真实文件导入导出
+      - 单表清空右键入口与侧栏注释搜索并入既有工作台/侧栏入口，未单独立组

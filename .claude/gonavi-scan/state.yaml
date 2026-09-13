@@ -1,8 +1,8 @@
 artifact_schema: 3
 manifest_path: scan-manifest.yaml
 coverage_path: coverage.yaml
-scan_id: full-new-20260908-380530b-1788834183
-head_commit: 380530bc17882f024a24a97106d24a11a7ebd84b
+scan_id: full-new-20260913-e7e3eb74-1789320000
+head_commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
 baseline_status: not_used
 scan_mode: 全量新问题扫描
 review_views:
@@ -16,21 +16,21 @@ scan_scope: full_repository
 history_recheck: not_applicable
 history_recheck_status: not_applicable
 full_scan_status: partial
-coverage_units_total: 72
-coverage_units_completed: 11
+coverage_units_total: 73
+coverage_units_completed: 0
 coverage_status_counts:
-  completed: 11
-  partial: 54
-  blocked: 7
+  completed: 0
+  partial: 34
+  blocked: 39
   not_applicable: 0
 adjudication_counts:
-  accepted: 10
-  duplicates: 5
-  rejected: 0
-  pending_verification: 0
-started_at: 2026-09-08T10:23:52+08:00
-completed_at: 2026-09-08T02:56:05.512Z
-start_commit: 380530bc17882f024a24a97106d24a11a7ebd84b
+  accepted: 2
+  duplicates: 0
+  rejected: 4
+  pending_verification: 2
+started_at: 2026-09-13T02:55:00+08:00
+completed_at: 2026-09-13T03:40:00+08:00
+start_commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
 workspace_status: 有未提交改动
 included_scope:
   - GoNavi 当前工作区全部能力注册表、入口账本及 product/db/developer/ui 四视角

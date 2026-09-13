@@ -1,3 +1,188 @@
-scan_id: full-new-20260908-380530b-1788834183
-head_commit: 380530bc17882f024a24a97106d24a11a7ebd84b
-active_findings: []
+scan_id: full-new-20260913-e7e3eb74-1789320000
+head_commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
+active_findings:
+  - id: FIND-DB-IRIS-WRITE-OUTCOME-001
+    title: IRIS ApplyChanges 不支持取消且提交失败不标记写入结果未知
+    type: 事务一致性缺陷
+    severity: P3
+    confidence: 中
+    affected_capabilities:
+      - CAP-DS-CUSTOM
+      - CAP-DATA-A12
+    affected_paths:
+      - internal/db/iris_impl.go
+    affected_symbols:
+      - IrisDB.ApplyChanges
+    conclusion: IrisDB.ApplyChanges 使用 conn.Begin/tx.Exec 全程无 context，提交直接 return tx.Commit()，未走 commitWriteTransaction/MarkWriteOutcomeUnknown 契约；提交前连接中断被包装为普通错误，IsAmbiguousWriteResponse 分类信息经 fmt.Errorf("%v") 丢失。
+    evidence:
+      - internal/db/iris_impl.go:518-586
+      - internal/db/write_outcome.go:36-103
+      - internal/app/import_pipeline.go:615-618
+      - .claude/gonavi-scan/scan-runs/full-new-20260913-e7e3eb74-1789320000/evidence/reachability-applychanges.md
+    impact: IRIS 作为 BatchApplier 参与数据导入链路：导入取消无法传播到在途语句；提交结果未知时上层无法按 unknown-outcome 契约区分确定失败与结果未知，按重试策略重放可能重复写入或漏写。
+    recommendation: ApplyChanges 改为接收 context 并接入 commitWriteTransaction/MarkWriteOutcomeUnknown 契约，错误包装使用 %w 保留 errors.Is 链。
+    acceptance_criteria:
+      - 提交返回 ErrBadConn 等未知结果错误时 IsWriteOutcomeUnknown 为 true
+      - 导入取消能传播到 IRIS 在途执行
+      - 单行断言与既有 requireSingleRowAffected 行为保持
+    verification_path: 用可注入错误的 fake driver：Exec 成功后 Commit 返回 driver.ErrBadConn，断言 IsWriteOutcomeUnknown(err)==true；对照组 mysql_impl 同错误注入。
+    verification_boundary: 未连接真实 IRIS 实例；结论基于静态契约比对与调用链复核，导入链路可达性已确认。
+    source_views:
+      - db
+    status: 待修复
+    first_seen_commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
+    last_checked_commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
+    verification_status: 代码证据确认
+    verification_details:
+      mode: 只读验证
+      instance_id: static_contract_review
+      verified_at: 2026-09-13T03:40:00+08:00
+      result: 静态代码确认 IRIS 路径无 ctx、无 write_outcome 契约；runtimeSupportsBatchApply 未被 IRIS 覆写，导入链路可达。
+    review_history:
+      - scan_id: full-new-20260913-e7e3eb74-1789320000
+        checked_at: 2026-09-13T03:40:00+08:00
+        commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
+        action: 新问题扫描
+        result: 接受；IRIS 提交路径偏离 unknown-outcome 契约且取消不传播，导入链路可达。
+    last_checked_result: 新发现：IRIS ApplyChanges 无 ctx 且提交失败不标记写入结果未知。
+    failure_mode: 提交结果未知被当作确定失败处理
+    operation: external
+    data_state: unknown
+    server_side_effect: unknown
+    issue_projection:
+      title: "[P3] IRIS ApplyChanges 不支持取消且提交失败不标记写入结果未知"
+      labels:
+        - bug
+        - database
+      body_sections:
+        summary: IrisDB.ApplyChanges 全程无 context 且未接入 write_outcome 契约，提交前中断被当作确定失败。
+        affected_behavior: IRIS 批量导入无法取消；提交结果未知时上层重试策略可能重复写入或漏写。
+        reproduction: fake driver 使 Commit 返回 ErrBadConn，观察 IsWriteOutcomeUnknown 为 false。
+        expected: 未知结果被标记并可被上层区分。
+        actual: 错误经 fmt.Errorf %v 展开丢失类型链。
+        root_cause: IRIS 实现未接入 write_outcome 契约且未使用 context。
+        affected_files: internal/db/iris_impl.go
+        fix_boundary: internal/db/iris_impl.go；internal/db/iris_impl_test.go
+        acceptance_tests: Commit 返回 ErrBadConn 时 IsWriteOutcomeUnknown 为 true；取消传播覆盖在途执行。
+        validation_commands: go test ./internal/db -run IRIS -count=1
+        risk_and_rollback: 仅为契约接入，不改变单行断言语义。
+        verification_boundary: 未连接真实 IRIS 实例。
+      operation: external
+      data_state: unknown
+      server_side_effect: unknown
+      security_constraints: &a10
+        - 验证仅使用合成数据、本地内存数据或只读源码。
+        - 不记录真实凭据、业务数据或完整连接串。
+    reproduction:
+      preconditions:
+        - IRIS 连接参与数据导入（IRIS 实现 BatchApplier 且未覆写 SupportsBatchApply）
+      steps:
+        - 启动导入后在提交阶段断开连接
+      expected: 上层能区分写入结果未知
+      actual: 错误为普通失败分类
+    root_cause: IRIS 实现未接入 write_outcome 契约且未使用 context。
+    fix_boundary:
+      allowed_paths:
+        - internal/db/iris_impl.go
+        - internal/db/iris_impl_test.go
+      preserve:
+        - requireSingleRowAffected 单行断言
+      out_of_scope:
+        - 其他驱动的契约重构
+    regression_risk: 不同错误分类需分别测试，避免把确定失败误标为未知。
+    regression_tests:
+      - Commit ErrBadConn 注入用例
+      - 取消传播用例
+    verification_commands:
+      - go test ./internal/db -run IRIS -count=1
+  - id: FIND-DB-ES-BULK-REPORT-001
+    title: Elasticsearch 批量操作部分失败只返回第一条原因且无成功明细
+    type: 可观测性缺陷
+    severity: P3
+    confidence: 高
+    affected_capabilities:
+      - CAP-DS-ELASTICSEARCH
+      - CAP-DATA-A12
+    affected_paths:
+      - internal/db/elasticsearch_impl.go
+    affected_symbols:
+      - ElasticsearchDB.ApplyChangesContext
+    conclusion: ApplyChangesContext 检测到 bulk 响应 errors=true 后，遍历 items 找到第一个 error 即返回“ES 批量操作部分失败：<reason>”，其余 item 的成功与失败结果不落日志也不返回。
+    evidence:
+      - internal/db/elasticsearch_impl.go:1129-1149
+      - .claude/gonavi-scan/scan-runs/full-new-20260913-e7e3eb74-1789320000/evidence/reachability-applychanges.md
+    impact: 用户无法得知哪些文档已写入、哪些失败，也无法精确重放失败子集；重试整批幂等但浪费且可能与并发修改冲突，大批量导入排障信息不足。
+    recommendation: 聚合全部失败项（_id 与 reason）并统计成功数，错误信息包含失败条目列表。
+    acceptance_criteria:
+      - 错误信息包含全部失败条目标识与原因
+      - 成功条目计数可见
+      - hasErrors 整体报错行为保持
+    verification_path: 扩展既有 elasticsearch_bulk_response_test.go：构造 2 成功 + 2 失败的 bulk 响应体，断言错误包含全部失败 _id 与成功计数。
+    verification_boundary: 未连接真实 Elasticsearch 服务；行为由静态代码确认。
+    source_views:
+      - db
+    status: 待修复
+    first_seen_commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
+    last_checked_commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
+    verification_status: 代码证据确认
+    verification_details:
+      mode: 只读验证
+      instance_id: static_contract_review
+      verified_at: 2026-09-13T03:40:00+08:00
+      result: 静态代码确认首个失败即 return，无聚合与成功计数。
+    review_history:
+      - scan_id: full-new-20260913-e7e3eb74-1789320000
+        checked_at: 2026-09-13T03:40:00+08:00
+        commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
+        action: 新问题扫描
+        result: 接受；bulk 部分失败报告缺失明细与成功计数。
+    last_checked_result: 新发现：ES 批量部分失败仅返回首条原因。
+    failure_mode: 部分失败报告信息不足
+    operation: external
+    data_state: unknown
+    server_side_effect: unknown
+    issue_projection:
+      title: "[P3] Elasticsearch 批量操作部分失败只返回第一条原因且无成功明细"
+      labels:
+        - bug
+        - database
+      body_sections:
+        summary: ES _bulk 部分失败时仅返回第一条失败 reason，成功/失败明细全部丢失。
+        affected_behavior: 用户无法定位失败文档与已成功范围，难以精确重放。
+        reproduction: 构造含 2 成功 + 2 失败的 bulk 响应，观察返回错误仅含首条 reason。
+        expected: 错误聚合全部失败项与成功计数。
+        actual: 首个失败即 return。
+        root_cause: 错误聚合逻辑缺失。
+        affected_files: internal/db/elasticsearch_impl.go
+        fix_boundary: internal/db/elasticsearch_impl.go；internal/db/elasticsearch_bulk_response_test.go
+        acceptance_tests: 错误包含全部失败 _id 与原因；成功计数可见。
+        validation_commands: go test ./internal/db -run ElasticsearchBulk -count=1
+        risk_and_rollback: 仅增强错误信息，不改变整体报错判定。
+        verification_boundary: 未连接真实 Elasticsearch 服务。
+      operation: external
+      data_state: unknown
+      server_side_effect: unknown
+      security_constraints: *a10
+    reproduction:
+      preconditions:
+        - Elasticsearch 连接
+      steps:
+        - 提交含部分失败文档的批量变更
+      expected: 错误含全部失败明细
+      actual: 仅首条 reason
+    root_cause: bulk 响应错误聚合逻辑缺失。
+    fix_boundary:
+      allowed_paths:
+        - internal/db/elasticsearch_impl.go
+        - internal/db/elasticsearch_bulk_response_test.go
+      preserve:
+        - hasErrors 整体报错行为
+        - readLimitedJSONResponseBody 响应上限
+      out_of_scope:
+        - bulk 请求协议重构
+    regression_risk: 错误信息长度需受控，避免超大批量产生超长消息。
+    regression_tests:
+      - 多失败项聚合用例
+      - 全部成功用例行为不变
+    verification_commands:
+      - go test ./internal/db -run ElasticsearchBulk -count=1
