@@ -347,8 +347,9 @@ active_findings:
     data_state: test_fixture
     server_side_effect: unknown
     related_findings: []
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1236
     issue_projection:
-      title: "[DB][P1] 数据网格提交丢失写入结果未知标记并允许整批重试"
+      title: "[P1] 数据网格提交丢失写入结果未知标记并允许整批重试"
       labels:
         - bug
         - database
@@ -450,8 +451,9 @@ active_findings:
     data_state: test_fixture
     server_side_effect: none
     related_findings: []
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1238
     issue_projection:
-      title: "[DB][P2] MySQL/GoldenDB 数据编辑无法更新或删除含反引号的合法标识符"
+      title: "[P2] MySQL/GoldenDB 数据编辑无法更新或删除含反引号的合法标识符"
       labels:
         - bug
         - database
@@ -550,8 +552,9 @@ active_findings:
     data_state: test_fixture
     server_side_effect: none
     related_findings: []
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1239
     issue_projection:
-      title: "[DB][P2] MariaDB 数据编辑无法更新或删除含反引号的合法标识符"
+      title: "[P2] MariaDB 数据编辑无法更新或删除含反引号的合法标识符"
       labels:
         - bug
         - database
@@ -661,8 +664,9 @@ active_findings:
     data_state: test_fixture
     server_side_effect: none
     related_findings: []
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1237
     issue_projection:
-      title: "[DB][P1] 失败的 Redis 原始命令会以明文写入持久日志"
+      title: "[P1] 失败的 Redis 原始命令会以明文写入持久日志"
       labels:
         - bug
         - database
@@ -787,8 +791,9 @@ active_findings:
     verification_commands:
       - npm --prefix frontend test -- --run src/components/QueryEditor.external-sql-save.test.tsx -t "deduplicates Oracle-style"
       - npm --prefix frontend test -- --run src/utils/sqlDialect.test.ts
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1240
     issue:
-      title: "[开发][P2] Oracle 表别名回归测试断言与共享方言契约相反"
+      title: "[P2] Oracle 表别名回归测试断言与共享方言契约相反"
       labels:
         - bug
         - developer
@@ -870,8 +875,9 @@ active_findings:
     verification_commands:
       - npm --prefix frontend test -- --run src/components/ai/AISettingsAnalysisSection.test.tsx
       - npm --prefix frontend test -- --run src/components/ai/aiObservability.test.ts
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1241
     issue:
-      title: "[开发][P2] AI 可观测性组件测试使用固定历史日期并随日历时间失效"
+      title: "[P2] AI 可观测性组件测试使用固定历史日期并随日历时间失效"
       labels:
         - bug
         - developer
@@ -958,8 +964,9 @@ active_findings:
       - testPolicy 全局守卫
     verification_commands:
       - npm --prefix frontend test -- --run src/testPolicy.test.ts src/App.sidebar-resize-hit-area.test.ts src/components/settings/ConnectionImportSettingsPanel.test.ts
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1242
     issue:
-      title: "[开发][P2] 两个新增前端测试违反源码文本断言质量闸门"
+      title: "[P2] 两个新增前端测试违反源码文本断言质量闸门"
       labels:
         - bug
         - developer
@@ -1053,8 +1060,9 @@ active_findings:
     verification_commands:
       - bash -n build-release.sh
       - python3 -m unittest tools/windows-release-artifacts.test.py
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1243
     issue:
-      title: "[开发][P2] 本地发布脚本绕开项目固定的 Wails CLI"
+      title: "[P2] 本地发布脚本绕开项目固定的 Wails CLI"
       labels:
         - bug
         - developer
