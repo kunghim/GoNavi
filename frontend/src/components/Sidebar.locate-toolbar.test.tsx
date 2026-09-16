@@ -445,6 +445,12 @@ describe('Sidebar locate toolbar', () => {
     expect(parseV2CommandSearchQuery('＠fs_mkefu_server_info')).toMatchObject({
       mode: 'object',
       keyword: 'fs_mkefu_server_info',
+      normalizedKeyword: 'fs_mkefu_server_info',
+    });
+    expect(parseV2CommandSearchQuery('sys＿user')).toMatchObject({
+      mode: 'default',
+      keyword: 'sys＿user',
+      normalizedKeyword: 'sys_user',
     });
     expect(parseV2CommandSearchQuery('? 帮我分析订单表')).toMatchObject({
       mode: 'ai',
@@ -1136,6 +1142,9 @@ describe('Sidebar locate toolbar', () => {
 
     expect(actionsSource).toContain("key: 'data-workflow'");
     expect(actionsSource).toContain('label: v2DataWorkflowLabel');
+    expect(actionsSource).toContain("key: 'batch-connections'");
+    expect(actionsSource).toContain("key: 'batch-tables'");
+    expect(actionsSource).toContain("key: 'batch-databases'");
     expect(actionsSource).toContain("key: 'compare'");
     expect(actionsSource).toContain("action: 'compare'");
     expect(actionsSource).not.toContain("key: 'schema-compare'");
@@ -1286,6 +1295,36 @@ describe('Sidebar locate toolbar', () => {
     expect(markup).not.toContain(`>${t('sidebar.command_search.object_kind.tables')}<`);
   });
 
+  it('keeps the object-kind filter slot stable while switching to a dedicated workbench connection', () => {
+    mocks.state.connections = [{
+      id: 'pg-1',
+      name: 'PostGreSQL',
+      config: { type: 'postgres', host: 'localhost', port: 5432 },
+    }, {
+      id: 'nacos-1',
+      name: 'Nacos',
+      config: { type: 'nacos', host: 'localhost', port: 8848 },
+    }];
+    mocks.state.activeContext = { connectionId: 'nacos-1', dbName: 'public' };
+    mocks.state.activeTabId = 'nacos-services';
+    mocks.state.tabs = [{
+      id: 'nacos-services',
+      title: 'Nacos',
+      type: 'nacos-services',
+      connectionId: 'nacos-1',
+      dbName: 'public',
+    }];
+
+    const markup = renderSidebarMarkup({});
+    const filterSlotIndex = markup.indexOf('data-object-kind-filter-slot="true"');
+    const treeShellIndex = markup.indexOf('gn-v2-explorer-tree-shell');
+
+    expect(filterSlotIndex).toBeGreaterThanOrEqual(0);
+    expect(filterSlotIndex).toBeLessThan(treeShellIndex);
+    expect(markup).toContain('data-object-kind-filter-visible="false"');
+    expect(markup).not.toContain('gn-v2-explorer-filter-tabs');
+  });
+
   it('keeps relational object-kind filters hidden without an active host when only dedicated workbenches exist', () => {
     mocks.state.connections = [{
       id: 'nacos-1',
@@ -1307,6 +1346,7 @@ describe('Sidebar locate toolbar', () => {
     const markup = renderSidebarMarkup({  });
 
     expect(markup).not.toContain('gn-v2-explorer-filter-tabs');
+    expect(markup).not.toContain('data-object-kind-filter-slot');
   });
 
   it('hides relational object-kind filters for Nacos and other dedicated workbenches', () => {
@@ -3001,6 +3041,7 @@ describe('Sidebar locate toolbar', () => {
     expect(markup).toContain(t('sidebar.sql_file_exec.title'));
     expect(markup).toContain(t('sidebar.menu.edit_connection'));
     expect(markup).toContain(t('connection.sidebar.menu.copy'));
+    expect(markup).toContain(t('sidebar.action.batch_connections'));
     expect(markup).toContain(t('connection.sidebar.menu.disconnect'));
     expect(markup).toContain(t('connection.sidebar.menu.groupSection'));
     expect(markup).toContain('生产环境');
@@ -3032,6 +3073,7 @@ describe('Sidebar locate toolbar', () => {
     expect(markup).toContain('Edit connection');
     expect(markup).toContain('Connection');
     expect(markup).toContain('Copy connection');
+    expect(markup).toContain('Batch connections');
     expect(markup).toContain('Disconnect');
     expect(markup).toContain('Connection groups');
     expect(markup).toContain('Current');
@@ -3353,7 +3395,9 @@ describe('Sidebar locate toolbar', () => {
     expect(mysqlSql).toContain('CREATE_TIME AS create_time');
     expect(pgSql).toContain("obj_description(c.oid, 'pg_class') AS table_comment");
     expect(pgSql).toContain('pg_total_relation_size(c.oid) AS table_size');
-    expect(sqlServerSql).toContain('ep.value AS table_comment');
+    expect(sqlServerSql).toContain('CONVERT(nvarchar(4000), ep.value) AS table_comment');
+    expect(sqlServerSql).toContain('FROM sys.tables t');
+    expect(sqlServerSql).not.toMatch(/\]\.sys\.tables/);
     expect(sqlServerSql).toContain('t.create_date AS create_time');
     expect(oracleSql).toContain('comments AS table_comment');
     expect(oracleSql).toContain('COALESCE(t.blocks, 0) * 8192 AS table_size');

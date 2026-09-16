@@ -303,11 +303,12 @@ import {
 import { useAppUpdateManager } from './hooks/useAppUpdateManager';
 import { useAppLogPanelResize } from './hooks/useAppLogPanelResize';
 import { useAppSidebarResize } from './hooks/useAppSidebarResize';
+import { resolveSidebarResizeHitGeometry } from './utils/sidebarLayout';
 import { canInheritNewQueryTableContext, resolveNewQueryContext } from './utils/newQueryContext';
 import { useAppUtilityStyles } from './hooks/useAppUtilityStyles';
 import { useWorkbenchTabs } from './hooks/useWorkbenchTabs';
 import { useAIWorkspaceSnapshot } from './components/ai/useAIWorkspaceSnapshot';
-import { shouldAllowNativeContextMenu } from './utils/nativeContextMenu';
+import { isWailsDevNativeContextMenu, shouldAllowNativeContextMenu } from './utils/nativeContextMenu';
 import AgentDataSettingsPanel from './components/ai/AgentDataSettingsPanel';
 import {
   ApplyDataRootDirectory,
@@ -3522,9 +3523,13 @@ function App() {
       windowsBrandIconApplyingRef.current = id;
       setBrandIconId(id);
       try {
-          const source = resolveBrandDockSrc(id) || resolveBrandIconSrc(id);
+          const source = resolveBrandDockSrc(id);
           if (!source) {
-              throw new Error('selected brand icon source is unavailable');
+              // Remote ribbon assets are still warming the cache. The compact
+              // GN fallback must never be written to the Windows icon cache;
+              // the dock sync effect applies the verified asset once it lands.
+              message.success(t('app.settings.entry.brand_icon.applied'));
+              return;
           }
           // Windows fills the whole taskbar tile; the macOS Dock safe-area
           // inset would shrink the ICO mark relative to neighbouring apps.
@@ -5535,6 +5540,7 @@ function App() {
       sidebarWidth,
       sidebarCollapsed: isSidebarCollapsed,
   });
+  const sidebarResizeHit = resolveSidebarResizeHitGeometry(sidebarResizeHandleWidth);
 
   // Apply the document theme before the first paint. V2 structural styles are
   // scoped by data-ui-version; a passive effect leaves one unstyled titlebar
@@ -6819,21 +6825,19 @@ function App() {
 
   const renderSettingsCenterAboutProjectEntry = ({
       icon,
-      logoSrc,
       title,
       description,
       url,
       copyText,
   }: {
-      icon?: React.ReactNode;
-      logoSrc?: string;
+      icon: React.ReactNode;
       title: string;
       description: string;
       url?: string;
       copyText?: string;
   }) => (
       <button
-        className={`gonavi-about-project-entry${logoSrc ? ' is-sponsor' : ''}`}
+        className="gonavi-about-project-entry"
         type="button"
         onClick={() => {
             if (copyText) {
@@ -6850,7 +6854,7 @@ function App() {
         style={{
             width: '100%',
             display: 'flex',
-            alignItems: logoSrc ? 'center' : 'flex-start',
+            alignItems: 'flex-start',
             gap: 10,
             padding: '10px 12px',
             border: `1px solid ${darkMode ? 'rgba(255,255,255,0.10)' : 'rgba(16,24,40,0.10)'}`,
@@ -6862,13 +6866,9 @@ function App() {
             textAlign: 'left',
         }}
       >
-          {logoSrc ? (
-              <img className="gonavi-about-project-entry-logo" src={logoSrc} alt="" />
-          ) : (
-              <span style={{ fontSize: 18, display: 'grid', placeItems: 'center', marginTop: 1, color: overlayTheme.iconColor }}>
-                  {icon}
-              </span>
-          )}
+          <span style={{ fontSize: 18, display: 'grid', placeItems: 'center', marginTop: 1, color: overlayTheme.iconColor }}>
+              {icon}
+          </span>
           <span style={{ minWidth: 0, flex: 1 }}>
               <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.35 }}>{title}</span>
@@ -7087,20 +7087,6 @@ function App() {
                           title: t('app.about.project.wechat.title'),
                           description: t('app.about.project.wechat.description'),
                           copyText: t('app.about.project.wechat.id'),
-                      })}
-                  </div>
-              </section>
-
-              <section className="gonavi-about-section" aria-labelledby="gonavi-about-sponsors-heading">
-                  <div id="gonavi-about-sponsors-heading" className="gonavi-about-section-title" style={{ color: overlayTheme.titleText }}>
-                      {t('app.about.sponsors')}
-                  </div>
-                  <div className="gonavi-about-link-grid">
-                      {renderSettingsCenterAboutProjectEntry({
-                          logoSrc: '/sponsors/hualong-mark.png',
-                          title: t('app.about.project.hualong.title'),
-                          description: t('app.about.project.hualong.description'),
-                          url: 'https://api.hualong.online/',
                       })}
                   </div>
               </section>
@@ -8299,10 +8285,11 @@ function App() {
   const sidebarPanelCollapseLabel = t('app.sidebar.collapse');
   const sidebarPanelExpandLabel = t('app.sidebar.expand');
   const sidebarPanelToggleLabel = isSidebarCollapsed ? sidebarPanelExpandLabel : sidebarPanelCollapseLabel;
+  const allowDebugNativeContextMenu = isWailsDevNativeContextMenu(import.meta.env.DEV);
   const handleAppContextMenu = useCallback((event: React.MouseEvent<HTMLElement>) => {
-    if (event.defaultPrevented || shouldAllowNativeContextMenu(event.target)) return;
+    if (event.defaultPrevented || shouldAllowNativeContextMenu(event.target, { allowDebugMenu: allowDebugNativeContextMenu })) return;
     event.preventDefault();
-  }, []);
+  }, [allowDebugNativeContextMenu]);
 
   return (
     <ConfigProvider
@@ -8494,7 +8481,7 @@ function App() {
                 position: 'relative',
                 background: 'var(--gn-bg-panel-2)',
                 ['--gonavi-sidebar-collapsed-width' as any]: `${sidebarCollapsedWidth}px`,
-                ['--gonavi-sidebar-resize-inner-hit-width' as any]: `${sidebarResizeHandleWidth / 2}px`,
+                [sidebarResizeHit.cssVariable as any]: `${sidebarResizeHit.innerHitWidth}px`,
             }}
           >
             <div
@@ -8583,10 +8570,10 @@ function App() {
                 title={t('app.sidebar.resize_width')}
                 style={{
                     position: 'absolute',
-                    right: -(sidebarResizeHandleWidth / 2),
+                    right: sidebarResizeHit.handleOffset,
                     top: 0,
                     bottom: 0,
-                    width: sidebarResizeHandleWidth,
+                    width: sidebarResizeHit.handleWidth,
                     cursor: 'col-resize',
                     zIndex: 3,
                     touchAction: 'none',

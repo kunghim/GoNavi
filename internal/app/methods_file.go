@@ -1367,7 +1367,7 @@ func normalizeAppLogTailLineLimit(input int) int {
 func redactAppLogSQLFields(line string) string {
 	searchFrom := 0
 	for searchFrom < len(line) {
-		fieldStart, fieldLength := findSQLLogField(line, searchFrom)
+		fieldStart, fieldLength, kind := findAppLogSensitiveField(line, searchFrom)
 		if fieldStart < 0 {
 			break
 		}
@@ -1404,10 +1404,17 @@ func redactAppLogSQLFields(line string) string {
 			if err != nil {
 				break
 			}
-			value = strconv.Quote(sqlaudit.RedactSQL(decoded))
+			redacted := redactAppLogFieldValue(kind, decoded)
+			if kind == appLogFieldRedisCommand {
+				// Keep the redacted Redis command unquoted so RedactError's
+				// quoted-segment pass cannot wipe AUTH/HELLO structure.
+				value = redacted
+			} else {
+				value = strconv.Quote(redacted)
+			}
 		} else {
-			valueEnd = len(line)
-			value = sqlaudit.RedactSQL(line[valueStart:valueEnd])
+			valueEnd = unquotedAppLogFieldEnd(line, valueStart, kind)
+			value = redactAppLogFieldValue(kind, line[valueStart:valueEnd])
 		}
 		line = line[:valueStart] + value + line[valueEnd:]
 		searchFrom = valueStart + len(value)
@@ -1415,20 +1422,54 @@ func redactAppLogSQLFields(line string) string {
 	return sqlaudit.RedactError(line)
 }
 
-func findSQLLogField(line string, start int) (int, int) {
+type appLogSensitiveFieldKind int
+
+const (
+	appLogFieldNone appLogSensitiveFieldKind = iota
+	appLogFieldSQL
+	appLogFieldRedisCommand
+)
+
+func redactAppLogFieldValue(kind appLogSensitiveFieldKind, value string) string {
+	if kind == appLogFieldRedisCommand {
+		return redactRedisCommandForLog(value)
+	}
+	return sqlaudit.RedactSQL(value)
+}
+
+func unquotedAppLogFieldEnd(line string, valueStart int, kind appLogSensitiveFieldKind) int {
+	if kind == appLogFieldRedisCommand {
+		if terminator := strings.Index(line[valueStart:], "；错误链："); terminator >= 0 {
+			return valueStart + terminator
+		}
+	}
+	return len(line)
+}
+
+func findAppLogSensitiveField(line string, start int) (int, int, appLogSensitiveFieldKind) {
 	lower := strings.ToLower(line)
 	bestIndex := -1
 	bestLength := 0
-	for _, marker := range []string{"sql片段=", "sqltext=", "sql="} {
-		if index := strings.Index(lower[start:], marker); index >= 0 {
+	bestKind := appLogFieldNone
+	for _, candidate := range []struct {
+		marker string
+		kind   appLogSensitiveFieldKind
+	}{
+		{"sql片段=", appLogFieldSQL},
+		{"sqltext=", appLogFieldSQL},
+		{"sql=", appLogFieldSQL},
+		{"command=", appLogFieldRedisCommand},
+	} {
+		if index := strings.Index(lower[start:], candidate.marker); index >= 0 {
 			index += start
 			if bestIndex < 0 || index < bestIndex {
 				bestIndex = index
-				bestLength = len(marker)
+				bestLength = len(candidate.marker)
+				bestKind = candidate.kind
 			}
 		}
 	}
-	return bestIndex, bestLength
+	return bestIndex, bestLength, bestKind
 }
 
 func readAppLogTailWindow(filePath string, maxBytes int64) ([]byte, bool, error) {
@@ -4999,7 +5040,12 @@ func (a *App) ApplyChanges(config connection.ConnectionConfig, dbName, tableName
 		preview := buildChangePreview(dbInst, config, targetTableName, changes)
 		err := applier.ApplyChanges(targetTableName, changes)
 		if err != nil {
-			return connection.QueryResult{Success: false, Message: err.Error(), Data: preview}
+			return connection.QueryResult{
+				Success:        false,
+				Message:        err.Error(),
+				Data:           preview,
+				OutcomeUnknown: db.IsWriteOutcomeUnknown(err),
+			}
 		}
 		return connection.QueryResult{Success: true, Message: a.appText("file.backend.message.transaction_committed", nil), Data: preview}
 	}
@@ -6692,16 +6738,8 @@ func buildListViewQueries(config connection.ConnectionConfig, dbName string) []s
 			`SELECT table_schema AS schema_name, table_name AS object_name FROM information_schema.views WHERE table_schema NOT IN ('pg_catalog', 'information_schema') ORDER BY table_schema, table_name`,
 		}
 	case "sqlserver":
-		safeDBName := strings.TrimSpace(config.Database)
-		if safeDBName == "" {
-			safeDBName = strings.TrimSpace(dbName)
-		}
-		if safeDBName == "" {
-			return nil
-		}
-		safeDB := quoteIdentByType("sqlserver", safeDBName)
 		return []string{
-			fmt.Sprintf(`SELECT s.name AS schema_name, v.name AS object_name FROM %s.sys.views v JOIN %s.sys.schemas s ON v.schema_id = s.schema_id ORDER BY s.name, v.name`, safeDB, safeDB),
+			`SELECT s.name AS schema_name, v.name AS object_name FROM sys.views v JOIN sys.schemas s ON v.schema_id = s.schema_id ORDER BY s.name, v.name`,
 		}
 	case "oracle", "dameng":
 		if strings.TrimSpace(dbName) == "" {
@@ -6840,21 +6878,13 @@ func buildViewCreateQueries(config connection.ConnectionConfig, dbName, schemaNa
 		if schema == "" {
 			schema = "dbo"
 		}
-		safeDBName := strings.TrimSpace(dbName)
-		if safeDBName == "" {
-			safeDBName = strings.TrimSpace(config.Database)
-		}
-		if safeDBName == "" {
-			return nil
-		}
-		safeDB := quoteIdentByType("sqlserver", safeDBName)
 		return []string{
 			fmt.Sprintf(`SELECT m.definition AS ddl
-FROM %s.sys.views v
-JOIN %s.sys.schemas s ON v.schema_id = s.schema_id
-JOIN %s.sys.sql_modules m ON v.object_id = m.object_id
+FROM sys.views v
+JOIN sys.schemas s ON v.schema_id = s.schema_id
+JOIN sys.sql_modules m ON v.object_id = m.object_id
 WHERE s.name = '%s' AND v.name = '%s'`,
-				safeDB, safeDB, safeDB, escapeSQLLiteral(schema), escapedView),
+				escapeSQLLiteral(schema), escapedView),
 		}
 	case "oracle", "dameng":
 		if safeSchema == "" {

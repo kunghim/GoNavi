@@ -8,6 +8,8 @@
 //   - 不依赖 Sidebar.tsx 内部的 TreeNode 类型（用结构化类型参数代替）
 //   - 共享常量和类型集中管理，便于跨文件复用
 
+import type { Key } from 'react';
+
 import { t } from '../../i18n';
 import type {
   SidebarTableMetadataField,
@@ -434,6 +436,26 @@ export interface V2CommandSearchQuery {
   aiPrompt: string;
 }
 
+const FULLWIDTH_UNDERSCORE = '\uFF3F';
+
+/**
+ * normalizeSidebarSearchText 把搜索关键字和对象名统一成可比较文本。
+ * 表名里的 ASCII `_` 与中文输入法全角 `＿` 视为同一个字符。
+ */
+export const normalizeSidebarSearchText = (value: unknown): string =>
+  String(value ?? '').trim().toLowerCase().split(FULLWIDTH_UNDERSCORE).join('_');
+
+/**
+ * matchesSidebarSearchText 匹配侧栏/命令搜索关键字。
+ * 表名中的 ASCII `_` 按字面包含匹配；中文输入法全角 `＿` 视为同一个字符。
+ */
+export const matchesSidebarSearchText = (haystack: unknown, needle: unknown): boolean => {
+  const normalizedHaystack = normalizeSidebarSearchText(haystack);
+  const normalizedNeedle = normalizeSidebarSearchText(needle);
+  if (!normalizedNeedle) return true;
+  return normalizedHaystack.includes(normalizedNeedle);
+};
+
 /**
  * parseV2CommandSearchQuery 解析命令搜索框的输入。
  * - "@" 或 "＠" 前缀：对象搜索模式
@@ -451,7 +473,7 @@ export const parseV2CommandSearchQuery = (value: unknown): V2CommandSearchQuery 
       mode: 'object',
       rawValue,
       keyword,
-      normalizedKeyword: keyword.toLowerCase(),
+      normalizedKeyword: normalizeSidebarSearchText(keyword),
       aiPrompt: '',
     };
   }
@@ -462,7 +484,7 @@ export const parseV2CommandSearchQuery = (value: unknown): V2CommandSearchQuery 
       mode: 'ai',
       rawValue,
       keyword: aiPrompt,
-      normalizedKeyword: aiPrompt.toLowerCase(),
+      normalizedKeyword: normalizeSidebarSearchText(aiPrompt),
       aiPrompt,
     };
   }
@@ -471,7 +493,7 @@ export const parseV2CommandSearchQuery = (value: unknown): V2CommandSearchQuery 
     mode: 'default',
     rawValue,
     keyword: trimmedValue,
-    normalizedKeyword: trimmedValue.toLowerCase(),
+    normalizedKeyword: normalizeSidebarSearchText(trimmedValue),
     aiPrompt: '',
   };
 };
@@ -493,4 +515,34 @@ export const shouldLoadSidebarNodeOnExpand = (
       || node.type === 'jvm-resource'
       || node.type === 'nacos-config-entry'
       || node.type === 'nacos-services-entry';
+};
+
+/**
+ * resolveSidebarDoubleClickExpandedKeys 计算目录节点双击后的 expandedKeys。
+ * 连接节点只展开不折叠：工作台定位已经展开 Host 后，再双击同一行不应把库树收起来。
+ * 其他目录节点仍保持双击切换展开。
+ */
+export const resolveSidebarDoubleClickExpandedKeys = ({
+  nodeType,
+  nodeKey,
+  expandedKeys,
+}: {
+  nodeType: unknown;
+  nodeKey: Key;
+  expandedKeys: readonly Key[];
+}): { expandedKeys: Key[]; didExpand: boolean } => {
+  const isExpanded = expandedKeys.includes(nodeKey);
+  if (nodeType === 'connection') {
+    if (isExpanded) {
+      return { expandedKeys: [...expandedKeys], didExpand: false };
+    }
+    return { expandedKeys: [...expandedKeys, nodeKey], didExpand: true };
+  }
+  if (isExpanded) {
+    return {
+      expandedKeys: expandedKeys.filter((key) => key !== nodeKey),
+      didExpand: false,
+    };
+  }
+  return { expandedKeys: [...expandedKeys, nodeKey], didExpand: true };
 };

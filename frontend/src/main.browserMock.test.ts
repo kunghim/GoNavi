@@ -51,7 +51,7 @@ vi.mock('monaco-editor', () => ({
   },
 }));
 
-vi.mock('monaco-editor/esm/nls.messages.zh-cn', () => ({}));
+vi.mock('monaco-editor/nls/lang/zh-cn.js', () => ({}));
 
 const syncLanguageRuntimeMock = vi.fn(async (_language: string) => undefined);
 
@@ -479,6 +479,10 @@ describe('main browser mock', () => {
         message: t('app.browser_mock.mcp_client.opencode.not_detected'),
       }),
       expect.objectContaining({
+        client: 'cursor',
+        message: t('ai_chat.mcp_client.install.summary.missing', { label: 'Cursor' }),
+      }),
+      expect.objectContaining({
         client: 'zcode',
         message: t('ai_chat.mcp_client.install.summary.missing', { label: 'ZCode' }),
       }),
@@ -509,6 +513,7 @@ describe('main browser mock', () => {
       command: 'opencode',
     }));
     for (const [method, label, command] of [
+      ['AIInstallCursorMCP', 'Cursor', 'cursor'],
       ['AIInstallZCodeMCP', 'ZCode', 'zcode'],
       ['AIInstallDeepSeekHarnessMCP', 'DeepSeek Harness', 'dsh'],
       ['AIInstallKimiMCP', 'Kimi Code', 'kimi'],

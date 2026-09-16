@@ -50,6 +50,7 @@ import { buildRpcConnectionConfig } from '../../utils/connectionRpcConfig';
 import { supportsTableTruncateAction } from '../tableDataDangerActions';
 import { noAutoCapInputProps } from '../../utils/inputAutoCap';
 import { confirmProductionMutation } from '../../utils/productionRiskConfirm';
+import { supportsOracleObjectCompilation } from './oracleObjectCompilation';
 import {
   buildNacosServicesTabData,
   resolveNacosNamespaceDiscoveryModeFromTreeNode,
@@ -371,6 +372,7 @@ export const buildSidebarNodeMenuItems = (
     openExportDialog,
     openBatchTableWorkbench,
     openBatchDatabaseWorkbench,
+    openBatchConnectionWorkbench,
     isSavedQueryUnmatched,
     connections,
     handleRebindSavedQuery,
@@ -696,6 +698,12 @@ export const buildSidebarNodeMenuItems = (
                     onClick: () => void disconnectConnectionNode(node)
                 },
                 {
+                    key: 'batch-connections',
+                    label: t('sidebar.action.batch_connections'),
+                    icon: <AppstoreOutlined />,
+                    onClick: () => openBatchConnectionWorkbench?.(node),
+                },
+                {
                     key: 'delete',
                     label: t('connection.sidebar.menu.delete'),
                     icon: <DeleteOutlined />,
@@ -766,6 +774,12 @@ export const buildSidebarNodeMenuItems = (
                     label: t('connection.sidebar.menu.disconnect'),
                     icon: <DisconnectOutlined />,
                     onClick: () => void disconnectConnectionNode(node),
+                },
+                {
+                    key: 'batch-connections',
+                    label: t('sidebar.action.batch_connections'),
+                    icon: <AppstoreOutlined />,
+                    onClick: () => openBatchConnectionWorkbench?.(node),
                 },
                 {
                     key: 'delete',
@@ -914,6 +928,12 @@ export const buildSidebarNodeMenuItems = (
                  label: t('connection.sidebar.menu.disconnect'),
                  icon: <DisconnectOutlined />,
                  onClick: () => void disconnectConnectionNode(node)
+             },
+             {
+                 key: 'batch-connections',
+                 label: t('sidebar.action.batch_connections'),
+                 icon: <AppstoreOutlined />,
+                 onClick: () => openBatchConnectionWorkbench?.(node),
              },
              {
                  key: 'delete',
@@ -1432,7 +1452,9 @@ export const buildSidebarNodeMenuItems = (
     } else if (node.type === 'routine') {
         const routineType = node.dataRef?.routineType || 'FUNCTION';
         const typeLabel = t(routineType === 'PROCEDURE' ? 'sidebar.object.procedure' : 'sidebar.object.function');
-        const supportsOracleCompilation = getMetadataDialect(node.dataRef as SavedConnection) === 'oracle';
+        const supportsOracleCompilation = supportsOracleObjectCompilation(
+            getMetadataDialect(node.dataRef as SavedConnection),
+        );
         return [
             {
                 key: 'view-routine-def',
@@ -1469,7 +1491,9 @@ export const buildSidebarNodeMenuItems = (
             },
         ];
     } else if (node.type === 'db-trigger') {
-        const supportsOracleCompilation = getMetadataDialect(node.dataRef as SavedConnection) === 'oracle';
+        const supportsOracleCompilation = supportsOracleObjectCompilation(
+            getMetadataDialect(node.dataRef as SavedConnection),
+        );
         return [
             {
                 key: 'view-trigger-definition',

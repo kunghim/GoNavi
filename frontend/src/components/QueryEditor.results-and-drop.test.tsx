@@ -6,7 +6,10 @@ import { readV2ThemeCss } from '../test/readV2ThemeCss';
 
 import { setCurrentLanguage } from '../i18n';
 import type { SavedQuery, TabData } from '../types';
-import { clearQueryEditorResultSession } from '../utils/queryEditorResultSessionCache';
+import {
+  clearQueryEditorResultSession,
+  saveQueryEditorResultSession,
+} from '../utils/queryEditorResultSessionCache';
 import { formatSqlExecutionError } from '../utils/sqlErrorSemantics';
 import { clearQueryTabDraft, clearSQLFileTabDraft } from '../utils/sqlFileTabDrafts';
 import {
@@ -133,26 +136,46 @@ const notifyStoreSubscribers = () => {
   storeSubscribers.forEach((subscriber) => subscriber());
 };
 
-const backendApp = vi.hoisted(() => ({
-  DBQuery: vi.fn(),
-  DBQueryWithCancel: vi.fn(),
-  DBQueryMulti: vi.fn(),
-  DBQueryMultiTransactional: vi.fn(),
-  DBCommitTransaction: vi.fn(),
-  DBCommitTransactionWithTrigger: vi.fn(),
-  DBRollbackTransaction: vi.fn(),
-  DBRollbackTransactionWithTrigger: vi.fn(),
-  DBGetTables: vi.fn(),
-  DBTableExists: vi.fn(),
-  DBGetAllColumns: vi.fn(),
-  DBGetDatabases: vi.fn(),
-  DBGetColumns: vi.fn(),
-  DBGetIndexes: vi.fn(),
-  CancelQuery: vi.fn(),
-  GenerateQueryID: vi.fn(),
-  WriteSQLFile: vi.fn(),
-  ExportSQLFile: vi.fn(),
-}));
+const backendApp = vi.hoisted(() => {
+  const query = vi.fn();
+  const queryMulti = vi.fn();
+  const queryMultiTransactional = vi.fn();
+  const getTables = vi.fn();
+  const getAllColumns = vi.fn();
+  const getDatabases = vi.fn();
+  const getColumns = vi.fn();
+  const showCreateTable = vi.fn();
+  return {
+    DBQuery: query,
+    DBQueryApplicationWithCancel: vi.fn((...args: any[]) => query(...args.slice(0, 3))),
+    DBQueryWithCancel: vi.fn(),
+    DBQueryMulti: queryMulti,
+    DBQueryMultiWithOptions: vi.fn((...args: any[]) => queryMulti(...args.slice(0, 4))),
+    DBQueryMultiInTransactionWithOptions: vi.fn(),
+    DBQueryMultiTransactional: queryMultiTransactional,
+    DBQueryMultiTransactionalWithOptions: vi.fn((...args: any[]) => queryMultiTransactional(...args.slice(0, 4))),
+    DBCommitTransaction: vi.fn(),
+    DBCommitTransactionWithTrigger: vi.fn(),
+    DBRollbackTransaction: vi.fn(),
+    DBRollbackTransactionWithTrigger: vi.fn(),
+    DBGetTables: getTables,
+    DBGetTablesWithCancel: vi.fn((...args: any[]) => getTables(...args.slice(0, 2))),
+    DBTableExists: vi.fn(),
+    DBGetAllColumns: getAllColumns,
+    DBGetAllColumnsWithCancel: vi.fn((...args: any[]) => getAllColumns(...args.slice(0, 2))),
+    DBGetDatabases: getDatabases,
+    DBGetDatabasesWithCancel: vi.fn((...args: any[]) => getDatabases(...args.slice(0, 1))),
+    DBGetColumns: getColumns,
+    DBGetColumnsWithCancel: vi.fn((...args: any[]) => getColumns(...args.slice(0, 3))),
+    DBShowCreateTable: showCreateTable,
+    DBShowCreateTableWithCancel: vi.fn((...args: any[]) => showCreateTable(...args.slice(0, 3))),
+    DBGetIndexes: vi.fn(),
+    CancelQuery: vi.fn(),
+    GenerateQueryID: vi.fn(),
+    WriteSQLFile: vi.fn(),
+    ExportSQLFile: vi.fn(),
+  };
+});
 
 const nativeDetachedWindowState = vi.hoisted(() => ({
   openNativeQueryResultWindow: vi.fn(),
@@ -943,6 +966,9 @@ describe('QueryEditor external SQL save', () => {
       storeState.sqlEditorPendingTransactions[tabId] = transaction;
     });
     Object.values(backendApp).forEach((fn) => fn.mockReset());
+    backendApp.DBQueryMultiWithOptions.mockImplementation((...args: any[]) => backendApp.DBQueryMulti(...args.slice(0, 4)));
+    backendApp.DBQueryMultiTransactionalWithOptions.mockImplementation((...args: any[]) => backendApp.DBQueryMultiTransactional(...args.slice(0, 4)));
+    backendApp.DBQueryMultiInTransactionWithOptions.mockResolvedValue({ success: true, data: [] });
     nativeDetachedWindowState.openNativeQueryResultWindow.mockReset();
     nativeDetachedWindowState.openNativeQueryResultWindow.mockResolvedValue(false);
     messageApi.success.mockReset();
@@ -1189,10 +1215,106 @@ describe('QueryEditor external SQL save', () => {
     expect(backendApp.DBQueryMulti).toHaveBeenCalledOnce();
     expect(backendApp.DBGetColumns).not.toHaveBeenCalled();
     expect(backendApp.DBGetIndexes).not.toHaveBeenCalled();
-    expect(resultTabs).toHaveLength(52);
+    expect(resultTabs).toHaveLength(20);
     await act(async () => {
       renderer.unmount();
     });
+  });
+
+  it('bounds restored result sessions before mounting their DataGrids', async () => {
+    saveQueryEditorResultSession('tab-1', {
+      resultSets: Array.from({ length: 25 }, (_, index) => ({
+        key: `result-${index + 1}`,
+        sql: `select ${index + 1}`,
+        columns: ['value'],
+        rows: [{ value: index + 1 }],
+        pkColumns: [],
+        readOnly: true,
+      })),
+      activeResultKey: 'result-1',
+      isResultPanelVisible: true,
+    });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab()} />);
+    });
+
+    const panel = renderer.root.findByType(QueryEditorResultsPanel);
+    expect(panel.props.resultSets).toHaveLength(20);
+    expect(panel.props.resultSets.map((result: any) => result.key)).toContain('result-1');
+    expect(panel.props.activeResultKey).toBe('result-1');
+    expect(messageApi.info).toHaveBeenCalledWith(expect.stringContaining('20'));
+    renderer.unmount();
+  });
+
+  it('keeps a hidden result panel mounted until pending grid edits are cleared', async () => {
+    saveQueryEditorResultSession('tab-1', {
+      resultSets: [{
+        key: 'result-1',
+        sql: 'select id from users',
+        columns: ['id'],
+        rows: [{ id: 1 }],
+        pkColumns: ['id'],
+        readOnly: false,
+      }],
+      activeResultKey: 'result-1',
+      isResultPanelVisible: true,
+    });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab()} />);
+    });
+
+    await act(async () => {
+      dataGridState.latestProps.sessionState.onPendingChangesChange(true);
+    });
+    expect(renderer.root.findByType(QueryEditorResultsPanel).props.resultSets[0].hasPendingChanges).toBe(true);
+
+    await act(async () => {
+      renderer.root.findByType(QueryEditorResultsPanel).props.onHide();
+    });
+    const hiddenPanel = renderer.root.findByType(QueryEditorResultsPanel);
+    expect(hiddenPanel.props.hidden).toBe(true);
+    expect(hiddenPanel.props.isActive).toBe(false);
+
+    await act(async () => {
+      dataGridState.latestProps.sessionState.onPendingChangesChange(false);
+    });
+    expect(renderer.root.findAllByType(QueryEditorResultsPanel)).toHaveLength(0);
+    renderer.unmount();
+  });
+
+  it('does not clear a pending result when an execution produces no SQL', async () => {
+    saveQueryEditorResultSession('tab-1', {
+      resultSets: [{
+        key: 'result-1',
+        sql: 'select id from users',
+        columns: ['id'],
+        rows: [{ id: 1 }],
+        pkColumns: ['id'],
+        readOnly: false,
+        hasPendingChanges: true,
+      }],
+      activeResultKey: 'result-1',
+      isResultPanelVisible: true,
+    });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ query: '-- no executable SQL' })} />);
+    });
+    await act(async () => {
+      await findButton(renderer, '运行').props.onClick();
+    });
+
+    const panel = renderer.root.findByType(QueryEditorResultsPanel);
+    expect(panel.props.resultSets).toEqual([
+      expect.objectContaining({ key: 'result-1', hasPendingChanges: true }),
+    ]);
+    expect(backendApp.DBQueryMulti).not.toHaveBeenCalled();
+    renderer.unmount();
   });
 
   it('runs the whole Oracle procedure when the cursor is in the exception tail', async () => {
@@ -1267,6 +1389,58 @@ describe('QueryEditor external SQL save', () => {
     expect(executedSql).toContain('p_msg_out := substr');
     expect(executedSql).not.toBe(plsql.split('\n').slice(tailLine - 1).join('\n'));
     expect(executedSql).not.toContain('/;');
+    renderer?.unmount();
+  });
+
+  it('surfaces Oracle ALL_ERRORS after CREATE OR REPLACE instead of pretending execution succeeded', async () => {
+    storeState.connections[0].config.type = 'oracle';
+    storeState.connections[0].config.database = 'ORCLPDB1';
+    backendApp.DBQueryMulti.mockResolvedValueOnce({
+      success: true,
+      data: [{ columns: ['affectedRows'], rows: [{ affectedRows: 1 }] }],
+    });
+    backendApp.DBQuery.mockImplementation(async (_config: unknown, _dbName: string, sql: string) => {
+      if (/USER_ERRORS|ALL_ERRORS/i.test(String(sql))) {
+        return {
+          success: true,
+          data: [{
+            object_name: 'CPROC_TZHSSR_ORDER2SALE_A1',
+            object_type: 'PROCEDURE',
+            error_line: 12,
+            error_position: 5,
+            error_text: "PLS-00201: identifier 'MISSING_TABLE' must be declared",
+          }],
+        };
+      }
+      return { success: true, data: [] };
+    });
+    const plsql = [
+      'CREATE OR REPLACE PROCEDURE cproc_tzhssr_order2sale_A1 AS',
+      'BEGIN',
+      '  SELECT * FROM missing_table;',
+      'END;',
+    ].join('\n');
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ dbName: 'ORCLPDB1', query: plsql, queryMode: 'object-edit' })} />);
+    });
+    await act(async () => {
+      await findButton(renderer!, '运行').props.onClick();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const rendered = textContent(renderer!.toJSON());
+    expect(backendApp.DBQuery.mock.calls.some((call: unknown[]) => /USER_ERRORS|ALL_ERRORS/i.test(String(call[2])))).toBe(true);
+    expect(messageApi.success).not.toHaveBeenCalledWith('执行成功。');
+    expect(messageApi.error).toHaveBeenCalled();
+    expect(String(messageApi.error.mock.calls[0][0])).toContain('PLS-00201');
+    expect(rendered).toContain('PLS-00201');
+    expect(rendered).not.toContain('执行成功');
     renderer?.unmount();
   });
 

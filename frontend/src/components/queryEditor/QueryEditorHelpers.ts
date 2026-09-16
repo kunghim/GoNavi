@@ -2,6 +2,7 @@ import type { SqlLanguage } from 'sql-formatter';
 import type { TabData, ColumnDefinition, IndexDefinition } from '../../types';
 import { DBGetColumns, DBGetIndexes, DBQuery } from '../../../wailsjs/go/app/App';
 import { buildRpcConnectionConfig } from '../../utils/connectionRpcConfig';
+import { queryEditorMetadataQuery } from './queryEditorMetadataRequests';
 import {
     isMysqlFamilyDialect,
     isOracleLikeDialect,
@@ -1034,10 +1035,8 @@ export const buildCompletionTableCommentSQL = (dialect: string, dbName: string):
         case 'opengauss':
         case 'gaussdb':
             return `SELECT n.nspname || '.' || c.relname AS table_name, obj_description(c.oid, 'pg_class') AS table_comment FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind IN ('r', 'p') AND n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg|_%' ESCAPE '|' ORDER BY n.nspname, c.relname`;
-        case 'sqlserver': {
-            const safeDb = quoteSqlServerDbIdentifier(db);
-            return `SELECT s.name + '.' + t.name AS table_name, ep.value AS table_comment FROM ${safeDb}.sys.tables t JOIN ${safeDb}.sys.schemas s ON t.schema_id = s.schema_id LEFT JOIN ${safeDb}.sys.extended_properties ep ON ep.major_id = t.object_id AND ep.minor_id = 0 AND ep.name = 'MS_Description' WHERE t.type = 'U' ORDER BY s.name, t.name`;
-        }
+        case 'sqlserver':
+            return `SELECT s.name + '.' + t.name AS table_name, CONVERT(nvarchar(4000), ep.value) AS table_comment FROM sys.tables t JOIN sys.schemas s ON t.schema_id = s.schema_id LEFT JOIN sys.extended_properties ep ON ep.major_id = t.object_id AND ep.minor_id = 0 AND ep.name = 'MS_Description' WHERE t.type = 'U' ORDER BY s.name, t.name`;
         case 'clickhouse':
             return `SELECT name AS table_name, comment AS table_comment FROM system.tables WHERE database = '${escapedDb}' AND engine NOT IN ('View', 'MaterializedView') ORDER BY name`;
         case 'oracle': {
@@ -1377,10 +1376,8 @@ export const buildCompletionViewsMetadataQuerySpecs = (
         case 'opengauss':
         case 'gaussdb':
             return [{ sql: `SELECT schemaname AS schema_name, viewname AS view_name FROM pg_catalog.pg_views WHERE schemaname != 'information_schema' AND schemaname NOT LIKE 'pg|_%' ESCAPE '|' ORDER BY schemaname, viewname` }];
-        case 'sqlserver': {
-            const safeDb = quoteSqlServerDbIdentifier(dbName || 'master');
-            return [{ sql: `SELECT s.name AS schema_name, v.name AS view_name FROM ${safeDb}.sys.views v JOIN ${safeDb}.sys.schemas s ON v.schema_id = s.schema_id ORDER BY s.name, v.name` }];
-        }
+        case 'sqlserver':
+            return [{ sql: `SELECT s.name AS schema_name, v.name AS view_name FROM sys.views v JOIN sys.schemas s ON v.schema_id = s.schema_id ORDER BY s.name, v.name` }];
         case 'oracle': {
             const includeCurrentOwnerFallback = options?.includeCurrentOwnerFallback !== false;
             if (!includeCurrentOwnerFallback && safeDbName) {
@@ -1461,10 +1458,8 @@ export const buildCompletionTriggersMetadataQuerySpecs = (dialect: string, dbNam
         case 'opengauss':
         case 'gaussdb':
             return [{ sql: `SELECT DISTINCT event_object_schema AS schema_name, event_object_table AS table_name, trigger_name FROM information_schema.triggers WHERE trigger_schema NOT IN ('pg_catalog', 'information_schema') AND trigger_schema NOT LIKE 'pg|_%' ESCAPE '|' ORDER BY event_object_schema, event_object_table, trigger_name` }];
-        case 'sqlserver': {
-            const safeDb = quoteSqlServerDbIdentifier(dbName || 'master');
-            return [{ sql: `SELECT s.name AS schema_name, t.name AS table_name, tr.name AS trigger_name FROM ${safeDb}.sys.triggers tr JOIN ${safeDb}.sys.tables t ON tr.parent_id = t.object_id JOIN ${safeDb}.sys.schemas s ON t.schema_id = s.schema_id WHERE tr.parent_class = 1 ORDER BY s.name, t.name, tr.name` }];
-        }
+        case 'sqlserver':
+            return [{ sql: `SELECT s.name AS schema_name, t.name AS table_name, tr.name AS trigger_name FROM sys.triggers tr JOIN sys.tables t ON tr.parent_id = t.object_id JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE tr.parent_class = 1 ORDER BY s.name, t.name, tr.name` }];
         case 'oracle':
             if (!safeDbName) {
                 return [{ sql: 'SELECT TRIGGER_NAME AS trigger_name, TABLE_NAME AS table_name FROM USER_TRIGGERS ORDER BY TABLE_NAME, TRIGGER_NAME' }];
@@ -1518,10 +1513,8 @@ export const buildCompletionFunctionsMetadataQuerySpecs = (
                     sql: `SELECT n.nspname AS schema_name, p.proname AS routine_name, 'FUNCTION' AS routine_type FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg|_%' ESCAPE '|' ORDER BY n.nspname, p.proname`,
                 },
             ]);
-        case 'sqlserver': {
-            const safeDb = quoteSqlServerDbIdentifier(dbName || 'master');
-            return [{ sql: `SELECT s.name AS schema_name, o.name AS routine_name, CASE o.type WHEN 'P' THEN 'PROCEDURE' WHEN 'FN' THEN 'FUNCTION' WHEN 'IF' THEN 'FUNCTION' WHEN 'TF' THEN 'FUNCTION' END AS routine_type FROM ${safeDb}.sys.objects o JOIN ${safeDb}.sys.schemas s ON o.schema_id = s.schema_id WHERE o.type IN ('P','FN','IF','TF') ORDER BY o.type, s.name, o.name` }];
-        }
+        case 'sqlserver':
+            return [{ sql: `SELECT s.name AS schema_name, o.name AS routine_name, CASE o.type WHEN 'P' THEN 'PROCEDURE' WHEN 'FN' THEN 'FUNCTION' WHEN 'IF' THEN 'FUNCTION' WHEN 'TF' THEN 'FUNCTION' END AS routine_type FROM sys.objects o JOIN sys.schemas s ON o.schema_id = s.schema_id WHERE o.type IN ('P','FN','IF','TF') ORDER BY o.type, s.name, o.name` }];
         case 'oracle':
             if (options?.includeCurrentOwnerFallback === false && safeDbName) {
                 return [{
@@ -1587,20 +1580,18 @@ export const queryCompletionMetadataRowsBySpecs = async (
     config: Record<string, any>,
     dbName: string,
     specs: MetadataQuerySpec[],
+    request?: { connectionId: string; signal?: AbortSignal },
 ): Promise<MetadataQueryResult[]> => {
     const normalizedSpecs = normalizeMetadataQuerySpecs(specs);
     if (normalizedSpecs.length === 0) {
         return [];
     }
-    // Compatibility specs can be complementary (Oracle owners) as well as
-    // fallbacks. The same SSH tunnel/driver connection is often the shared
-    // bottleneck, so serialise requests to avoid queueing and contention while
-    // retaining every successful result in declaration order.
     const rpcConfig = buildRpcConnectionConfig(config) as any;
     const results: MetadataQueryResult[] = [];
     for (const spec of normalizedSpecs) {
+        if (request?.signal?.aborted) break;
         try {
-            const result = await DBQuery(rpcConfig, dbName, spec.sql);
+            const result = request ? await queryEditorMetadataQuery(request.connectionId, rpcConfig, dbName, spec.sql, request.signal) : await DBQuery(rpcConfig, dbName, spec.sql);
             if (result.success && Array.isArray(result.data)) {
                 results.push({
                     rows: result.data as Record<string, any>[],
@@ -1608,6 +1599,7 @@ export const queryCompletionMetadataRowsBySpecs = async (
                 });
             }
         } catch {
+            if (request?.signal?.aborted) break;
             // 忽略单条元数据查询失败，继续使用其它兼容查询结果。
         }
     }
@@ -1665,6 +1657,9 @@ export const QUERY_EDITOR_OBJECT_DECORATION_MAX_IDENTIFIERS = 200;
 export const QUERY_EDITOR_OBJECT_DECORATION_MAX_LINES = 1_000;
 export const QUERY_EDITOR_LIVE_DECORATION_MAX_TEXT_LENGTH = 50_000;
 export const QUERY_EDITOR_PERSISTED_DRAFT_MAX_TEXT_LENGTH = 50_000;
+export const QUERY_EDITOR_COMPLETION_ANALYSIS_MAX_TEXT_LENGTH = QUERY_EDITOR_LIVE_DECORATION_MAX_TEXT_LENGTH;
+export const QUERY_EDITOR_COMPLETION_ANALYSIS_PREFIX_CHARS = 16_000;
+export const QUERY_EDITOR_COMPLETION_ANALYSIS_SUFFIX_CHARS = 256;
 
 export const getQueryEditorModelValueLength = (model: any): number | null => {
     if (!model || typeof model.getValueLength !== 'function') {
@@ -1676,6 +1671,58 @@ export const getQueryEditorModelValueLength = (model: any): number | null => {
     } catch {
         return null;
     }
+};
+
+const normalizeQueryEditorCompletionAnalysisText = (sql: string): string => {
+    const normalized = String(sql || '').replace(/\r\n?/g, '\n');
+    return normalized.startsWith('\uFEFF') ? ` ${normalized.slice(1)}` : normalized;
+};
+
+export const readQueryEditorCompletionAnalysisText = (
+    model: any,
+    position: { lineNumber: number; column: number },
+): { text: string; cursorOffset: number } => {
+    const normalizedPosition = {
+        lineNumber: Math.max(1, Math.floor(Number(position?.lineNumber) || 1)),
+        column: Math.max(1, Math.floor(Number(position?.column) || 1)),
+    };
+    const modelLength = getQueryEditorModelValueLength(model);
+    const canReadWindow = typeof model?.getOffsetAt === 'function'
+        && typeof model?.getPositionAt === 'function'
+        && typeof model?.getValueInRange === 'function';
+    if (
+        modelLength === null
+        || modelLength <= QUERY_EDITOR_COMPLETION_ANALYSIS_MAX_TEXT_LENGTH
+        || !canReadWindow
+    ) {
+        const text = normalizeQueryEditorCompletionAnalysisText(String(model?.getValue?.() || ''));
+        return {
+            text,
+            cursorOffset: getNormalizedOffsetAtPosition(text, normalizedPosition),
+        };
+    }
+
+    const rawCursorOffset = Number(model.getOffsetAt(normalizedPosition));
+    const cursorOffset = Number.isFinite(rawCursorOffset)
+        ? Math.max(0, Math.min(modelLength, rawCursorOffset))
+        : 0;
+    const startOffset = Math.max(0, cursorOffset - QUERY_EDITOR_COMPLETION_ANALYSIS_PREFIX_CHARS);
+    const endOffset = Math.min(modelLength, cursorOffset + QUERY_EDITOR_COMPLETION_ANALYSIS_SUFFIX_CHARS);
+    const start = model.getPositionAt(startOffset);
+    const cursor = model.getPositionAt(cursorOffset);
+    const end = model.getPositionAt(endOffset);
+    const toRange = (from: any, to: any) => ({
+        startLineNumber: from.lineNumber,
+        startColumn: from.column,
+        endLineNumber: to.lineNumber,
+        endColumn: to.column,
+    });
+    const prefix = normalizeQueryEditorCompletionAnalysisText(String(model.getValueInRange(toRange(start, cursor)) || ''));
+    const suffix = normalizeQueryEditorCompletionAnalysisText(String(model.getValueInRange(toRange(cursor, end)) || ''));
+    return {
+        text: `${prefix}${suffix}`,
+        cursorOffset: prefix.length,
+    };
 };
 
 export type QueryIdentifierPathSegment = {
@@ -2540,6 +2587,8 @@ export type QueryEditorTableReference = {
     aliasSegment?: QueryIdentifierPathSegment;
 };
 
+const QUERY_EDITOR_IOTDB_TABLE_PATH_MAX_PARTS = 8;
+
 const createQueryEditorIdentitySegment = (value: string): QueryIdentifierPathSegment => ({
     raw: value,
     value,
@@ -2757,8 +2806,11 @@ const analyzeQueryEditorTableReferences = (source: string, dbType = ''): {
 
             const pathTokens = [token.raw];
             let pathEnd = index;
+            const maxPathTokens = String(resolveSqlDialect(dbType) || dbType || '').toLowerCase() === 'iotdb'
+                ? QUERY_EDITOR_IOTDB_TABLE_PATH_MAX_PARTS
+                : 3;
             while (
-                pathTokens.length < 3
+                pathTokens.length < maxPathTokens
                 && tokens[pathEnd + 1]?.raw === '.'
                 && isQueryEditorSqlIdentifierToken(tokens[pathEnd + 2])
             ) {
@@ -2939,6 +2991,25 @@ export const collectQueryEditorTableReferences = (source: string, dbType = ''): 
 
 export type QueryEditorExecutionContext = { dbName?: string; schemaName?: string };
 
+const resolveIotdbVisibleStorageGroup = (
+    parts: string[],
+    visible: Map<string, string>,
+): string | undefined => {
+    if (parts.length < 2 || visible.size === 0) return undefined;
+    for (let length = parts.length - 1; length >= 1; length -= 1) {
+        const matched = visible.get(parts.slice(0, length).join('.').toLowerCase());
+        if (matched) return matched;
+    }
+    return undefined;
+};
+
+const usesQueryEditorCatalogQualifiedTwoPartNames = (dialect: string): boolean => {
+    const normalizedDialect = String(resolveSqlDialect(dialect) || '').toLowerCase();
+    return isMysqlFamilyDialect(normalizedDialect)
+        || normalizedDialect === 'clickhouse'
+        || normalizedDialect === 'tdengine';
+};
+
 /** Resolve the database/schema explicitly named by the SQL, without changing SQL text. */
 export const resolveQueryEditorExecutionContext = (
     source: string,
@@ -2958,7 +3029,16 @@ export const resolveQueryEditorExecutionContext = (
     for (const reference of collectQueryEditorTableReferences(source, normalized)) {
         const parts = reference.parts.map((part) => String(part || '').trim()).filter(Boolean);
         if (parts.length < 2) continue;
-        if (normalized === 'sqlserver') {
+        if (normalized === 'iotdb') {
+            // Storage groups are multi-segment paths such as root.ln, not the
+            // first identifier of a timeseries (root).
+            const storageGroup = resolveIotdbVisibleStorageGroup(parts, visible);
+            if (storageGroup) result.dbName = storageGroup;
+        } else if (normalized === 'trino') {
+            // Toolbar namespaces are catalog.schema. Two-part schema.table
+            // stays in the current catalog; only catalog.schema.table can switch.
+            if (parts.length >= 3) result.dbName = canonical(`${parts[0]}.${parts[1]}`);
+        } else if (normalized === 'sqlserver') {
             if (parts.length >= 3) result.dbName = canonical(parts[0]);
         } else if (isPgLikeDialect(normalized)) {
             if (parts.length >= 3) {
@@ -2967,9 +3047,18 @@ export const resolveQueryEditorExecutionContext = (
             } else if (parts.length === 2) {
                 result.schemaName = parts[0];
             }
-        } else if (isOracleLikeDialect(normalized)) {
-            result.dbName = canonical(parts[0]);
-        } else if (isMysqlFamilyDialect(normalized) || ['clickhouse', 'tdengine', 'iotdb'].includes(normalized)) {
+        } else if (
+            isOracleLikeDialect(normalized)
+            || normalized === 'sqlite'
+            || normalized === 'duckdb'
+            || normalized === 'iris'
+        ) {
+            // owner.table / schema.table / attached-db.table is already
+            // qualified. Switching the toolbar catalog reconnects or reloads
+            // the wrong namespace (Oracle CURRENT_SCHEMA, IRIS namespace,
+            // DuckDB/SQLite attached catalog).
+            continue;
+        } else if (usesQueryEditorCatalogQualifiedTwoPartNames(normalized) && parts.length === 2) {
             result.dbName = canonical(parts[0]);
         }
         if (result.dbName || result.schemaName) break;
@@ -2989,7 +3078,12 @@ export const isQueryEditorTableAliasCompletionContext = (source: string, dbType 
 
 export type QueryEditorAliasMap = Record<
     string,
-    { dbName: string; tableName: string; explicitOwnerName?: string }
+    {
+        dbName: string;
+        tableName: string;
+        explicitOwnerName?: string;
+        sourceSegments?: QueryIdentifierPathSegment[];
+    }
 >;
 
 export const buildQueryEditorAliasMap = (
@@ -3016,8 +3110,8 @@ export const buildQueryEditorAliasMap = (
         const shortTable = reference.segments?.[reference.segments.length - 1]
             || splitQueryIdentifierPathSegments(parts[parts.length - 1] || '', dbType)[0];
         const aliasTarget = explicitOwnerName
-            ? { dbName, tableName, explicitOwnerName }
-            : { dbName, tableName };
+            ? { dbName, tableName, explicitOwnerName, sourceSegments: reference.segments }
+            : { dbName, tableName, sourceSegments: reference.segments };
         const shortTableKey = shortTable ? buildQueryEditorIdentifierIdentityKey([shortTable], dbType) : '';
         if (shortTableKey) aliasMap[shortTableKey] = aliasTarget;
 
@@ -3142,6 +3236,28 @@ export const collectQueryEditorReferencedDatabaseNames = (
         if (!tableIdent) continue;
         const parts = reference.parts.map((part) => String(part || '').trim()).filter(Boolean);
         if (parts.length < 2) continue;
+
+        if (normalizedDialect === 'iotdb') {
+            const storageGroup = resolveIotdbVisibleStorageGroup(parts, visibleDbByLower);
+            if (storageGroup && storageGroup.toLowerCase() !== currentDbKey) {
+                addDb(storageGroup);
+            }
+            continue;
+        }
+        if (normalizedDialect === 'trino') {
+            if (parts.length >= 3) {
+                const namespace = `${parts[0]}.${parts[1]}`;
+                const key = namespace.toLowerCase();
+                if (key !== currentDbKey) {
+                    addDb(visibleDbByLower.get(key) || namespace);
+                }
+            }
+            continue;
+        }
+        if (usesQueryEditorCatalogQualifiedTwoPartNames(normalizedDialect) && parts.length !== 2) {
+            // catalog.db.table (StarRocks/Doris/ClickHouse) is already qualified.
+            continue;
+        }
 
         const firstPart = parts[0];
         const firstKey = firstPart.toLowerCase();
@@ -4197,16 +4313,9 @@ export const resolveQueryEditorHoverTarget = (
             // the current database/schema interpretation when that catalog is
             // unavailable.
             const explicitOwner = String(aliasInfo.explicitOwnerName || '').trim();
-            const aliasReference = collectQueryEditorTableReferences(fullText, dialect).find((reference) => {
-                const referenceAlias = reference.aliasSegment
-                    || (reference.alias
-                        ? splitQueryIdentifierPathSegments(reference.alias, dialect)[0]
-                        : undefined);
-                return referenceAlias
-                    && buildQueryEditorIdentifierIdentityKey([referenceAlias], dialect) === aliasKey;
-            });
-            const sourceSegments = aliasReference?.segments
-                || splitQueryIdentifierPathSegments(aliasInfo.tableName, dialect);
+            const sourceSegments = aliasInfo.sourceSegments && aliasInfo.sourceSegments.length > 0
+                ? aliasInfo.sourceSegments
+                : splitQueryIdentifierPathSegments(aliasInfo.tableName, dialect);
             const currentSchemaColumn = explicitOwner
                 ? findColumnTarget(
                     currentDb,

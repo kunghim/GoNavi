@@ -6,6 +6,7 @@ import { readV2ThemeCss } from '../test/readV2ThemeCss';
 import {
   formatQueryExecutionElapsed,
   resolveQueryExecutionSpeedIcon,
+  resolveReportedQueryDurationMs,
   useQueryExecutionElapsed,
 } from './QueryEditorToolbar';
 
@@ -93,7 +94,7 @@ describe('QueryEditorToolbar layout', () => {
     );
     const monacoStageCss = css.slice(
       css.indexOf('body[data-ui-version="v2"] .gn-v2-query-monaco-stage {'),
-      css.indexOf('body[data-ui-version="v2"] .gn-v2-query-monaco-stage:has('),
+      css.indexOf('body[data-ui-version="v2"] .gn-v2-query-monaco-stage.is-find-widget-visible'),
     );
 
     expect(defaultMonacoCss).toContain('--gn-monaco-bg: var(--gn-bg-panel-2);');
@@ -103,6 +104,14 @@ describe('QueryEditorToolbar layout', () => {
     expect(monacoStageCss).toContain(
       'background: var(--gn-monaco-bg, var(--gn-query-workbench-bg));',
     );
+  });
+
+  it('does not use :has() against the Monaco subtree for find-widget overflow', () => {
+    const css = readV2ThemeCss();
+    expect(css).toContain(
+      'body[data-ui-version="v2"] .gn-v2-query-monaco-stage.is-find-widget-visible',
+    );
+    expect(css).not.toContain('.gn-v2-query-monaco-stage:has(');
   });
 
   it('maps query toolbar button states onto public custom-theme variables', () => {
@@ -239,6 +248,13 @@ describe('QueryEditorToolbar layout', () => {
     expect(formatQueryExecutionElapsed(Number.NaN)).toBe('00:00.0');
   });
 
+  it('prefers backend SQL duration over frontend wall-clock fallback', () => {
+    expect(resolveReportedQueryDurationMs({ durationMs: 18 }, 1_500)).toBe(18);
+    expect(resolveReportedQueryDurationMs({ durationMs: 0 }, 1_500)).toBe(0);
+    expect(resolveReportedQueryDurationMs({}, 1_500)).toBe(1_500);
+    expect(resolveReportedQueryDurationMs(undefined, 42.8)).toBe(43);
+  });
+
   it('uses distinct speed icons at the one- and five-second boundaries', () => {
     expect(resolveQueryExecutionSpeedIcon(0)).toBe('⚡');
     expect(resolveQueryExecutionSpeedIcon(999)).toBe('⚡');
@@ -253,19 +269,31 @@ describe('QueryEditorToolbar layout', () => {
     let elapsedMs = -1;
     let renderer: ReactTestRenderer | null = null;
 
-    const Harness: React.FC<{ loading: boolean; runToken: number }> = ({ loading, runToken }) => {
-      elapsedMs = useQueryExecutionElapsed(loading, runToken);
+    const Harness: React.FC<{
+      timingActive: boolean;
+      runToken: number;
+      completedMs?: number | null;
+    }> = ({ timingActive, runToken, completedMs = null }) => {
+      elapsedMs = useQueryExecutionElapsed(timingActive, runToken, completedMs);
       return null;
     };
 
     try {
       act(() => {
-        renderer = create(<Harness loading={false} runToken={0} />);
+        renderer = create(<Harness timingActive={false} runToken={0} />);
       });
       expect(elapsedMs).toBe(0);
 
       act(() => {
-        renderer?.update(<Harness loading runToken={1} />);
+        renderer?.update(<Harness timingActive={false} runToken={1} />);
+      });
+      act(() => {
+        vi.advanceTimersByTime(1_500);
+      });
+      expect(elapsedMs).toBe(0);
+
+      act(() => {
+        renderer?.update(<Harness timingActive runToken={1} />);
       });
       act(() => {
         vi.advanceTimersByTime(350);
@@ -273,7 +301,7 @@ describe('QueryEditorToolbar layout', () => {
       expect(elapsedMs).toBe(300);
 
       act(() => {
-        renderer?.update(<Harness loading runToken={2} />);
+        renderer?.update(<Harness timingActive runToken={2} />);
       });
       expect(elapsedMs).toBe(0);
 
@@ -283,17 +311,17 @@ describe('QueryEditorToolbar layout', () => {
       expect(elapsedMs).toBe(300);
 
       act(() => {
-        renderer?.update(<Harness loading={false} runToken={2} />);
+        renderer?.update(<Harness timingActive={false} runToken={2} completedMs={18} />);
       });
-      expect(elapsedMs).toBe(350);
+      expect(elapsedMs).toBe(18);
 
       act(() => {
         vi.advanceTimersByTime(1_000);
       });
-      expect(elapsedMs).toBe(350);
+      expect(elapsedMs).toBe(18);
 
       act(() => {
-        renderer?.update(<Harness loading runToken={3} />);
+        renderer?.update(<Harness timingActive={false} runToken={3} completedMs={null} />);
       });
       expect(elapsedMs).toBe(0);
     } finally {
@@ -307,6 +335,7 @@ describe('QueryEditorToolbar layout', () => {
   it('keeps live and completed execution time at the editor bottom-left', () => {
     const toolbarSource = readFileSync(new URL('./QueryEditorToolbar.tsx', import.meta.url), 'utf8');
     const editorSource = readFileSync(new URL('./QueryEditor.tsx', import.meta.url), 'utf8');
+    const timerSource = readFileSync(new URL('./queryEditor/QueryEditorExecutionTimer.tsx', import.meta.url), 'utf8');
     const css = readV2ThemeCss();
     const statusbarCss = css.slice(
       css.indexOf('.gn-query-execution-statusbar {'),
@@ -316,15 +345,27 @@ describe('QueryEditorToolbar layout', () => {
       css.indexOf('.gn-query-execution-elapsed {'),
       css.indexOf('body[data-ui-version="v2"] .gn-v2-query-resizer {'),
     );
+    const cancelFn = editorSource.slice(
+      editorSource.indexOf('const finishCancelledRun = () => {'),
+      editorSource.indexOf('if (!currentQueryIdRef.current)'),
+    );
 
     expect(toolbarSource).toContain('globalThis.setInterval(updateElapsed, QUERY_EXECUTION_TIMER_INTERVAL_MS)');
     expect(toolbarSource).toContain('startedAtRef.current = null');
     expect(toolbarSource).not.toContain('gn-query-toolbar-execution-slot');
-    expect(editorSource).toContain('className="gn-query-execution-statusbar"');
-    expect(editorSource).toContain('className="gn-query-execution-timer"');
-    expect(editorSource).toContain('role="timer"');
-    expect(editorSource).toContain('query_editor.execution.elapsed');
-    const statusbarIndex = editorSource.indexOf('className="gn-query-execution-statusbar"');
+    expect(timerSource).toContain('className="gn-query-execution-statusbar"');
+    expect(timerSource).toContain('className="gn-query-execution-timer"');
+    expect(timerSource).toContain('role="timer"');
+    expect(timerSource).toContain('query_editor.execution.elapsed');
+    expect(timerSource).toContain('useQueryExecutionElapsed(');
+    expect(editorSource).toContain('QueryEditorExecutionTimer');
+    expect(editorSource).toContain('executionTimingActive');
+    expect(editorSource).toContain('completedExecutionElapsedMs');
+    expect(editorSource).toContain('timingActive={executionTimingActive && loading}');
+    expect(editorSource).not.toContain('useQueryExecutionElapsed(loading, executionRunToken)');
+    expect(editorSource).not.toContain('useQueryExecutionElapsed(');
+    expect(cancelFn).toContain('setExecutionTimingActive(false)');
+    const statusbarIndex = editorSource.indexOf('<QueryEditorExecutionTimer');
     expect(statusbarIndex).toBeGreaterThan(editorSource.indexOf('<Editor'));
     expect(statusbarIndex).toBeLessThan(editorSource.indexOf('<QueryEditorResultsPanel', statusbarIndex));
     expect(statusbarCss).toContain('flex: 0 0 22px;');

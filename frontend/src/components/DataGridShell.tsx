@@ -452,6 +452,7 @@ const DataGridShell: React.FC<DataGridShellProps> = (props) => {
     virtualListItemHeightFixed,
     virtualListItemNativeScrollbarControlled,
     virtualListItemHorizontalOffsetComposited,
+    virtualListItemHorizontalSyncMode,
     virtualListItemColumnVirtual,
     window,
   } = props;
@@ -460,6 +461,8 @@ const renderDataTableView = () => (
       <div
           ref={tableContainerRef}
           className={`gn-v2-data-grid-table-shell gn-v2-data-grid-table-wrap data-grid-table-wrap${horizontalScrollVisible ? ' data-grid-table-wrap-external-active' : ''}`}
+          data-horizontal-scroll-native={virtualListItemHorizontalOffsetComposited ? 'true' : undefined}
+          data-horizontal-scroll-sync={virtualListItemHorizontalOffsetComposited ? virtualListItemHorizontalSyncMode : undefined}
           onClickCapture={enableVirtual ? handleVirtualTableClickCapture : undefined}
           onDoubleClickCapture={enableVirtual ? handleVirtualTableDoubleClickCapture : undefined}
           onContextMenuCapture={enableVirtual ? handleVirtualTableContextMenuCapture : undefined}
@@ -501,6 +504,7 @@ const renderDataTableView = () => (
               virtualListItemNativeScrollbarControlled={virtualListItemNativeScrollbarControlled}
               virtualListItemHorizontalOffsetComposited={virtualListItemHorizontalOffsetComposited}
           />
+          {virtualListItemHorizontalOffsetComposited ? null : (
           <div
               ref={externalHorizontalScrollRef}
               className="data-grid-external-horizontal-scroll"
@@ -520,6 +524,7 @@ const renderDataTableView = () => (
                   style={{ width: `${Math.max(horizontalScrollWidth, externalScrollbarMinWidth)}px` }}
               />
           </div>
+          )}
       </div>
   );
   const pageFindContent = (

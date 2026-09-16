@@ -1513,6 +1513,24 @@ export namespace app {
 	        this.description = source["description"];
 	    }
 	}
+	export class QueryResultBudgetOptions {
+	    maxRowsPerResult?: number;
+	    maxTotalRows?: number;
+	    maxTotalBytes?: number;
+	    maxFieldBytes?: number;
+
+	    static createFrom(source: any = {}) {
+	        return new QueryResultBudgetOptions(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.maxRowsPerResult = source["maxRowsPerResult"];
+	        this.maxTotalRows = source["maxTotalRows"];
+	        this.maxTotalBytes = source["maxTotalBytes"];
+	        this.maxFieldBytes = source["maxFieldBytes"];
+	    }
+	}
 	export class RedisExportKeysOptions {
 	    scope?: string;
 	    keys?: string[];
@@ -2536,6 +2554,7 @@ export namespace connection {
 	    retryable?: boolean;
 	    truncated?: boolean;
 	    scannedCount?: number;
+	    durationMs?: number;
 	    queryId?: string;
 	    cancellationState?: string;
 	    transactionId?: string;
@@ -2563,6 +2582,7 @@ export namespace connection {
 	        this.retryable = source["retryable"];
 	        this.truncated = source["truncated"];
 	        this.scannedCount = source["scannedCount"];
+	        this.durationMs = source["durationMs"];
 	        this.queryId = source["queryId"];
 	        this.cancellationState = source["cancellationState"];
 	        this.transactionId = source["transactionId"];

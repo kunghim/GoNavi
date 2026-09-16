@@ -3,7 +3,11 @@ import Modal from './common/ResizableDraggableModal';
 import TitleBarQuickActions, { type TitleBarQuickAction } from './TitleBarQuickActions';
 import { type DataSyncEntryModeAlias } from './dataSyncEntryMode';
 import type { DatabaseCharsetOption, DatabaseCollationOption } from '../utils/databaseCharset';
-import SidebarSearchPanel, { type SidebarSearchPanelProps } from './sidebar/SidebarSearchPanel';
+import SidebarSearchPanel, {
+  type SidebarSearchPanelProps,
+  type V2CommandSearchCopyAction,
+  type V2CommandSearchCopyOption,
+} from './sidebar/SidebarSearchPanel';
 import { buildSidebarNodeMenuItems } from './sidebar/sidebarNodeMenu';
 import {
   getMetadataDialect,
@@ -54,8 +58,12 @@ import {
   formatSidebarRowCount,
   hasSidebarLazyChildren,
   shouldLoadSidebarNodeOnExpand,
+  resolveSidebarDoubleClickExpandedKeys,
   getV2RailConnectionGroupBadgeText,
   resolveSidebarTitlebarObjectName,
+  resolveSidebarTableNameForCopy,
+  resolveSidebarDatabaseNameForCopy,
+  isV2SidebarObjectNode,
   clearSidebarHostConnectionState,
   shouldDeferSidebarTitlebarSelection,
   type V2ExplorerFilter,
@@ -1439,6 +1447,7 @@ const Sidebar: React.FC<{
       handleExportSchemaSQL,
       openBatchTableWorkbench,
       openBatchDatabaseWorkbench,
+      openBatchConnectionWorkbench,
   } = useSidebarBatchExport({
       connections,
       selectedNodesRef,
@@ -2623,7 +2632,7 @@ const Sidebar: React.FC<{
   };
 
   const onDoubleClick = (e: any, node: any) => {
-      // 双击时取消单击延迟动作（如表概览打开），让双击只触发展开/折叠
+      // 双击时取消单击延迟动作（如表概览打开）。连接节点只展开不折叠，其它目录仍切换展开。
       if (clickTimerRef.current) {
           clearTimeout(clickTimerRef.current);
           clickTimerRef.current = null;
@@ -2842,13 +2851,15 @@ const Sidebar: React.FC<{
       }
 
       const key = node.key;
-      const isExpanded = expandedKeys.includes(key);
-      const newExpandedKeys = isExpanded
-          ? expandedKeys.filter(k => k !== key)
-          : [...expandedKeys, key];
-
-      setExpandedKeys(newExpandedKeys);
-      if (!isExpanded) {
+      const { expandedKeys: nextExpandedKeys, didExpand } = resolveSidebarDoubleClickExpandedKeys({
+          nodeType: type,
+          nodeKey: key,
+          expandedKeys,
+      });
+      setExpandedKeys(nextExpandedKeys);
+      // 连接节点双击只展开：工作台定位已经展开后，再双击同一 Host 保持库树打开。
+      // 若已展开但子节点尚未加载，继续走懒加载，而不是把树收起来。
+      if (didExpand || (type === 'connection' && shouldLoadSidebarNodeOnExpand(node))) {
           setAutoExpandParent(false);
           if (shouldLoadSidebarNodeOnExpand(node)) {
               void onLoadData(node);
@@ -3609,6 +3620,7 @@ const Sidebar: React.FC<{
       handleExportDatabaseSQL,
       openBatchTableWorkbench,
       openBatchDatabaseWorkbench,
+      openBatchConnectionWorkbench,
       handleRunSQLFile,
       handleDeleteDatabase,
       onCreateConnectionInGroup,
@@ -4076,6 +4088,7 @@ const Sidebar: React.FC<{
     openExportDialog,
     openBatchTableWorkbench,
     openBatchDatabaseWorkbench,
+    openBatchConnectionWorkbench,
     isSavedQueryUnmatched,
     connections,
     handleRebindSavedQuery,
@@ -4472,6 +4485,7 @@ const Sidebar: React.FC<{
   const v2DataWorkflowLabel = t('app.tools.group.workflow.title');
   const v2BatchTablesLabel = t('sidebar.action.batch_tables');
   const v2BatchDatabasesLabel = t('sidebar.action.batch_databases');
+  const v2BatchConnectionsLabel = t('sidebar.action.batch_connections');
   const v2DataImportLabel = t('sidebar.action.data_import');
   const v2SqlToolsLabel = t('sidebar.action.sql_tools');
   const v2SlowQueryLabel = t('sql_analysis.slow_query.rail.aria_label');
@@ -4550,6 +4564,12 @@ const Sidebar: React.FC<{
       label: v2DataWorkflowLabel,
       menu: [
         {
+          key: 'batch-connections',
+          label: v2BatchConnectionsLabel,
+          icon: <CloudOutlined aria-hidden="true" />,
+          onClick: openBatchConnectionWorkbench,
+        },
+        {
           key: 'batch-tables',
           label: v2BatchTablesLabel,
           icon: <TableOutlined aria-hidden="true" />,
@@ -4618,6 +4638,105 @@ const Sidebar: React.FC<{
     ? document.getElementById('gonavi-titlebar-quick-actions')
     : null;
 
+  const getCommandSearchCopyOptions = useCallback((item: V2CommandSearchItem): V2CommandSearchCopyOption[] => {
+    if (item.kind === 'action') return [];
+
+    if (item.kind === 'recent') {
+      const options: V2CommandSearchCopyOption[] = [];
+      if (String(item.sql || '').trim()) {
+        options.push({
+          action: 'sql',
+          label: t('sidebar.command_search.context_menu.copy_sql'),
+        });
+      }
+      if (String(item.dbName || '').trim()) {
+        options.push({
+          action: 'database-name',
+          label: t('sidebar.command_search.context_menu.copy_database_name'),
+        });
+      }
+      const connectionId = String(item.connectionId || '').trim();
+      const connectionName = connections.find((connection) => connection.id === connectionId)?.name?.trim() || '';
+      if (connectionName) {
+        options.push({
+          action: 'connection-name',
+          label: t('sidebar.command_search.context_menu.copy_connection_name'),
+        });
+      }
+      return options;
+    }
+
+    const node = item.node;
+    const nodeType = String(node?.type || '');
+    const options: V2CommandSearchCopyOption[] = [];
+    if (isV2SidebarObjectNode(node)) {
+      options.push({
+        action: 'object-name',
+        label: t('sidebar.command_search.context_menu.copy_object_name'),
+      });
+    }
+    if (nodeType !== 'connection') {
+      options.push({
+        action: 'database-name',
+        label: t('sidebar.command_search.context_menu.copy_database_name'),
+      });
+    }
+    const connectionId = resolveSidebarNodeConnectionId(node, connectionIds);
+    const connectionName = connections.find((connection) => connection.id === connectionId)?.name?.trim() || '';
+    if (connectionName) {
+      options.push({
+        action: 'connection-name',
+        label: t('sidebar.command_search.context_menu.copy_connection_name'),
+      });
+    }
+    return options.filter((option) => {
+      if (option.action === 'object-name') return Boolean(resolveSidebarTableNameForCopy(node));
+      if (option.action === 'database-name') return Boolean(resolveSidebarDatabaseNameForCopy(node));
+      return true;
+    });
+  }, [connectionIds, connections]);
+
+  const handleCopyCommandSearchItem = useCallback(async (
+    item: V2CommandSearchItem,
+    action: V2CommandSearchCopyAction,
+  ): Promise<void> => {
+    let value = '';
+    if (item.kind === 'recent') {
+      if (action === 'sql') value = item.sql;
+      if (action === 'database-name') value = String(item.dbName || '');
+      if (action === 'connection-name') {
+        const connectionId = String(item.connectionId || '').trim();
+        value = connections.find((connection) => connection.id === connectionId)?.name || '';
+      }
+    } else if (item.kind === 'node') {
+      if (action === 'object-name') value = resolveSidebarTableNameForCopy(item.node);
+      if (action === 'database-name') value = resolveSidebarDatabaseNameForCopy(item.node);
+      if (action === 'connection-name') {
+        const connectionId = resolveSidebarNodeConnectionId(item.node, connectionIds);
+        value = connections.find((connection) => connection.id === connectionId)?.name || '';
+      }
+    }
+
+    const normalizedValue = String(value || '').trim();
+    if (!normalizedValue) {
+      message.warning(t('sidebar.copy_object_name.empty', {
+        label: t(`sidebar.command_search.context_menu.copy_${action.replace('-', '_')}`),
+      }));
+      return;
+    }
+
+    try {
+      const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard;
+      if (!clipboard?.writeText) throw new Error('Clipboard API unavailable');
+      await clipboard.writeText(value);
+      message.success(t('sidebar.command_search.copy_success'));
+    } catch (error: any) {
+      message.error(t('sidebar.command_search.copy_failed', {
+        error: error?.message || String(error),
+      }));
+    }
+  }, [connectionIds, connections]);
+
   const v2CommandSearchPanelProps: SidebarSearchPanelProps<V2CommandSearchItem> = {
     isOpen: isV2CommandSearchOpen,
     searchValue: v2CommandSearchValue,
@@ -4644,6 +4763,8 @@ const Sidebar: React.FC<{
         if (item.kind === 'recent') hideSqlLogFromRecent(item.logId);
       },
       onClearRecentItems: clearRecentSqlLogs,
+      getCopyOptions: getCommandSearchCopyOptions,
+      onCopyCommandSearchItem: handleCopyCommandSearchItem,
     },
   };
 
@@ -4758,25 +4879,33 @@ const Sidebar: React.FC<{
         </div>
         )}
 
-        {showV2ObjectKindFilters && (
-            <div className="gn-v2-explorer-filter-tabs" aria-label={t('sidebar.command_search.object_kind.filter_aria')}>
-                {V2_EXPLORER_FILTER_OPTIONS.map((item) => {
-                    const label = t(item.labelKey);
-                    return (
-                    <Tooltip key={item.key} title={label} mouseEnterDelay={0.25}>
-                    <button
-                        type="button"
-                        className={v2ExplorerFilter === item.key ? 'is-active' : undefined}
-                        aria-label={label}
-                        aria-pressed={v2ExplorerFilter === item.key}
-                        data-object-kind-filter={item.key}
-                        onClick={() => setV2ExplorerFilter(item.key)}
-                    >
-                        {V2_EXPLORER_FILTER_ICONS[item.key]}
-                    </button>
-                    </Tooltip>
-                    );
-                })}
+        {hasRelationalObjectKindFilterConnection && (
+            <div
+                className="gn-v2-explorer-filter-slot"
+                data-object-kind-filter-slot="true"
+                data-object-kind-filter-visible={showV2ObjectKindFilters ? 'true' : 'false'}
+            >
+                {showV2ObjectKindFilters && (
+                    <div className="gn-v2-explorer-filter-tabs" aria-label={t('sidebar.command_search.object_kind.filter_aria')}>
+                        {V2_EXPLORER_FILTER_OPTIONS.map((item) => {
+                            const label = t(item.labelKey);
+                            return (
+                            <Tooltip key={item.key} title={label} mouseEnterDelay={0.25}>
+                            <button
+                                type="button"
+                                className={v2ExplorerFilter === item.key ? 'is-active' : undefined}
+                                aria-label={label}
+                                aria-pressed={v2ExplorerFilter === item.key}
+                                data-object-kind-filter={item.key}
+                                onClick={() => setV2ExplorerFilter(item.key)}
+                            >
+                                {V2_EXPLORER_FILTER_ICONS[item.key]}
+                            </button>
+                            </Tooltip>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
         )}
 

@@ -1,4 +1,4 @@
-import React, { useSyncExternalStore } from 'react'
+import React, { useEffect, useSyncExternalStore } from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 // import './index.css' // Optional global styles
@@ -8,6 +8,9 @@ import { I18nProvider } from './i18n/provider'
 import { applyDayjsLocale } from './i18n/runtime'
 import { useStore } from './store'
 import { cloneBrowserMockValue, duplicateBrowserMockConnection, resolveBrowserMockSecretFlag } from './utils/browserMockConnections'
+import RootErrorBoundary from './components/RootErrorBoundary'
+import { hideBootSplash } from './utils/bootSplash'
+import { signalMainWindowFrontendReady, waitForMainWindowContentPaint } from './utils/mainWindowStartup'
 import { configureAntdStaticOverlayLayer } from './utils/overlayZIndex'
 import { normalizeConnectionEnvironmentType } from './utils/connectionEnvironment'
 import { resolveBrandIconRemoteSrc } from './brand/brandIcons'
@@ -444,6 +447,19 @@ if (
             clientCommand: 'opencode',
             message: t('app.browser_mock.mcp_client.opencode.not_detected'),
             configPath: 'C:/Users/mock/.config/opencode/opencode.json',
+            command: 'C:/Program Files/GoNavi/GoNavi.exe',
+            args: ['mcp-server'],
+        },
+        {
+            client: 'cursor',
+            displayName: 'Cursor',
+            installMode: 'auto',
+            installed: false,
+            matchesCurrent: false,
+            clientDetected: false,
+            clientCommand: 'cursor',
+            message: t('ai_chat.mcp_client.install.summary.missing', { label: 'Cursor' }),
+            configPath: 'C:/Users/mock/.cursor/mcp.json',
             command: 'C:/Program Files/GoNavi/GoNavi.exe',
             args: ['mcp-server'],
         },
@@ -1553,6 +1569,7 @@ if (
                     };
                 },
                 AIInstallZCodeMCP: async () => installBrowserMockMCPClient('zcode', 'ZCode', 'C:/Users/mock/.zcode/cli/config.json'),
+                AIInstallCursorMCP: async () => installBrowserMockMCPClient('cursor', 'Cursor', 'C:/Users/mock/.cursor/mcp.json'),
                 AIInstallDeepSeekHarnessMCP: async () => installBrowserMockMCPClient('deepseek-harness', 'DeepSeek Harness', 'C:/Users/mock/.dsh/cordis.patch.yml'),
                 AIInstallKimiMCP: async () => installBrowserMockMCPClient('kimi', 'Kimi Code', 'C:/Users/mock/.kimi-code/mcp.json'),
                 AIInstallGrokBuildMCP: async () => installBrowserMockMCPClient('grok-build', 'Grok Build', 'C:/Users/mock/.grok/config.toml'),
@@ -1716,6 +1733,21 @@ const Root = ({ rootComponent }: { rootComponent: React.ReactNode }) => {
         getBrowserLanguageSnapshot,
     );
 
+    useEffect(() => {
+        if (!isStoreHydrated) {
+            return;
+        }
+        let cancelled = false;
+        void waitForMainWindowContentPaint().then(() => {
+            if (cancelled) return;
+            hideBootSplash();
+            signalMainWindowFrontendReady();
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [isStoreHydrated]);
+
     if (!isStoreHydrated) {
         return null;
     }
@@ -1744,7 +1776,9 @@ const renderRoot = async () => {
 
     ReactDOM.createRoot(rootNode).render(
       <React.StrictMode>
-        <Root rootComponent={rootComponent} />
+        <RootErrorBoundary>
+          <Root rootComponent={rootComponent} />
+        </RootErrorBoundary>
       </React.StrictMode>,
     );
 };

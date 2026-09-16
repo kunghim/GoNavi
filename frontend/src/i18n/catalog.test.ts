@@ -50,6 +50,12 @@ const readDataGridV2DdlWorkspaceSource = (): string =>
 const readQueryEditorSource = (): string =>
   readFileSync(new URL("../components/QueryEditor.tsx", import.meta.url), "utf8");
 
+const readQueryEditorAiPromptSource = (): string =>
+  readFileSync(new URL("../components/queryEditor/queryEditorAiPrompt.ts", import.meta.url), "utf8");
+
+const readQueryEditorObjectEditSqlSource = (): string =>
+  readFileSync(new URL("../components/queryEditor/queryEditorObjectEditSql.ts", import.meta.url), "utf8");
+
 const readAppSource = (): string =>
   readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
 
@@ -755,6 +761,8 @@ describe("i18n catalog", () => {
       "data_grid.message.change_set_build_failed_detail",
       "data_grid.message.preview_sql_failed_detail",
       "data_grid.message.commit_failed",
+      "data_grid.message.commit_outcome_unknown",
+      "data_grid.message.auto_commit_outcome_unknown",
       "data_grid.message.rollback_failed",
     ];
     const noPlaceholderKeys = [
@@ -1682,12 +1690,7 @@ describe("i18n catalog", () => {
       "query_editor.ai_prompt.default_database",
       "query_editor.ai_prompt.context",
     ] as const;
-    const source = readQueryEditorSource();
-    const aiContextSource = sliceBetween(
-      source,
-      "const buildQueryEditorAiContextPrompt = (connection: any, database: string): string => {",
-      "// HMR 重载时释放旧注册避免补全和 hover 内容重复",
-    );
+    const aiContextSource = readQueryEditorAiPromptSource();
 
     for (const language of SUPPORTED_LANGUAGES) {
       for (const key of aiContextKeys) {
@@ -1898,11 +1901,7 @@ describe("i18n catalog", () => {
     ] as const;
     const source = readQueryEditorSource();
     const objectNavigationSource = [
-      sliceBetween(
-        source,
-        "const buildQueryEditorEditableDefinitionSql = (",
-        "const buildQueryEditorAiContextPrompt = (",
-      ),
+      readQueryEditorObjectEditSqlSource(),
       sliceBetween(
         source,
         "  const openRoutineObjectEditTab = useCallback(async (",

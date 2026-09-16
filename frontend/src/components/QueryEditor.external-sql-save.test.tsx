@@ -14,6 +14,7 @@ import { resolveNewQueryContext } from '../utils/newQueryContext';
 import { QUERY_TAB_RENAME_REQUEST_EVENT } from '../utils/queryTabTitle';
 import { clearQueryTabDraft, clearSQLFileTabDraft, getQueryTabDraft, getSQLFileTabDraft } from '../utils/sqlFileTabDrafts';
 import { clearQueryEditorInlineRuntimeReadinessCache } from './queryEditor/QueryEditorAiAssist';
+import { queryEditorLazyTablesCache } from './queryEditor/queryEditorMetadataCaches';
 import QueryEditor, {
   collectQueryEditorObjectDecorationCandidates,
   resolveQueryEditorNavigationDecorations,
@@ -221,32 +222,52 @@ const notifyStoreSubscribers = () => {
   storeSubscribers.forEach((subscriber) => subscriber());
 };
 
-const backendApp = vi.hoisted(() => ({
-  DBQuery: vi.fn(),
-  DBQueryWithCancel: vi.fn(),
-  DBQueryMulti: vi.fn(),
-  DBQueryMultiInTransaction: vi.fn(),
-  DBQueryMultiTransactional: vi.fn(),
-  DBQueryAudited: vi.fn(),
-  DBCommitTransaction: vi.fn(),
-  DBCommitTransactionWithTrigger: vi.fn(),
-  DBRollbackTransaction: vi.fn(),
-  DBRollbackTransactionWithTrigger: vi.fn(),
-  DBGetTables: vi.fn(),
-  DBTableExists: vi.fn(),
-  DBGetAllColumns: vi.fn(),
-  DBGetDatabases: vi.fn(),
-  DBGetColumns: vi.fn(),
-  DBGetIndexes: vi.fn(),
-  DBGetTriggers: vi.fn(),
-  DBShowCreateTable: vi.fn(),
-  CancelQuery: vi.fn(),
-  GenerateQueryID: vi.fn(),
-  WriteSQLFile: vi.fn(),
-  ExportSQLFile: vi.fn(),
-  InspectElasticsearchConsole: vi.fn(),
-  ExecuteElasticsearchConsole: vi.fn(),
-}));
+const backendApp = vi.hoisted(() => {
+  const query = vi.fn();
+  const queryMulti = vi.fn();
+  const queryMultiInTransaction = vi.fn();
+  const queryMultiTransactional = vi.fn();
+  const getTables = vi.fn();
+  const getAllColumns = vi.fn();
+  const getDatabases = vi.fn();
+  const getColumns = vi.fn();
+  const showCreateTable = vi.fn();
+  return {
+    DBQuery: query,
+    DBQueryApplicationWithCancel: vi.fn((...args: any[]) => query(...args.slice(0, 3))),
+    DBQueryWithCancel: vi.fn(),
+    DBQueryMulti: queryMulti,
+    DBQueryMultiWithOptions: vi.fn((...args: any[]) => queryMulti(...args.slice(0, 4))),
+    DBQueryMultiInTransaction: queryMultiInTransaction,
+    DBQueryMultiInTransactionWithOptions: vi.fn((...args: any[]) => queryMultiInTransaction(...args.slice(0, 3))),
+    DBQueryMultiTransactional: queryMultiTransactional,
+    DBQueryMultiTransactionalWithOptions: vi.fn((...args: any[]) => queryMultiTransactional(...args.slice(0, 4))),
+    DBQueryAudited: vi.fn(),
+    DBCommitTransaction: vi.fn(),
+    DBCommitTransactionWithTrigger: vi.fn(),
+    DBRollbackTransaction: vi.fn(),
+    DBRollbackTransactionWithTrigger: vi.fn(),
+    DBGetTables: getTables,
+    DBGetTablesWithCancel: vi.fn((...args: any[]) => getTables(...args.slice(0, 2))),
+    DBTableExists: vi.fn(),
+    DBGetAllColumns: getAllColumns,
+    DBGetAllColumnsWithCancel: vi.fn((...args: any[]) => getAllColumns(...args.slice(0, 2))),
+    DBGetDatabases: getDatabases,
+    DBGetDatabasesWithCancel: vi.fn((...args: any[]) => getDatabases(...args.slice(0, 1))),
+    DBGetColumns: getColumns,
+    DBGetColumnsWithCancel: vi.fn((...args: any[]) => getColumns(...args.slice(0, 3))),
+    DBGetIndexes: vi.fn(),
+    DBGetTriggers: vi.fn(),
+    DBShowCreateTable: showCreateTable,
+    DBShowCreateTableWithCancel: vi.fn((...args: any[]) => showCreateTable(...args.slice(0, 3))),
+    CancelQuery: vi.fn(),
+    GenerateQueryID: vi.fn(),
+    WriteSQLFile: vi.fn(),
+    ExportSQLFile: vi.fn(),
+    InspectElasticsearchConsole: vi.fn(),
+    ExecuteElasticsearchConsole: vi.fn(),
+  };
+});
 
 const messageApi = vi.hoisted(() => ({
   error: vi.fn(),
@@ -1047,6 +1068,9 @@ describe('QueryEditor external SQL save', () => {
       storeState.sqlEditorPendingTransactions[tabId] = transaction;
     });
     Object.values(backendApp).forEach((fn) => fn.mockReset());
+    backendApp.DBQueryMultiWithOptions.mockImplementation((...args: any[]) => backendApp.DBQueryMulti(...args.slice(0, 4)));
+    backendApp.DBQueryMultiInTransactionWithOptions.mockImplementation((...args: any[]) => backendApp.DBQueryMultiInTransaction(...args.slice(0, 3)));
+    backendApp.DBQueryMultiTransactionalWithOptions.mockImplementation((...args: any[]) => backendApp.DBQueryMultiTransactional(...args.slice(0, 4)));
     messageApi.success.mockReset();
     messageApi.error.mockReset();
     messageApi.info.mockReset();
@@ -3200,7 +3224,7 @@ describe('QueryEditor external SQL save', () => {
       renderer = create(<QueryEditor tab={createTab()} />);
     });
 
-    expect(findSqlLogTab(renderer)).toHaveLength(1);
+    expect(findSqlLogTab(renderer)).toHaveLength(0);
 
     await act(async () => {
       windowListeners['gonavi:show-sql-execution-log']?.forEach((listener) => listener());
@@ -4595,14 +4619,75 @@ describe('QueryEditor external SQL save', () => {
     editorState.latestOnChange?.(editorState.value);
     const result = await sqlProvider.provideCompletionItems(editorState.editor.getModel(), { lineNumber: 1, column: editorState.value.length + 1 });
     const labels = result.suggestions.map((item: any) => item.label);
-    const tableSuggestion = result.suggestions.find((item: any) => item.label === 'fs_org_auth_application');
 
     expect(backendApp.DBGetTables).toHaveBeenCalledWith(expect.any(Object), 'front_end_sys');
     expect(labels).toContain('fs_org_auth_application');
-    expect(tableSuggestion?.detail).toBe('表 - 认证申请表');
+
+    await vi.waitFor(async () => {
+      const resultWithComments = await sqlProvider.provideCompletionItems(
+        editorState.editor.getModel(),
+        { lineNumber: 1, column: editorState.value.length + 1 },
+      );
+      const tableSuggestion = resultWithComments.suggestions.find((item: any) => item.label === 'fs_org_auth_application');
+      expect(tableSuggestion?.detail).toBe('表 - 认证申请表');
+    });
     await act(async () => {
       renderer.unmount();
     });
+  });
+
+  it('does not refetch table metadata or comments when FROM completion already has current-db tables', async () => {
+    let renderer!: ReactTestRenderer;
+    autoFetchState.visible = true;
+    backendApp.DBGetDatabases.mockResolvedValueOnce({ success: true, data: [{ Database: 'main' }] });
+    backendApp.DBGetTables.mockResolvedValue({
+      success: true,
+      data: [{ Tables_in_main: 'users' }],
+    });
+    backendApp.DBGetAllColumns.mockResolvedValue({ success: true, data: [] });
+    backendApp.DBQuery.mockResolvedValue({ success: true, data: [] });
+
+    try {
+      await act(async () => {
+        renderer = create(<QueryEditor tab={createTab({ query: '', dbName: 'main' })} />);
+      });
+      await act(async () => {
+        for (let index = 0; index < 8; index += 1) {
+          await Promise.resolve();
+        }
+      });
+
+      const sqlProvider = editorState.providers.find((provider) => (
+        Array.isArray(provider.triggerCharacters) && provider.triggerCharacters.includes('.')
+      ));
+      expect(sqlProvider).toBeTruthy();
+
+      editorState.value = 'SELECT * FROM us';
+      editorState.latestOnChange?.(editorState.value);
+      const initialCompletion = await sqlProvider.provideCompletionItems(
+        editorState.editor.getModel(),
+        { lineNumber: 1, column: editorState.value.length + 1 },
+      );
+      expect(initialCompletion.suggestions.map((item: any) => item.label)).toContain('users');
+
+      queryEditorLazyTablesCache.clear();
+      backendApp.DBGetTables.mockClear();
+      backendApp.DBQuery.mockClear();
+
+      const cachedCompletion = await sqlProvider.provideCompletionItems(
+        editorState.editor.getModel(),
+        { lineNumber: 1, column: editorState.value.length + 1 },
+      );
+
+      expect(cachedCompletion.suggestions.map((item: any) => item.label)).toContain('users');
+      expect(backendApp.DBGetTables).not.toHaveBeenCalled();
+      expect(backendApp.DBQuery).not.toHaveBeenCalled();
+    } finally {
+      queryEditorLazyTablesCache.clear();
+      await act(async () => {
+        renderer?.unmount();
+      });
+    }
   });
 
   it('retries lazy table metadata after a transient failure instead of caching an empty catalog', async () => {
@@ -8813,6 +8898,38 @@ describe('QueryEditor external SQL save', () => {
     expect(newEditorDisableButton.props['aria-pressed']).toBe(true);
   });
 
+  it('disables automaticLayout on hidden SQL editors and restores layout when shown', async () => {
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ query: 'select 1' })} isActive={false} />);
+    });
+
+    expect(monacoEditorMockState.latestProps.options.automaticLayout).toBe(false);
+    expect(monacoEditorMockState.latestProps.options.quickSuggestions).toEqual({
+      other: true,
+      comments: false,
+      strings: false,
+    });
+    expect(monacoEditorMockState.latestProps.options.hover).toMatchObject({
+      enabled: 'on',
+      delay: 1000,
+    });
+    expect(editorState.editor.updateOptions).toHaveBeenCalledWith(expect.objectContaining({
+      automaticLayout: false,
+    }));
+
+    editorState.editor.layout.mockClear();
+    editorState.editor.updateOptions.mockClear();
+
+    await act(async () => {
+      renderer.update(<QueryEditor tab={createTab({ query: 'select 1' })} isActive />);
+    });
+
+    expect(monacoEditorMockState.latestProps.options.automaticLayout).toBe(true);
+    expect(editorState.editor.updateOptions).toHaveBeenCalledWith({ automaticLayout: true });
+    expect(editorState.editor.layout).toHaveBeenCalled();
+  });
+
   it('shows object info via editor ctrl+q action', async () => {
     editorState.value = 'select users.id from users';
     autoFetchState.visible = true;
@@ -8870,7 +8987,7 @@ describe('QueryEditor external SQL save', () => {
         addExtraSpaceOnTop: false,
       },
       hover: {
-        enabled: true,
+        enabled: 'on',
         delay: 1000,
         above: false,
       },
@@ -10644,7 +10761,7 @@ describe('QueryEditor external SQL save', () => {
       const tableSuggestion = completionItems?.suggestions?.find((item: any) => item?.label === 'AAA3_NJ');
 
       expect(tableSuggestion).toBeTruthy();
-      expect(tableSuggestion.insertText).toBe('AAA3_NJ AS an');
+      expect(tableSuggestion.insertText).toBe('AAA3_NJ an');
       expect(tableSuggestion.detail).toContain('表 (sbdev)');
       expect(completionItems?.suggestions?.some((item: any) => item?.label === 'sbdev.SBDEV.AAA3_NJ')).toBe(false);
     });
@@ -11966,6 +12083,39 @@ END;`;
     expect(editorState.editor.deltaDecorations).not.toHaveBeenCalled();
     expect(editorState.editor.getModel().getValueLength).not.toHaveBeenCalled();
     expect(editorState.editor.getModel().getValue).not.toHaveBeenCalled();
+  });
+
+  it('does not read a large SQL document when the referenced-database scan settles', async () => {
+    vi.useFakeTimers();
+    Object.assign(window, {
+      setTimeout: globalThis.setTimeout.bind(globalThis),
+      clearTimeout: globalThis.clearTimeout.bind(globalThis),
+    });
+    const largeSql = `select * from users;\n${'x'.repeat(60_000)}`;
+    try {
+      await act(async () => {
+        create(<QueryEditor tab={createTab({ query: 'select 1;' })} />);
+      });
+
+      editorState.editor.getModel().getValue.mockClear();
+      await act(async () => {
+        editorState.value = largeSql;
+        editorState.latestOnChange?.(largeSql);
+        editorState.modelContentListeners.forEach((listener) => listener({
+          changes: [{ text: largeSql }],
+        }));
+        vi.advanceTimersByTime(450);
+        await Promise.resolve();
+      });
+
+      expect(editorState.editor.getModel().getValue).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+      Object.assign(window, {
+        setTimeout: globalThis.setTimeout.bind(globalThis),
+        clearTimeout: globalThis.clearTimeout.bind(globalThis),
+      });
+    }
   });
 
   it('does not build the full inline AI snapshot synchronously during typing', async () => {
