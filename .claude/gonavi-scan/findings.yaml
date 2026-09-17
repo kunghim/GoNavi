@@ -1,193 +1,6 @@
-scan_id: full-new-20260913-46cb0628-v4
-head_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+scan_id: targeted-user-suggestions-20260917-4ac7e8f0
+head_commit: 4ac7e8f03d9ffcffbb2cface69d1120ce675d69d
 active_findings:
-  - id: FIND-DB-IRIS-WRITE-OUTCOME-001
-    title: IRIS ApplyChanges 不支持取消且提交失败不标记写入结果未知
-    type: 事务一致性缺陷
-    severity: P3
-    confidence: 中
-    affected_capabilities:
-      - CAP-DS-CUSTOM
-      - CAP-DATA-A12
-    affected_paths:
-      - internal/db/iris_impl.go
-    affected_symbols:
-      - IrisDB.ApplyChanges
-    conclusion: IrisDB.ApplyChanges 使用 conn.Begin/tx.Exec 全程无 context，提交直接 return tx.Commit()，未走 commitWriteTransaction/MarkWriteOutcomeUnknown 契约；提交前连接中断被包装为普通错误，IsAmbiguousWriteResponse 分类信息经 fmt.Errorf("%v") 丢失。
-    evidence:
-      - internal/db/iris_impl.go:518-586
-      - internal/db/write_outcome.go:36-103
-      - internal/app/import_pipeline.go:615-618
-      - .claude/gonavi-scan/scan-runs/full-new-20260913-e7e3eb74-1789320000/evidence/reachability-applychanges.md
-    impact: IRIS 作为 BatchApplier 参与数据导入链路：导入取消无法传播到在途语句；提交结果未知时上层无法按 unknown-outcome 契约区分确定失败与结果未知，按重试策略重放可能重复写入或漏写。
-    recommendation: ApplyChanges 改为接收 context 并接入 commitWriteTransaction/MarkWriteOutcomeUnknown 契约，错误包装使用 %w 保留 errors.Is 链。
-    acceptance_criteria:
-      - 提交返回 ErrBadConn 等未知结果错误时 IsWriteOutcomeUnknown 为 true
-      - 导入取消能传播到 IRIS 在途执行
-      - 单行断言与既有 requireSingleRowAffected 行为保持
-    verification_path: 用可注入错误的 fake driver：Exec 成功后 Commit 返回 driver.ErrBadConn，断言 IsWriteOutcomeUnknown(err)==true；对照组 mysql_impl 同错误注入。
-    verification_boundary: 未连接真实 IRIS 实例；结论基于静态契约比对与调用链复核，导入链路可达性已确认。
-    source_views:
-      - db
-    status: 待修复
-    first_seen_commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
-    last_checked_commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
-    verification_status: 代码证据确认
-    verification_details:
-      mode: 只读验证
-      instance_id: static_contract_review
-      verified_at: 2026-09-13T03:40:00+08:00
-      result: 静态代码确认 IRIS 路径无 ctx、无 write_outcome 契约；runtimeSupportsBatchApply 未被 IRIS 覆写，导入链路可达。
-    review_history:
-      - scan_id: full-new-20260913-e7e3eb74-1789320000
-        checked_at: 2026-09-13T03:40:00+08:00
-        commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
-        action: 新问题扫描
-        result: 接受；IRIS 提交路径偏离 unknown-outcome 契约且取消不传播，导入链路可达。
-    last_checked_result: 新发现：IRIS ApplyChanges 无 ctx 且提交失败不标记写入结果未知。
-    failure_mode: 提交结果未知被当作确定失败处理
-    operation: external
-    data_state: unknown
-    server_side_effect: unknown
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1234
-    issue_projection:
-      title: "[P3] IRIS ApplyChanges 不支持取消且提交失败不标记写入结果未知"
-      labels:
-        - bug
-        - database
-      body_sections:
-        summary: IrisDB.ApplyChanges 全程无 context 且未接入 write_outcome 契约，提交前中断被当作确定失败。
-        affected_behavior: IRIS 批量导入无法取消；提交结果未知时上层重试策略可能重复写入或漏写。
-        reproduction: fake driver 使 Commit 返回 ErrBadConn，观察 IsWriteOutcomeUnknown 为 false。
-        expected: 未知结果被标记并可被上层区分。
-        actual: 错误经 fmt.Errorf %v 展开丢失类型链。
-        root_cause: IRIS 实现未接入 write_outcome 契约且未使用 context。
-        affected_files: internal/db/iris_impl.go
-        fix_boundary: internal/db/iris_impl.go；internal/db/iris_impl_test.go
-        acceptance_tests: Commit 返回 ErrBadConn 时 IsWriteOutcomeUnknown 为 true；取消传播覆盖在途执行。
-        validation_commands: go test ./internal/db -run IRIS -count=1
-        risk_and_rollback: 仅为契约接入，不改变单行断言语义。
-        verification_boundary: 未连接真实 IRIS 实例。
-      operation: external
-      data_state: unknown
-      server_side_effect: unknown
-      security_constraints: &a1
-        - 验证仅使用合成数据、本地内存数据或只读源码。
-        - 不记录真实凭据、业务数据或完整连接串。
-    reproduction:
-      preconditions:
-        - IRIS 连接参与数据导入（IRIS 实现 BatchApplier 且未覆写 SupportsBatchApply）
-      steps:
-        - 启动导入后在提交阶段断开连接
-      expected: 上层能区分写入结果未知
-      actual: 错误为普通失败分类
-    root_cause: IRIS 实现未接入 write_outcome 契约且未使用 context。
-    fix_boundary:
-      allowed_paths:
-        - internal/db/iris_impl.go
-        - internal/db/iris_impl_test.go
-      preserve:
-        - requireSingleRowAffected 单行断言
-      out_of_scope:
-        - 其他驱动的契约重构
-    regression_risk: 不同错误分类需分别测试，避免把确定失败误标为未知。
-    regression_tests:
-      - Commit ErrBadConn 注入用例
-      - 取消传播用例
-    verification_commands:
-      - go test ./internal/db -run IRIS -count=1
-  - id: FIND-DB-ES-BULK-REPORT-001
-    title: Elasticsearch 批量操作部分失败只返回第一条原因且无成功明细
-    type: 可观测性缺陷
-    severity: P3
-    confidence: 高
-    affected_capabilities:
-      - CAP-DS-ELASTICSEARCH
-      - CAP-DATA-A12
-    affected_paths:
-      - internal/db/elasticsearch_impl.go
-    affected_symbols:
-      - ElasticsearchDB.ApplyChangesContext
-    conclusion: ApplyChangesContext 检测到 bulk 响应 errors=true 后，遍历 items 找到第一个 error 即返回“ES 批量操作部分失败：<reason>”，其余 item 的成功与失败结果不落日志也不返回。
-    evidence:
-      - internal/db/elasticsearch_impl.go:1129-1149
-      - .claude/gonavi-scan/scan-runs/full-new-20260913-e7e3eb74-1789320000/evidence/reachability-applychanges.md
-    impact: 用户无法得知哪些文档已写入、哪些失败，也无法精确重放失败子集；重试整批幂等但浪费且可能与并发修改冲突，大批量导入排障信息不足。
-    recommendation: 聚合全部失败项（_id 与 reason）并统计成功数，错误信息包含失败条目列表。
-    acceptance_criteria:
-      - 错误信息包含全部失败条目标识与原因
-      - 成功条目计数可见
-      - hasErrors 整体报错行为保持
-    verification_path: 扩展既有 elasticsearch_bulk_response_test.go：构造 2 成功 + 2 失败的 bulk 响应体，断言错误包含全部失败 _id 与成功计数。
-    verification_boundary: 未连接真实 Elasticsearch 服务；行为由静态代码确认。
-    source_views:
-      - db
-    status: 待修复
-    first_seen_commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
-    last_checked_commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
-    verification_status: 代码证据确认
-    verification_details:
-      mode: 只读验证
-      instance_id: static_contract_review
-      verified_at: 2026-09-13T03:40:00+08:00
-      result: 静态代码确认首个失败即 return，无聚合与成功计数。
-    review_history:
-      - scan_id: full-new-20260913-e7e3eb74-1789320000
-        checked_at: 2026-09-13T03:40:00+08:00
-        commit: e7e3eb7486a0c8aa76c37d5c96942091cd836b57
-        action: 新问题扫描
-        result: 接受；bulk 部分失败报告缺失明细与成功计数。
-    last_checked_result: 新发现：ES 批量部分失败仅返回首条原因。
-    failure_mode: 部分失败报告信息不足
-    operation: external
-    data_state: unknown
-    server_side_effect: unknown
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1235
-    issue_projection:
-      title: "[P3] Elasticsearch 批量操作部分失败只返回第一条原因且无成功明细"
-      labels:
-        - bug
-        - database
-      body_sections:
-        summary: ES _bulk 部分失败时仅返回第一条失败 reason，成功/失败明细全部丢失。
-        affected_behavior: 用户无法定位失败文档与已成功范围，难以精确重放。
-        reproduction: 构造含 2 成功 + 2 失败的 bulk 响应，观察返回错误仅含首条 reason。
-        expected: 错误聚合全部失败项与成功计数。
-        actual: 首个失败即 return。
-        root_cause: 错误聚合逻辑缺失。
-        affected_files: internal/db/elasticsearch_impl.go
-        fix_boundary: internal/db/elasticsearch_impl.go；internal/db/elasticsearch_bulk_response_test.go
-        acceptance_tests: 错误包含全部失败 _id 与原因；成功计数可见。
-        validation_commands: go test ./internal/db -run ElasticsearchBulk -count=1
-        risk_and_rollback: 仅增强错误信息，不改变整体报错判定。
-        verification_boundary: 未连接真实 Elasticsearch 服务。
-      operation: external
-      data_state: unknown
-      server_side_effect: unknown
-      security_constraints: *a1
-    reproduction:
-      preconditions:
-        - Elasticsearch 连接
-      steps:
-        - 提交含部分失败文档的批量变更
-      expected: 错误含全部失败明细
-      actual: 仅首条 reason
-    root_cause: bulk 响应错误聚合逻辑缺失。
-    fix_boundary:
-      allowed_paths:
-        - internal/db/elasticsearch_impl.go
-        - internal/db/elasticsearch_bulk_response_test.go
-      preserve:
-        - hasErrors 整体报错行为
-        - readLimitedJSONResponseBody 响应上限
-      out_of_scope:
-        - bulk 请求协议重构
-    regression_risk: 错误信息长度需受控，避免超大批量产生超长消息。
-    regression_tests:
-      - 多失败项聚合用例
-      - 全部成功用例行为不变
-    verification_commands:
-      - go test ./internal/db -run ElasticsearchBulk -count=1
   - id: FIND-PM-REQUEST-DIAGNOSTICS-I18N-001
     title: 请求诊断工作台不响应应用语言设置
     status: 待修复
@@ -239,6 +52,7 @@ active_findings:
       - frontend/src/components/requestDiagnostics/RequestDiagnosticsWorkbench.tsx
       - frontend/src/components/requestDiagnostics/ReproductionBundlePanel.tsx
       - shared/i18n
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1266
   - id: FIND-PM-SYNC-SCHEDULE-CONTROL-002
     title: 当前 dev 的同步调度清单仍缺少集中操作和状态刷新
     status: 待修复
@@ -291,783 +105,277 @@ active_findings:
     related_findings:
       - FIND-PM-SYNC-SCHEDULE-CONTROL-001
     history_relation: 历史项依据未合入当前 dev 的修复分支归档；本条恢复当前集成基线的 active 跟踪。
-  - id: FIND-DB-APPLY-CHANGES-OUTCOME-UNKNOWN-001
-    title: 数据网格提交丢失写入结果未知标记并允许整批重试
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1267
+  - id: FIND-PM-QUERY-PARAMETER-BINDING-001
+    title: 查询编辑器缺少可复用的运行时绑定参数
     status: 待修复
-    type: 事务一致性缺陷
-    severity: P1
+    type: 产品缺口
+    severity: P2
     confidence: 高
     affected_capabilities:
-      - CAP-DATA-A07
-      - CAP-DATA-A15
-      - CAP-ES-A08
-      - CAP-VECTOR-A03
-      - CAP-VECTOR-A04
-      - CAP-VECTOR-A05
-    conclusion: 驱动和 QueryResult 已定义写入结果未知契约，但 App.ApplyChanges 的错误分支只返回普通失败，DataGrid 保留全部待提交变化并允许再次提交，非事务批量路径可能重放已成功部分。
-    evidence: &a2
-      - internal/connection/types.go:394-406
-      - internal/app/methods_file.go:4997-5004
-      - frontend/src/components/DataGrid.tsx:4003-4045
-      - internal/db/optional_driver_agent_impl.go:345
-    impact: 向量、MongoDB、Elasticsearch 等非事务或部分成功路径发生网络/批次失败时，用户无法判断已生效范围；再次整批提交可能重复插入、删除或更新。
-    recommendation: 在 ApplyChanges 映射 OutcomeUnknown，并让 DataGrid 对未知结果刷新权威状态、显示明确风险且禁止无确认的整批重放。
-    acceptance_criteria: &a3
-      - BatchApplier 返回 MarkWriteOutcomeUnknown 时 Wails 结果的 outcomeUnknown 为 true
-      - DataGrid 对未知结果显示专用提示并刷新权威数据
-      - 未知结果不会直接提供无确认整批重试
-    first_seen_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+      - CAP-QUERY-002
+      - CAP-QUERY-A07
+      - CAP-QUERY-A10
+    conclusion: 当前查询调用、驱动公共契约和已保存查询模型只传递 SQL 文本，没有参数定义或运行时参数值通道；FineReport 等带参 SQL 只能由用户手工替换或拼接字面量后执行。
+    evidence:
+      - internal/app/methods_db.go:1311-1349
+      - internal/app/methods_db.go:1561-1587
+      - internal/db/database.go:328-346
+      - internal/connection/saved_query.go:3-17
+      - internal/db/duckdb_impl.go:103-115
+    impact: 重复报表查询需要反复修改 SQL，字符串、日期、NULL 和列表值容易产生转义或类型错误；把敏感值写入 SQL 还会扩大历史、日志和分享场景中的暴露面。
+    recommendation: 在查询编辑器增加参数面板和运行前输入，保存参数名称、类型及可选默认值而不保存敏感运行值；由后端按驱动能力转换为绑定参数，并对不支持绑定的语法给出明确兼容边界。
+    acceptance_criteria:
+      - 支持命名参数或位置参数，并覆盖字符串、数值、布尔、日期时间、NULL 和可选列表值
+      - 参数值通过驱动绑定或等价安全通道执行，不以普通字符串替换作为默认实现
+      - 已保存查询可保存参数定义并在执行前校验缺失值，敏感值不进入查询历史、日志和导出
+      - 单语句、选区执行和多语句执行的参数作用域有明确规则及回归测试
+      - 对不支持参数绑定的驱动或语法显示可操作的限制说明
+    first_seen_commit: 4ac7e8f03d9ffcffbb2cface69d1120ce675d69d
     affected_paths:
-      - internal/connection/types.go
+      - internal/app/methods_db.go
+      - internal/db/database.go
+      - internal/connection/saved_query.go
+      - internal/db/duckdb_impl.go
+    verification_status: 代码证据确认
+    verification_path: 为绑定层、公共驱动契约和代表性 SQL 驱动补充参数传递测试，再用字符串、日期、NULL 与重复执行场景做只读验证。
+    verification_details:
+      mode: 只读验证
+      instance_id: targeted-user-suggestions-source-scan
+      verified_at: 2026-09-18T00:12:28+08:00
+      result: 源码追踪确认查询入口到驱动只携带 SQL 字符串，已保存查询模型也没有参数定义；未连接真实数据库运行。
+    review_history:
+      - scan_id: targeted-user-suggestions-20260917-4ac7e8f0
+        checked_at: 2026-09-18T00:12:28+08:00
+        commit: 4ac7e8f03d9ffcffbb2cface69d1120ce675d69d
+        action: 全量新问题扫描
+        result: 三视角源码检查与独立问题裁决后接受；运行时参数链路缺失成立。
+    last_checked_commit: 4ac7e8f03d9ffcffbb2cface69d1120ce675d69d
+    last_checked_result: 本轮新发现：查询执行和保存契约缺少运行时参数通道
+    source_views:
+      - product
+      - db
+      - developer
+    target_task: 编写一次带参数 SQL，在不同报表条件下安全重复执行
+    current_boundary: 可以编辑、保存和执行 SQL 文本，但不能定义参数类型、在运行前输入参数值或由驱动绑定参数。
+    checked_surfaces:
+      - frontend/src/components/QueryEditor.tsx
+      - internal/app/methods_db.go
+      - internal/db/database.go
+      - internal/connection/saved_query.go
+      - internal/db/duckdb_impl.go
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1268
+  - id: FIND-PM-EXTERNAL-SQL-DROP-001
+    title: 外部 .sql 文件不能直接拖入查询编辑器打开
+    status: 待修复
+    type: 产品缺口
+    severity: P3
+    confidence: 高
+    affected_capabilities:
+      - CAP-QUERY-A04
+      - CAP-QUERY-A09
+    conclusion: 查询编辑器的拖放链路只识别 GoNavi 侧栏对象和结果字段的内部拖拽数据；产品已有文件选择器和外部 SQL 目录读取能力，但没有接收操作系统 DataTransfer.files 中 .sql 文件并打开到查询区的入口。
+    evidence:
+      - frontend/src/components/QueryEditor.tsx:4213-4451
+      - frontend/src/components/QueryEditor.tsx:6986-7008
+      - frontend/src/components/sidebar/SidebarExternalSqlWorkflow.tsx:518-568
+      - internal/app/methods_file.go:1243-1288
+      - internal/app/methods_file.go:1345-1385
+    impact: 从文件管理器、邮件附件目录或报表项目目录查看 SQL 时，用户必须先走文件选择器或绑定目录再定位文件，重复打开场景增加操作次数并降低入口可发现性。
+    recommendation: 在查询编辑器表面接收单个或多个外部 .sql 文件拖放，复用现有安全读取和标签创建流程；明确编码、超大文件、重复文件、未保存编辑器和非 .sql 文件的处理。
+    acceptance_criteria:
+      - 从操作系统拖入单个 .sql 文件会在查询区打开且保留文件名和来源路径语义
+      - 多文件拖入按稳定顺序创建标签，非 .sql 文件给出明确反馈且不污染编辑器
+      - 读取复用后端路径校验、编码和大小限制，不由浏览器层直接绕过安全边界
+      - 拖到已有未保存查询时不静默覆盖其内容
+      - Windows、macOS 和 Linux 支持边界有自动化或人工验收记录
+    first_seen_commit: 4ac7e8f03d9ffcffbb2cface69d1120ce675d69d
+    affected_paths:
+      - frontend/src/components/QueryEditor.tsx
+      - frontend/src/components/sidebar/SidebarExternalSqlWorkflow.tsx
       - internal/app/methods_file.go
-      - frontend/src/components/DataGrid.tsx
     verification_status: 代码证据确认
-    verification_path: 使用 fake BatchApplier 返回 MarkWriteOutcomeUnknown，断言 Wails 映射与 DataGrid 消费。
+    verification_path: 增加 DataTransfer.files 组件测试并在桌面应用从文件管理器拖入单文件、多文件、非 SQL 和超大文件验证。
     verification_details:
       mode: 只读验证
-      instance_id: current-head-scan
-      verified_at: 2026-09-13T14:10:00+08:00
-      result: 静态调用链确认驱动标记在 App.ApplyChanges 被丢弃，DataGrid 仅依据 success 分支处理。
+      instance_id: targeted-user-suggestions-source-scan
+      verified_at: 2026-09-18T00:12:28+08:00
+      result: 源码确认已有选择器/读取路径，但查询编辑器 drop 只消费内部对象数据；本轮按要求未执行 UI 拖拽。
     review_history:
-      - scan_id: full-new-20260913-46cb0628-v4
-        checked_at: 2026-09-13T14:10:00+08:00
-        commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+      - scan_id: targeted-user-suggestions-20260917-4ac7e8f0
+        checked_at: 2026-09-18T00:12:28+08:00
+        commit: 4ac7e8f03d9ffcffbb2cface69d1120ce675d69d
         action: 全量新问题扫描
-        result: 主 agent 按本轮源码与测试证据接受。
-    last_checked_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
-    last_checked_result: 本轮新发现：数据网格提交丢失写入结果未知标记并允许整批重试
-    source_views: []
-    affected_symbols:
-      - connection.QueryResult.OutcomeUnknown
-      - App.ApplyChanges
-      - DataGrid.commitChanges
-    verification_boundary: 未连接真实非事务服务；确定性映射缺失由源码确认，需用 fake 覆盖端到端结果。
-    failure_mode: unknown_write_outcome_downgraded_to_retryable_failure
-    operation: transaction
-    data_state: test_fixture
-    server_side_effect: unknown
-    related_findings: []
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1236
-    issue_projection:
-      title: "[P1] 数据网格提交丢失写入结果未知标记并允许整批重试"
-      labels:
-        - bug
-        - database
-        - ai-ready
-      body_sections:
-        summary: 驱动和 QueryResult 已定义写入结果未知契约，但 App.ApplyChanges 的错误分支只返回普通失败，DataGrid 保留全部待提交变化并允许再次提交，非事务批量路径可能重放已成功部分。
-        affected_behavior: 向量、MongoDB、Elasticsearch 等非事务或部分成功路径发生网络/批次失败时，用户无法判断已生效范围；再次整批提交可能重复插入、删除或更新。
-        reproduction:
-          preconditions: &a4
-            - BatchApplier 在部分步骤成功后返回 MarkWriteOutcomeUnknown
-          steps: &a5
-            - 通过 App.ApplyChanges 提交 ChangeSet
-            - 检查 QueryResult.outcomeUnknown
-            - 在 DataGrid 失败后再次提交
-        expected: 前端明确未知结果并先刷新权威状态。
-        actual: 结果为普通失败，全部待提交变化保留并可整批重试。
-        root_cause: App.ApplyChanges 没有把 db.IsWriteOutcomeUnknown(err) 映射到 connection.QueryResult.OutcomeUnknown，DataGrid 因而无法进入专用处理。
-        affected_files: *a2
-        fix_boundary:
-          allowed_paths: &a6
-            - internal/app/methods_file.go
-            - frontend/src/components/DataGrid.tsx
-            - 相关 Go 与前端测试
-          preserve: &a7
-            - 事务型驱动的成功/回滚语义
-            - 现有 SQL 预览和审计
-          out_of_scope: &a8
-            - 重构所有驱动批量协议
-        acceptance_tests: *a3
-        validation_commands: &a9
-          - go test ./internal/app -run ApplyChanges -count=1
-          - npm --prefix frontend test -- --run src/components/DataGrid.ddl.test.tsx
-        risk_and_rollback: 需避免把确定失败误标为未知；未知结果分支应刷新而不自动重放。
-        verification_boundary: 未连接真实非事务服务；确定性映射缺失由源码确认，需用 fake 覆盖端到端结果。
-      operation: transaction
-      data_state: test_fixture
-      server_side_effect: unknown
-      security_constraints: &a12
-        - 仅使用合成数据、本地测试或只读源码验证。
-        - 不连接生产服务，不记录真实连接信息。
-    reproduction:
-      preconditions: *a4
-      steps: *a5
-      expected: 前端明确未知结果并先刷新权威状态。
-      actual: 结果为普通失败，全部待提交变化保留并可整批重试。
-    root_cause: App.ApplyChanges 没有把 db.IsWriteOutcomeUnknown(err) 映射到 connection.QueryResult.OutcomeUnknown，DataGrid 因而无法进入专用处理。
-    fix_boundary:
-      allowed_paths: *a6
-      preserve: *a7
-      out_of_scope: *a8
-    regression_risk: 需避免把确定失败误标为未知；未知结果分支应刷新而不自动重放。
-    regression_tests: *a3
-    verification_commands: *a9
-  - id: FIND-DB-MYSQL-BACKTICK-IDENT-001
-    title: MySQL/GoldenDB 数据编辑无法更新或删除含反引号的合法标识符
-    status: 待修复
-    type: 功能缺陷
-    severity: P2
-    confidence: 高
-    affected_capabilities:
-      - CAP-DS-MYSQL
-      - CAP-DS-GOLDENDB
-      - CAP-DATA-A06
-      - CAP-DATA-A07
-    conclusion: MySQL/GoldenDB 的 ApplyChanges update/delete 分支直接把表名和列名插入反引号，没有把标识符内部反引号双写；同函数 insert 分支已调用 escapeMySQLBacktickIdent，导致合法特殊名称只能插入而无法编辑或删除。
-    evidence: &a10
-      - internal/db/mysql_impl.go:1383-1456
-    impact: 带反引号的合法表或列可被浏览和插入，但数据网格更新/删除会生成无效 SQL并回滚，普通名称不受影响。
-    recommendation: 对 update/delete 的表名、更新列和定位列统一使用 escapeMySQLBacktickIdent，并为独立实现分别增加 sqlmock 与真实隔离实例测试。
-    acceptance_criteria: &a11
-      - 表名、更新列和定位列中的反引号均生成双反引号
-      - 普通标识符 SQL 保持不变
-      - insert、update 和 delete 使用一致的标识符引用契约
-    first_seen_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
-    affected_paths:
-      - internal/db/mysql_impl.go
-    verification_status: 代码证据确认
-    verification_path: 为 MySQL/GoldenDB ApplyChanges 增加 sqlmock，精确断言特殊表列名的 SQL。
-    verification_details:
-      mode: 只读验证
-      instance_id: current-head-scan
-      verified_at: 2026-09-13T14:10:00+08:00
-      result: 静态字符串生成路径确定性确认；insert 对照路径已正确转义。
-    review_history:
-      - scan_id: full-new-20260913-46cb0628-v4
-        checked_at: 2026-09-13T14:10:00+08:00
-        commit: 46cb0628a1c0537c48515f1afec2186dc938459c
-        action: 全量新问题扫描
-        result: 主 agent 按本轮源码与测试证据接受。
-    last_checked_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
-    last_checked_result: 本轮新发现：MySQL/GoldenDB 数据编辑无法更新或删除含反引号的合法标识符
-    source_views: []
-    affected_symbols:
-      - MySQLDB.ApplyChangesContext
-      - escapeMySQLBacktickIdent
-    verification_boundary: 未连接真实 MySQL/MariaDB；SQL 生成缺失由确定性源码确认。
-    failure_mode: invalid_sql_for_quoted_identifier
-    operation: transaction
-    data_state: test_fixture
-    server_side_effect: none
-    related_findings: []
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1238
-    issue_projection:
-      title: "[P2] MySQL/GoldenDB 数据编辑无法更新或删除含反引号的合法标识符"
-      labels:
-        - bug
-        - database
-        - ai-ready
-      body_sections:
-        summary: MySQL/GoldenDB 的 ApplyChanges update/delete 分支直接把表名和列名插入反引号，没有把标识符内部反引号双写；同函数 insert 分支已调用 escapeMySQLBacktickIdent，导致合法特殊名称只能插入而无法编辑或删除。
-        affected_behavior: 带反引号的合法表或列可被浏览和插入，但数据网格更新/删除会生成无效 SQL并回滚，普通名称不受影响。
-        reproduction:
-          preconditions: &a13
-            - 表名或列名含合法反引号字符
-            - 从 DataGrid 提交 update 或 delete
-          steps: &a14
-            - 构造含反引号的表和定位列
-            - 提交修改或删除
-            - 检查生成 SQL 和事务结果
-        expected: 标识符内部反引号被双写，语句正常执行。
-        actual: 内部反引号提前结束定界标识符，语句失败并回滚。
-        root_cause: MySQL/GoldenDB 的 update/delete 是独立字符串拼接路径，未复用 insert 已使用的 escapeMySQLBacktickIdent。
-        affected_files: *a10
-        fix_boundary:
-          allowed_paths: &a15
-            - internal/db/mysql_impl.go
-            - internal/db/mysql_impl_test.go
-          preserve: &a16
-            - 值参数化
-            - 单行影响数校验
-            - 事务回滚和未知结果分类
-          out_of_scope: &a17
-            - 其他方言引用器重构
-        acceptance_tests: *a11
-        validation_commands: &a18
-          - go test ./internal/db -run 'MySQL.*ApplyChanges' -count=1
-        risk_and_rollback: 修复只应改变特殊标识符的引用，不改变值绑定或事务顺序。
-        verification_boundary: 未连接真实 MySQL/MariaDB；SQL 生成缺失由确定性源码确认。
-      operation: transaction
-      data_state: test_fixture
-      server_side_effect: none
-      security_constraints: *a12
-    reproduction:
-      preconditions: *a13
-      steps: *a14
-      expected: 标识符内部反引号被双写，语句正常执行。
-      actual: 内部反引号提前结束定界标识符，语句失败并回滚。
-    root_cause: MySQL/GoldenDB 的 update/delete 是独立字符串拼接路径，未复用 insert 已使用的 escapeMySQLBacktickIdent。
-    fix_boundary:
-      allowed_paths: *a15
-      preserve: *a16
-      out_of_scope: *a17
-    regression_risk: 修复只应改变特殊标识符的引用，不改变值绑定或事务顺序。
-    regression_tests: *a11
-    verification_commands: *a18
-  - id: FIND-DB-MARIADB-BACKTICK-IDENT-001
-    title: MariaDB 数据编辑无法更新或删除含反引号的合法标识符
-    status: 待修复
-    type: 功能缺陷
-    severity: P2
-    confidence: 高
-    affected_capabilities:
-      - CAP-DS-MARIADB
-      - CAP-DATA-A06
-      - CAP-DATA-A07
-    conclusion: MariaDB 的 ApplyChanges update/delete 分支直接把表名和列名插入反引号，没有把标识符内部反引号双写；同函数 insert 分支已调用 escapeMySQLBacktickIdent，导致合法特殊名称只能插入而无法编辑或删除。
-    evidence: &a19
-      - internal/db/mariadb_impl.go:376-440
-    impact: 带反引号的合法表或列可被浏览和插入，但数据网格更新/删除会生成无效 SQL并回滚，普通名称不受影响。
-    recommendation: 对 update/delete 的表名、更新列和定位列统一使用 escapeMySQLBacktickIdent，并为独立实现分别增加 sqlmock 与真实隔离实例测试。
-    acceptance_criteria: &a20
-      - 表名、更新列和定位列中的反引号均生成双反引号
-      - 普通标识符 SQL 保持不变
-      - insert、update 和 delete 使用一致的标识符引用契约
-    first_seen_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
-    affected_paths:
-      - internal/db/mariadb_impl.go
-    verification_status: 代码证据确认
-    verification_path: 为 MariaDB ApplyChanges 增加 sqlmock，精确断言特殊表列名的 SQL。
-    verification_details:
-      mode: 只读验证
-      instance_id: current-head-scan
-      verified_at: 2026-09-13T14:10:00+08:00
-      result: 静态字符串生成路径确定性确认；insert 对照路径已正确转义。
-    review_history:
-      - scan_id: full-new-20260913-46cb0628-v4
-        checked_at: 2026-09-13T14:10:00+08:00
-        commit: 46cb0628a1c0537c48515f1afec2186dc938459c
-        action: 全量新问题扫描
-        result: 主 agent 按本轮源码与测试证据接受。
-    last_checked_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
-    last_checked_result: 本轮新发现：MariaDB 数据编辑无法更新或删除含反引号的合法标识符
-    source_views: []
-    affected_symbols:
-      - MariaDB.ApplyChangesContext
-      - escapeMySQLBacktickIdent
-    verification_boundary: 未连接真实 MySQL/MariaDB；SQL 生成缺失由确定性源码确认。
-    failure_mode: invalid_sql_for_quoted_identifier
-    operation: transaction
-    data_state: test_fixture
-    server_side_effect: none
-    related_findings: []
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1239
-    issue_projection:
-      title: "[P2] MariaDB 数据编辑无法更新或删除含反引号的合法标识符"
-      labels:
-        - bug
-        - database
-        - ai-ready
-      body_sections:
-        summary: MariaDB 的 ApplyChanges update/delete 分支直接把表名和列名插入反引号，没有把标识符内部反引号双写；同函数 insert 分支已调用 escapeMySQLBacktickIdent，导致合法特殊名称只能插入而无法编辑或删除。
-        affected_behavior: 带反引号的合法表或列可被浏览和插入，但数据网格更新/删除会生成无效 SQL并回滚，普通名称不受影响。
-        reproduction:
-          preconditions: &a21
-            - 表名或列名含合法反引号字符
-            - 从 DataGrid 提交 update 或 delete
-          steps: &a22
-            - 构造含反引号的表和定位列
-            - 提交修改或删除
-            - 检查生成 SQL 和事务结果
-        expected: 标识符内部反引号被双写，语句正常执行。
-        actual: 内部反引号提前结束定界标识符，语句失败并回滚。
-        root_cause: MariaDB 的 update/delete 是独立字符串拼接路径，未复用 insert 已使用的 escapeMySQLBacktickIdent。
-        affected_files: *a19
-        fix_boundary:
-          allowed_paths: &a23
-            - internal/db/mariadb_impl.go
-            - internal/db/mariadb_impl_test.go
-          preserve: &a24
-            - 值参数化
-            - 单行影响数校验
-            - 事务回滚和未知结果分类
-          out_of_scope: &a25
-            - 其他方言引用器重构
-        acceptance_tests: *a20
-        validation_commands: &a26
-          - go test ./internal/db -run 'MariaDB.*ApplyChanges' -count=1
-        risk_and_rollback: 修复只应改变特殊标识符的引用，不改变值绑定或事务顺序。
-        verification_boundary: 未连接真实 MySQL/MariaDB；SQL 生成缺失由确定性源码确认。
-      operation: transaction
-      data_state: test_fixture
-      server_side_effect: none
-      security_constraints: *a12
-    reproduction:
-      preconditions: *a21
-      steps: *a22
-      expected: 标识符内部反引号被双写，语句正常执行。
-      actual: 内部反引号提前结束定界标识符，语句失败并回滚。
-    root_cause: MariaDB 的 update/delete 是独立字符串拼接路径，未复用 insert 已使用的 escapeMySQLBacktickIdent。
-    fix_boundary:
-      allowed_paths: *a23
-      preserve: *a24
-      out_of_scope: *a25
-    regression_risk: 修复只应改变特殊标识符的引用，不改变值绑定或事务顺序。
-    regression_tests: *a20
-    verification_commands: *a26
-  - id: FIND-DB-REDIS-COMMAND-LOG-001
-    title: 失败的 Redis 原始命令会以明文写入持久日志
-    status: 待修复
-    type: 安全缺陷
-    severity: P1
-    confidence: 高
-    affected_capabilities:
-      - CAP-DS-REDIS
-      - CAP-REDIS-A05
-      - CAP-AUDIT-A02
-    conclusion: RedisExecuteCommand 失败时将完整 command 写入 gonavi.log；日志读取只识别 SQL 字段，通用错误脱敏不会处理 AUTH 后的裸参数，而项目已有 Redis RedactQuery 未接入此链。
-    evidence: &a27
-      - internal/app/methods_redis.go:1179-1196
-      - internal/app/methods_file.go:1349-1351
-      - internal/logger/logger.go:19-27
-      - internal/logger/logger.go:313-327
-      - internal/sqlaudit/redact.go:43-54
-      - internal/sqlaudit/redact.go:145-169
-      - internal/sqlaudit/redact.go:200-218
-    impact: 失败的认证、配置或写命令中的敏感参数和业务值可在本机日志轮转中长期保留，并可能通过日志查看或诊断分享链再次暴露。
-    recommendation: 记录命令前调用 sqlaudit.RedactQuery("redis", command)，并让日志读取识别命令字段作为纵深防护。
-    acceptance_criteria: &a28
-      - 失败的 AUTH 与 HELLO AUTH 日志不包含原始参数
-      - 普通失败命令保留足够的命令名和键定位信息
-      - ReadAppLogTail 与磁盘日志均通过 Redis 脱敏回归测试
-    first_seen_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
-    affected_paths:
-      - internal/app/methods_redis.go
+        result: 独立裁决认为已有选择器降低严重度；主 agent 按高频重复成本和输入方式缺口接受为 P3。
+    last_checked_commit: 4ac7e8f03d9ffcffbb2cface69d1120ce675d69d
+    last_checked_result: 本轮新发现：已有外部 SQL 打开流程但缺少操作系统文件拖入入口
+    source_views:
+      - product
+      - developer
+    target_task: 从文件管理器直接把已有 .sql 文件拖到查询区查看或继续编辑
+    current_boundary: 文件选择器、外部 SQL 目录和内部对象拖放已存在，操作系统文件拖放未接入查询编辑器。
+    checked_surfaces:
+      - frontend/src/components/QueryEditor.tsx
+      - frontend/src/components/sidebar/SidebarExternalSqlWorkflow.tsx
       - internal/app/methods_file.go
-      - internal/logger/logger.go
-      - internal/sqlaudit/redact.go
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1269
+  - id: FIND-PM-AI-ERROR-DIAGNOSIS-SHORTCUT-001
+    title: AI 诊断缺少可配置快捷键
+    status: 待修复
+    type: 产品缺口
+    severity: P3
+    confidence: 高
+    affected_capabilities:
+      - CAP-AI-A05
+      - CAP-OPS-A08
+    conclusion: 查询失败结果已有“一键 AI 诊断”按钮，会把当前 SQL 与执行错误注入 AI 面板；快捷键注册表中已有的“SQL 诊断”会打开 EXPLAIN 分析工作台，不是同一动作，当前没有名为“AI 诊断”的可配置快捷键来触发现有 AI 诊断。
+    evidence:
+      - frontend/src/utils/shortcuts.ts:262-288
+      - frontend/src/utils/shortcuts.ts:376-421
+      - frontend/src/components/QueryEditor.tsx:2758-2788
+      - frontend/src/components/QueryEditor.tsx:13358-13378
+    impact: 用户目前只能点击失败结果区中的“一键 AI 诊断”按钮，不能在快捷键设置中为同一动作绑定按键；纯键盘排错流程因此中断，而且“SQL 诊断”容易被误认为已覆盖该能力。
+    recommendation: 在现有快捷键注册表新增“AI 诊断”可配置动作，直接复用失败结果区“一键 AI 诊断”的实现；保留现有“SQL 诊断”作为 EXPLAIN 工作台入口，并沿用冲突检测、作用域、禁用和恢复默认机制。
+    acceptance_criteria:
+      - 快捷键设置中可搜索、启用、改键、禁用和恢复“AI 诊断”动作
+      - 触发行为与失败结果区“一键 AI 诊断”按钮一致：使用当前活动查询的 SQL 与本次执行错误打开并填充 AI 面板
+      - 没有可诊断的失败结果、AI 未配置或焦点处于文本输入控件时按现有策略给出一致反馈
+      - 与现有“SQL 诊断”、运行查询和 AI 补全快捷键的冲突可检测并有回归测试
+    first_seen_commit: 4ac7e8f03d9ffcffbb2cface69d1120ce675d69d
+    affected_paths:
+      - frontend/src/utils/shortcuts.ts
+      - frontend/src/components/QueryEditor.tsx
     verification_status: 代码证据确认
-    verification_path: 使用 fake Redis client 让带合成参数的命令失败，检查实际日志和 ReadAppLogTail 输出。
+    verification_path: 增加“AI 诊断”快捷键注册、冲突检测及活动标签上下文组件测试，并验证现有“SQL 诊断”仍只打开 EXPLAIN 工作台。
     verification_details:
       mode: 只读验证
-      instance_id: current-head-scan
-      verified_at: 2026-09-13T14:10:00+08:00
-      result: 从失败日志格式、持久文件到读取脱敏的确定性字符串流已闭合，现有 Redis 脱敏器明确未被调用。
+      instance_id: targeted-user-suggestions-source-scan
+      verified_at: 2026-09-18T00:12:28+08:00
+      result: 源码确认失败结果区“一键 AI 诊断”会注入当前 SQL 和执行错误；现有“SQL 诊断”快捷键打开 EXPLAIN 工作台，快捷键注册表没有对应“AI 诊断”动作。
     review_history:
-      - scan_id: full-new-20260913-46cb0628-v4
-        checked_at: 2026-09-13T14:10:00+08:00
-        commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+      - scan_id: targeted-user-suggestions-20260917-4ac7e8f0
+        checked_at: 2026-09-18T00:12:28+08:00
+        commit: 4ac7e8f03d9ffcffbb2cface69d1120ce675d69d
         action: 全量新问题扫描
-        result: 主 agent 按本轮源码与测试证据接受。
-    last_checked_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
-    last_checked_result: 本轮新发现：失败的 Redis 原始命令会以明文写入持久日志
-    source_views: []
-    affected_symbols:
-      - App.RedisExecuteCommand
-      - App.ReadAppLogTail
-      - sqlaudit.RedactQuery
-      - sqlaudit.RedactError
-    verification_boundary: 未把合成命令写入真实用户日志；结论由确定性字符串流确认，仍需隔离日志目录回归测试。
-    failure_mode: sensitive_redis_arguments_persisted_in_log
-    operation: runtime
-    data_state: test_fixture
-    server_side_effect: none
-    related_findings: []
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1237
-    issue_projection:
-      title: "[P1] 失败的 Redis 原始命令会以明文写入持久日志"
-      labels:
-        - bug
-        - database
-        - ai-ready
-      body_sections:
-        summary: RedisExecuteCommand 失败时将完整 command 写入 gonavi.log；日志读取只识别 SQL 字段，通用错误脱敏不会处理 AUTH 后的裸参数，而项目已有 Redis RedactQuery 未接入此链。
-        affected_behavior: 失败的认证、配置或写命令中的敏感参数和业务值可在本机日志轮转中长期保留，并可能通过日志查看或诊断分享链再次暴露。
-        reproduction:
-          preconditions: &a29
-            - Redis fake client 对带合成敏感参数的命令返回错误
-            - 日志目录指向隔离临时目录
-          steps: &a30
-            - 调用 RedisExecuteCommand
-            - 刷新日志
-            - 读取文件及 ReadAppLogTail
-        expected: 日志只保留脱敏后的命令结构。
-        actual: 完整 command 进入日志，裸 AUTH 参数不会被通用错误脱敏处理。
-        root_cause: 失败分支直接格式化 command，未调用 Redis-aware RedactQuery；日志尾读取器也只查找 SQL 字段。
-        affected_files: *a27
-        fix_boundary:
-          allowed_paths: &a31
-            - internal/app/methods_redis.go
-            - internal/app/methods_file.go
-            - internal/app 相关日志测试
-          preserve: &a32
-            - 驱动错误的安全摘要
-            - 普通命令故障定位能力
-          out_of_scope: &a33
-            - 改变 Redis 命令执行协议
-        acceptance_tests: *a28
-        validation_commands: &a34
-          - go test ./internal/app -run Redis.*Log -count=1
-          - go test ./internal/sqlaudit -run Redis -count=1
-        risk_and_rollback: 修复必须避免日志二次暴露，同时保留命令名和必要键定位信息。
-        verification_boundary: 未把合成命令写入真实用户日志；结论由确定性字符串流确认，仍需隔离日志目录回归测试。
-      operation: runtime
-      data_state: test_fixture
-      server_side_effect: none
-      security_constraints: *a12
-    reproduction:
-      preconditions: *a29
-      steps: *a30
-      expected: 日志只保留脱敏后的命令结构。
-      actual: 完整 command 进入日志，裸 AUTH 参数不会被通用错误脱敏处理。
-    root_cause: 失败分支直接格式化 command，未调用 Redis-aware RedactQuery；日志尾读取器也只查找 SQL 字段。
-    fix_boundary:
-      allowed_paths: *a31
-      preserve: *a32
-      out_of_scope: *a33
-    regression_risk: 修复必须避免日志二次暴露，同时保留命令名和必要键定位信息。
-    regression_tests: *a28
-    verification_commands: *a34
-  - id: FIND-DEV-ORACLE-ALIAS-TEST-CONTRACT-001
-    title: Oracle 表别名回归测试断言与共享方言契约相反
+        result: 三视角源码检查与独立问题裁决后接受；范围限定为失败查询 AI 诊断快捷键。
+    last_checked_commit: 4ac7e8f03d9ffcffbb2cface69d1120ce675d69d
+    last_checked_result: 本轮新发现：失败查询 AI 诊断动作未进入快捷键注册表
+    source_views:
+      - product
+      - developer
+    target_task: 在查询执行失败后，通过可配置快捷键触发与“一键 AI 诊断”按钮相同的动作，将当前 SQL 与执行错误交给 AI
+    current_boundary: 界面已有“一键 AI 诊断”按钮；现有“SQL 诊断”快捷键只打开 EXPLAIN 工作台，快捷键注册表没有对应的“AI 诊断”命令。
+    checked_surfaces:
+      - frontend/src/utils/shortcuts.ts
+      - frontend/src/components/QueryEditor.tsx
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1270
+  - id: FIND-PM-AI-SQL-APPLY-MODE-001
+    title: AI 消息“插入 SQL”缺少默认关闭的整篇替换开关
     status: 待修复
-    type: 调用链/契约缺陷
-    severity: P2
+    type: 产品缺口
+    severity: P3
     confidence: 高
     affected_capabilities:
-      - CAP-QUERY-A05
-      - CAP-QUERY-A18
-    conclusion: 组件回归测试要求 Oracle 表别名包含 AS，但共享 sqlDialect 契约及其单元测试明确要求 Oracle 使用裸别名；当前实现返回正确的裸别名却导致全套前端测试失败。
+      - CAP-AI-A05
+    conclusion: AI 消息代码块的“插入 SQL”会把事件转交到活动查询并在当前选区或光标处插入，未提供持久化的“插入前清空当前查询”开关；文本转 SQL 弹窗虽有单次 replaceAll 模式，但不控制 AI 消息代码块按钮。
     evidence:
-      - frontend/src/components/QueryEditor.external-sql-save.test.tsx:10620-10649
-      - frontend/src/utils/sqlDialect.ts:235-249
-      - frontend/src/utils/sqlDialect.test.ts:77-84
-    impact: 任何遵循 Oracle 方言契约的补全实现都会被错误断言阻塞，当前默认前端质量闸门稳定失败。
-    recommendation: 把组件断言改为 AAA3_NJ an，并保留共享方言单元测试作为 Oracle 与支持 AS 方言的对照。
+      - frontend/src/components/ai/messageBubble/AIMessageCodeBlock.tsx:160-223
+      - frontend/src/components/TabManager.tsx:1439-1489
+      - frontend/src/components/QueryEditor.tsx:12379-12416
+      - frontend/src/components/QueryEditor.tsx:13744-13753
+    impact: 希望用 AI 修复结果整体替换失败 SQL 的用户需要先手工全选删除；直接点击现有按钮会把新旧语句拼接，增加再次执行错误或误执行旧语句的概率。
+    recommendation: 为 AI 消息“插入 SQL”增加默认关闭的应用偏好；开启时对目标活动查询执行整篇替换，关闭时完全保留现有插入行为，并在未保存内容和跨标签目标上沿用现有确认边界。
     acceptance_criteria:
-      - Oracle 数据库限定表补全使用裸别名
-      - MySQL/PostgreSQL 等既有 AS 行为不变
-      - 定向组件测试和全套前端测试通过
-    first_seen_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+      - 开关默认关闭，升级后现有用户的“插入 SQL”行为不变
+      - 开启后按钮以单次原子编辑替换活动查询全部文本，并可正常撤销
+      - 设置持久化且在 AI 侧栏、浮动 AI 窗口和活动查询切换后行为一致
+      - 文本转 SQL 的 insert、replaceSelection、replaceAll 选择不被该全局开关意外改写
+      - 没有活动查询或目标标签已关闭时不静默新建或覆盖其他查询
+    first_seen_commit: 4ac7e8f03d9ffcffbb2cface69d1120ce675d69d
     affected_paths:
-      - frontend/src/components/QueryEditor.external-sql-save.test.tsx
-      - frontend/src/utils/sqlDialect.ts
-      - frontend/src/utils/sqlDialect.test.ts
-    verification_status: 自动化测试确认
-    verification_path: 运行单条 Oracle 补全测试并对照 sqlDialect 单元测试。
-    verification_details:
-      mode: 只读验证
-      instance_id: current-head-scan
-      verified_at: 2026-09-13T14:10:00+08:00
-      result: 定向组件测试稳定失败，expected 含 AS、actual 为裸别名；共享方言测试 65 项通过。
-    review_history:
-      - scan_id: full-new-20260913-46cb0628-v4
-        checked_at: 2026-09-13T14:10:00+08:00
-        commit: 46cb0628a1c0537c48515f1afec2186dc938459c
-        action: 全量新问题扫描
-        result: 主 agent 按本轮源码与测试证据接受。
-    last_checked_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
-    last_checked_result: 本轮新发现：Oracle 表别名回归测试断言与共享方言契约相反
-    source_views: []
-    affected_symbols:
-      - resolveTableAliasSyntax
-      - appendTableAlias
-      - QueryEditor completion documentation localization test
-    contract_boundary: QueryEditor 组件测试与共享 SQL 方言别名生成契约
-    verification_boundary: 未连接真实 Oracle；问题位于确定性的测试契约，运行行为由共享单元测试确认。
-    reproduction:
-      preconditions:
-        - 当前日期与服务无关
-        - 运行 Oracle 数据库限定表补全测试
-      steps:
-        - 运行目标组件测试
-        - 运行 sqlDialect 单元测试作对照
-      expected: 组件断言与 Oracle bare alias 契约一致。
-      actual: 组件断言要求 AS 并阻塞测试套件。
-    root_cause: 新增组件断言复制了通用 AS 预期，没有调用或遵循共享方言契约。
-    fix_boundary:
-      allowed_paths:
-        - frontend/src/components/QueryEditor.external-sql-save.test.tsx
-      preserve:
-        - Oracle 裸别名实现
-        - 其他方言补全行为
-      out_of_scope:
-        - 修改生产补全逻辑
-    regression_risk: 错误地改生产实现会生成 Oracle 不接受的表别名。
-    regression_tests:
-      - Oracle 裸别名组件回归
-      - 支持 AS 方言的对照回归
-    verification_commands:
-      - npm --prefix frontend test -- --run src/components/QueryEditor.external-sql-save.test.tsx -t "deduplicates Oracle-style"
-      - npm --prefix frontend test -- --run src/utils/sqlDialect.test.ts
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1240
-    issue:
-      title: "[P2] Oracle 表别名回归测试断言与共享方言契约相反"
-      labels:
-        - bug
-        - developer
-        - ai-ready
-      operation: query
-      data_state: test_fixture
-      server_side_effect: none
-      security_constraints: *a12
-  - id: FIND-DEV-AI-OBSERVABILITY-TIME-TEST-001
-    title: AI 可观测性组件测试使用固定历史日期并随日历时间失效
-    status: 待修复
-    type: 调用链/契约缺陷
-    severity: P2
-    confidence: 高
-    affected_capabilities:
-      - CAP-AI-A07
-    conclusion: 组件默认筛选 today，而测试 fixture 固定为 2026-09-09；日期推进后 fixture 被正确过滤为空，依赖图表和模型行的 3 个断言同时失败。
-    evidence:
-      - frontend/src/components/ai/AISettingsAnalysisSection.test.tsx:20-24
-      - frontend/src/components/ai/AISettingsAnalysisSection.test.tsx:69-156
-      - frontend/src/components/ai/AISettingsAnalysisSection.tsx:85-89
-      - frontend/src/components/ai/aiObservability.ts:177-192
-    impact: 前端全套测试会在 fixture 日期后的任意一天持续失败，无法可靠区分真实 AI 可观测性回归。
-    recommendation: 固定 fake time 到 fixture 当天，或以测试当前时间动态构造 today 记录，并增加 today 边界的纯函数用例。
-    acceptance_criteria:
-      - 测试在任意系统日期得到相同结果
-      - today 范围仍排除历史日期
-      - 图表、单位和模型统计断言继续执行而非因空数据跳失
-    first_seen_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
-    affected_paths:
-      - frontend/src/components/ai/AISettingsAnalysisSection.test.tsx
-      - frontend/src/components/ai/AISettingsAnalysisSection.tsx
-      - frontend/src/components/ai/aiObservability.ts
-    verification_status: 自动化测试确认
-    verification_path: 在当前日期运行组件测试，并对照 aiObservability 纯函数测试。
-    verification_details:
-      mode: 只读验证
-      instance_id: current-head-scan
-      verified_at: 2026-09-13T14:10:00+08:00
-      result: 组件 4 项中 3 项失败，均由 today 过滤后的空集合触发；纯 helper 11 项通过。
-    review_history:
-      - scan_id: full-new-20260913-46cb0628-v4
-        checked_at: 2026-09-13T14:10:00+08:00
-        commit: 46cb0628a1c0537c48515f1afec2186dc938459c
-        action: 全量新问题扫描
-        result: 主 agent 按本轮源码与测试证据接受。
-    last_checked_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
-    last_checked_result: 本轮新发现：AI 可观测性组件测试使用固定历史日期并随日历时间失效
-    source_views: []
-    affected_symbols:
-      - AISettingsAnalysisSection
-      - filterAIRequestEvents
-      - AISettingsAnalysisSection test fixture
-    contract_boundary: 组件默认时间范围与测试 fixture 的时钟控制契约
-    verification_boundary: 生产数据过滤行为没有失败；确认的是测试确定性缺陷。
-    reproduction:
-      preconditions:
-        - 系统日期晚于 2026-09-09
-        - 运行 AISettingsAnalysisSection 测试
-      steps:
-        - 渲染默认 today 组件
-        - 查找图表和模型统计节点
-      expected: fixture 属于受控的当前日，断言稳定执行。
-      actual: fixture 被过滤，3 个下游断言失败。
-    root_cause: 测试使用绝对历史日期但没有冻结系统时钟，组件默认 today 依赖真实当前日期。
-    fix_boundary:
-      allowed_paths:
-        - frontend/src/components/ai/AISettingsAnalysisSection.test.tsx
-        - 必要的测试时钟 setup
-      preserve:
-        - 生产 today 过滤语义
-        - 时区边界处理
-      out_of_scope:
-        - 修改 AI 账本生产数据
-    regression_risk: 动态日期仍需避免本地午夜和时区造成边界波动。
-    regression_tests:
-      - 冻结日期的组件渲染
-      - today 与历史边界的纯函数测试
-    verification_commands:
-      - npm --prefix frontend test -- --run src/components/ai/AISettingsAnalysisSection.test.tsx
-      - npm --prefix frontend test -- --run src/components/ai/aiObservability.test.ts
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1241
-    issue:
-      title: "[P2] AI 可观测性组件测试使用固定历史日期并随日历时间失效"
-      labels:
-        - bug
-        - developer
-        - ai-ready
-      operation: runtime
-      data_state: test_fixture
-      server_side_effect: none
-      security_constraints: *a12
-  - id: FIND-DEV-SOURCE-TEXT-TEST-GATE-001
-    title: 两个新增前端测试违反源码文本断言质量闸门
-    status: 待修复
-    type: 调用链/契约缺陷
-    severity: P2
-    confidence: 高
-    affected_capabilities:
-      - CAP-OPS-A12
-      - CAP-CONN-A15
-    conclusion: 测试策略明确禁止新增逐文件读取源码并断言文本的用例，但侧栏命中区和连接导入面板两个新测试直接 readFileSync 生产源码，质量闸门因此稳定列出两个 offender。
-    evidence:
-      - frontend/src/testPolicy.test.ts:5-20
-      - frontend/src/testPolicy.test.ts:49-67
-      - frontend/src/App.sidebar-resize-hit-area.test.ts:1-17
-      - frontend/src/components/settings/ConnectionImportSettingsPanel.test.ts:1-15
-    impact: 默认前端测试无法通过；这两项测试也不会执行真实组件行为，并会在等价重构时产生误报。
-    recommendation: 把两项测试改为渲染/调用行为断言；只有真正全仓不变式才加入 sanctioned scanner，不扩大存量基线。
-    acceptance_criteria:
-      - testPolicy 不再报告两个 offender
-      - 侧栏命中区通过交互或渲染结果验证
-      - 连接导入面板通过公开行为验证
-      - 不向 source-reading baseline 添加新债务
-    first_seen_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
-    affected_paths:
-      - frontend/src/testPolicy.test.ts
-      - frontend/src/App.sidebar-resize-hit-area.test.ts
-      - frontend/src/components/settings/ConnectionImportSettingsPanel.test.ts
-    verification_status: 自动化测试确认
-    verification_path: 运行 testPolicy 并单独执行替换后的两个行为测试。
-    verification_details:
-      mode: 只读验证
-      instance_id: current-head-scan
-      verified_at: 2026-09-13T14:10:00+08:00
-      result: testPolicy 3 项中 1 项失败，实际 offender 数组精确包含两个文件。
-    review_history:
-      - scan_id: full-new-20260913-46cb0628-v4
-        checked_at: 2026-09-13T14:10:00+08:00
-        commit: 46cb0628a1c0537c48515f1afec2186dc938459c
-        action: 全量新问题扫描
-        result: 主 agent 按本轮源码与测试证据接受。
-    last_checked_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
-    last_checked_result: 本轮新发现：两个新增前端测试违反源码文本断言质量闸门
-    source_views: []
-    affected_symbols:
-      - readsSourceFromDisk
-      - "test policy: no new source-text assertions"
-      - sidebar resize hit area test
-      - ConnectionImportSettingsPanel test
-    contract_boundary: 前端回归测试实现与仓库测试策略守卫
-    verification_boundary: 确认的是测试与质量闸门；未将相关 UI 呈现声明为实测问题。
-    reproduction:
-      preconditions:
-        - 运行当前前端测试策略守卫
-      steps:
-        - 枚举测试文件
-        - 检查新增源码读取型测试
-        - 比较基线
-      expected: offenders 为空。
-      actual: 稳定报告两个新增文件。
-    root_cause: 两个新测试以 readFileSync 加 toContain/正则断言实现细节，且未进入允许的全仓扫描类别。
-    fix_boundary:
-      allowed_paths:
-        - frontend/src/App.sidebar-resize-hit-area.test.ts
-        - frontend/src/components/settings/ConnectionImportSettingsPanel.test.ts
-        - 必要的组件测试辅助文件
-      preserve:
-        - 现有测试策略守卫
-        - 被测行为的回归覆盖
-      out_of_scope:
-        - 增加 baseline 绕过规则
-        - 清理全部存量源码文本测试
-    regression_risk: 替换测试需通过公开行为覆盖原本要保护的命中区和导入输入契约。
-    regression_tests:
-      - 侧栏 resize 可操作命中区行为
-      - 连接导入 accept 与错误反馈行为
-      - testPolicy 全局守卫
-    verification_commands:
-      - npm --prefix frontend test -- --run src/testPolicy.test.ts src/App.sidebar-resize-hit-area.test.ts src/components/settings/ConnectionImportSettingsPanel.test.ts
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1242
-    issue:
-      title: "[P2] 两个新增前端测试违反源码文本断言质量闸门"
-      labels:
-        - bug
-        - developer
-        - ai-ready
-      operation: delivery
-      data_state: test_fixture
-      server_side_effect: none
-      security_constraints: *a12
-  - id: FIND-DEV-RELEASE-WAILS-PATH-001
-    title: 本地发布脚本绕开项目固定的 Wails CLI
-    status: 待修复
-    type: 调用链/契约缺陷
-    severity: P2
-    confidence: 高
-    affected_capabilities:
-      - CAP-OPS-A12
-      - CAP-OPS-A13
-      - CAP-CLI-A07
-      - CAP-WEB-A03
-    conclusion: 项目文档和工具要求 Wails 安装在 .tools/bin 并由 project-tools 调用，但 build-release.sh 的 7 个平台分支直接执行裸 wails build；只有文档化本地工具而无全局 PATH 安装时发布立即失败或误用其他版本。
-    evidence:
-      - README.md:285-307
-      - tools/project-tools.mjs:10-64
-      - tools/wails-fast-dev.mjs:13
-      - build-release.sh:166
-      - build-release.sh:224
-      - build-release.sh:241
-      - build-release.sh:264
-      - build-release.sh:286
-      - build-release.sh:312
-      - build-release.sh:333
-    impact: 按 README 准备的本地发布环境无法运行发布脚本；若 PATH 恰有其他 Wails 版本，构建可能绕过固定版本并产生不可复现产物。
-    recommendation: 在 build-release.sh 解析并校验项目本地 Wails 路径，或统一通过 project-tools 调用，所有平台分支复用同一变量。
-    acceptance_criteria:
-      - 只安装 .tools/bin/wails 时 build-release 能进入平台构建
-      - 没有本地 CLI 时给出 project-tools install 指令并停止
-      - PATH 中其他版本不会覆盖项目固定版本
-      - 7 个平台分支使用同一已验证命令
-    first_seen_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
-    affected_paths:
-      - build-release.sh
-      - tools/project-tools.mjs
-      - tools/wails-fast-dev.mjs
-      - README.md
+      - frontend/src/components/ai/messageBubble/AIMessageCodeBlock.tsx
+      - frontend/src/components/TabManager.tsx
+      - frontend/src/components/QueryEditor.tsx
     verification_status: 代码证据确认
-    verification_path: 在隔离 PATH 中放置记录参数的 .tools/bin/wails stub，运行非发布 dry-run/脚本测试并核对所有分支。
+    verification_path: 覆盖开关默认值、持久化、活动标签路由、插入/整篇替换和撤销的组件测试，并验证浮动 AI 窗口事件链。
     verification_details:
       mode: 只读验证
-      instance_id: current-head-scan
-      verified_at: 2026-09-13T14:10:00+08:00
-      result: 源码确认 7 处裸调用；当前 shell 无全局 wails，project-tools 按预期要求安装项目本地 CLI，bash 语法检查通过。
+      instance_id: targeted-user-suggestions-source-scan
+      verified_at: 2026-09-18T00:12:28+08:00
+      result: 源码确认 AI 消息按钮只发出插入事件且查询编辑器执行插入；另一路文本转 SQL 已有单次 replaceAll，不满足本需求的持久开关。
     review_history:
-      - scan_id: full-new-20260913-46cb0628-v4
-        checked_at: 2026-09-13T14:10:00+08:00
-        commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+      - scan_id: targeted-user-suggestions-20260917-4ac7e8f0
+        checked_at: 2026-09-18T00:12:28+08:00
+        commit: 4ac7e8f03d9ffcffbb2cface69d1120ce675d69d
         action: 全量新问题扫描
-        result: 主 agent 按本轮源码与测试证据接受。
-    last_checked_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
-    last_checked_result: 本轮新发现：本地发布脚本绕开项目固定的 Wails CLI
-    source_views: []
-    affected_symbols:
-      - package_macos_release
-      - build-release.sh platform build branches
-      - project-tools Wails resolver
-    contract_boundary: 文档化项目本地 CLI 工具链与发布脚本命令解析边界
-    verification_boundary: 未执行会删除 dist 并构建全部平台的真实发布；代码路径和当前环境缺口已确认。
-    reproduction:
-      preconditions:
-        - 按 README 仅安装项目本地 Wails CLI
-        - 全局 PATH 不含 wails
-      steps:
-        - 运行 build-release.sh
-        - 进入任一平台构建分支
-      expected: 脚本使用项目固定版本的 .tools/bin/wails。
-      actual: shell 查找裸 wails 并返回 command not found。
-    root_cause: 发布脚本早于项目本地工具规范，后续未把 7 个直接调用迁移到统一工具解析器。
-    fix_boundary:
-      allowed_paths:
-        - build-release.sh
-        - 对应发布脚本测试
-      preserve:
-        - CI 工作流的隔离全局安装
-        - 平台参数、签名和打包顺序
-      out_of_scope:
-        - 重构 GitHub Actions 发布矩阵
-    regression_risk: 命令封装需保持参数、退出码和信号行为，不得破坏 CI。
-    regression_tests:
-      - 隔离 PATH 下项目本地 stub 被调用
-      - 本地 CLI 缺失时错误信息
-      - 所有平台分支命令一致性
-    verification_commands:
-      - bash -n build-release.sh
-      - python3 -m unittest tools/windows-release-artifacts.test.py
-    issue_url: https://github.com/Syngnat/GoNavi/issues/1243
-    issue:
-      title: "[P2] 本地发布脚本绕开项目固定的 Wails CLI"
-      labels:
-        - bug
-        - developer
-        - ai-ready
-      operation: delivery
-      data_state: test_fixture
-      server_side_effect: none
-      security_constraints: *a12
+        result: 三视角源码检查与独立问题裁决后接受；以 AI 消息代码块按钮为边界。
+    last_checked_commit: 4ac7e8f03d9ffcffbb2cface69d1120ce675d69d
+    last_checked_result: 本轮新发现：AI 消息插入链路没有默认关闭的整篇替换偏好
+    source_views:
+      - product
+      - developer
+    target_task: 将 AI 修复后的 SQL 一键应用到当前查询，同时由用户决定插入还是整篇替换
+    current_boundary: AI 消息按钮固定插入；文本转 SQL 的单次替换模式属于另一条交互链路。
+    checked_surfaces:
+      - frontend/src/components/ai/messageBubble/AIMessageCodeBlock.tsx
+      - frontend/src/components/TabManager.tsx
+      - frontend/src/components/QueryEditor.tsx
+  - id: FIND-PM-DUCKDB-SAVED-SOURCE-ATTACH-001
+    title: DuckDB 查询无法安全复用已保存数据源
+    status: 待修复
+    type: 产品缺口
+    severity: P3
+    confidence: 高
+    affected_capabilities:
+      - CAP-DS-DUCKDB
+      - CAP-CONN-001
+      - CAP-QUERY-002
+    conclusion: GoNavi 能按稳定连接 ID 或唯一名称解析已保存连接并在后端取回密钥，DuckDB 驱动也能执行原生 SQL；但两者之间没有受控桥接，因此 mysql_scan 等跨库函数仍要求用户在 SQL 中自行填写主机、账号和密码。
+    evidence:
+      - internal/db/duckdb_impl.go:54-72
+      - internal/db/duckdb_impl.go:103-145
+      - internal/app/connection_secret_resolution.go:13-76
+      - internal/app/headless.go:163-190
+      - internal/app/methods_db.go:1942-1998
+    impact: 集团多系统报表无法复用 GoNavi 已维护的数据源身份，凭据容易进入查询历史、AI 上下文、截图、导出或协作内容；连接密码轮换后 SQL 还需逐份修改。
+    recommendation: 提供以稳定连接 ID 为主、经校验唯一别名为辅的 DuckDB 数据源引用语法或受控函数，由后端解析密钥并绑定到固定物理会话；默认只读，明确扩展安装、连接生命周期、取消、错误脱敏和凭据轮换规则。不要把展示名称直接做文本替换或把完整 DSN 回填到编辑器。
+    acceptance_criteria:
+      - SQL 可引用已保存的 MySQL 等受支持数据源而不出现账号、密码或完整 DSN
+      - 引用以稳定连接 ID 为权威，名称重复、连接删除、密钥存储不可用和凭据轮换均有明确错误及恢复路径
+      - 密钥只在后端受控边界解析，不进入 SQL 文本、历史、日志、AI 上下文或前端事件载荷
+      - DuckDB 扩展加载、ATTACH/scan 注册和查询在同一固定物理会话内完成，并在取消、失败和标签关闭后清理
+      - 默认只读且遵守连接只读、生产风险确认、审计和查询超时策略
+      - 用受控 MySQL 测试库验证连接成功、联表、轮换、取消、脱敏与资源回收
+    first_seen_commit: 4ac7e8f03d9ffcffbb2cface69d1120ce675d69d
+    affected_paths:
+      - internal/db/duckdb_impl.go
+      - internal/app/connection_secret_resolution.go
+      - internal/app/headless.go
+      - internal/app/methods_db.go
+    verification_status: 代码证据确认
+    verification_path: 先用源码和单测确认标识解析及密钥不出后端，再在受控 DuckDB/MySQL 环境验证扩展、同会话、轮换、取消、脱敏和清理。
+    verification_details:
+      mode: 只读验证
+      instance_id: targeted-user-suggestions-source-scan
+      verified_at: 2026-09-18T00:12:28+08:00
+      result: 源码确认保存连接解析和 DuckDB 查询各自存在，但没有把保存连接安全暴露给 DuckDB 跨库函数的契约；未运行外部数据库或扩展。
+    review_history:
+      - scan_id: targeted-user-suggestions-20260917-4ac7e8f0
+        checked_at: 2026-09-18T00:12:28+08:00
+        commit: 4ac7e8f03d9ffcffbb2cface69d1120ce675d69d
+        action: 全量新问题扫描
+        result: 产品缺口成立；拒绝显示名到 DSN 的直接替换方案，并保留 DB 运行验证候选。
+    last_checked_commit: 4ac7e8f03d9ffcffbb2cface69d1120ce675d69d
+    last_checked_result: 本轮新发现：DuckDB 跨源查询不能安全复用 GoNavi 保存的数据源
+    source_views:
+      - product
+      - db
+      - developer
+    target_task: 在 DuckDB 查询中联接多个已保存数据源，同时避免在 SQL 中暴露连接凭据
+    current_boundary: 保存连接和后端密钥解析可供普通连接流程使用，DuckDB 原生跨库函数仍只接收用户自行编写的连接参数。
+    checked_surfaces:
+      - internal/db/duckdb_impl.go
+      - internal/app/connection_secret_resolution.go
+      - internal/app/headless.go
+      - internal/app/methods_db.go
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1272
