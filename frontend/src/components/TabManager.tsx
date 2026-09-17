@@ -32,7 +32,10 @@ import {
   isSQLFileQueryTab,
   normalizeSQLFileReadContent,
 } from '../utils/sqlFileTabDirty';
-import { clearQueryTabDraft, clearSQLFileTabDraft, getSQLFileTabDraft } from '../utils/sqlFileTabDrafts';
+import { clearSQLFileTabDraft, getSQLFileTabDraft } from '../utils/sqlFileTabDrafts';
+import {
+  clearQueryTabDraft,
+} from '../utils/sqlFileTabDrafts';
 import {
   buildApplicationQuitUnsavedSQLLabel,
   assertApplicationQuitSavedSQLTargetsUnchanged,
@@ -74,10 +77,8 @@ import { getDbIcon } from './DatabaseIcons';
 import { resolveConnectionAccentColor, resolveConnectionIconType } from '../utils/connectionVisual';
 import { dispatchSidebarLocateConnection } from '../utils/sidebarLocate';
 import { renderV2ActionMenuPopup } from './common/V2ActionMenuPopup';
-import { shouldBlockWorkbenchTabDetach } from '../utils/workbenchTabLifecycle';
-import { hasQueryEditorPendingResultChanges } from './queryEditor/queryEditorPendingResultChanges';
-import { flushQueryEditorResultViewState } from './queryEditor/queryEditorResultViewStateEvents';
-import { useWorkbenchTabLifecyclePolicy } from './queryEditor/useWorkbenchTabLifecyclePolicy';
+import { QueryEditorTabRunningIndicator } from './queryEditor/QueryEditorTabRunningIndicator';
+import { QueryEditorRunningTabsDock } from './queryEditor/QueryEditorRunningTabsDock';
 
 const getTabKindLabel = (tab: TabData): string => {
   if (tab.type === 'query') return t('tab_manager.kind_badge.query');
@@ -634,6 +635,7 @@ const SortableTabLabel: React.FC<SortableTabLabelProps> = ({
           aria-label={environmentLabel}
         />
       ) : null}
+      {tab.type === 'query' ? <QueryEditorTabRunningIndicator tabId={tab.id} /> : null}
       <span className="gn-v2-tab-label-content">
           <span className="gn-v2-tab-label-main tab-title-text">
             {displayModel.primaryParts.length > 0
@@ -875,7 +877,6 @@ const TabManager: React.FC<TabManagerProps> = React.memo<TabManagerProps>(({ onF
   const appearance = useStore(state => state.appearance);
   const languagePreference = useStore(state => state.languagePreference);
   const activeTabId = useStore(state => state.activeTabId);
-  const shouldDestroyHiddenTab = useWorkbenchTabLifecyclePolicy();
   const setActiveTab = useStore(state => state.setActiveTab);
   const addTab = useStore(state => state.addTab);
   const closeTab = useStore(state => state.closeTab);
@@ -960,11 +961,6 @@ const TabManager: React.FC<TabManagerProps> = React.memo<TabManagerProps>(({ onF
       void message.warning(t('tab_manager.message.background_task_window_unavailable'));
       return;
     }
-    if (tab && shouldBlockWorkbenchTabDetach(tab, hasQueryEditorPendingResultChanges(tab.id))) {
-      void message.warning(t('query_editor.results_panel.message.detach_query_pending_changes'));
-      return;
-    }
-    if (tab?.type === 'query') flushQueryEditorResultViewState(tab.id);
     void openNativeWorkbenchTabWindow(tabId, preferred).catch((error) => {
       message.error(error instanceof Error ? error.message : String(error));
     });
@@ -975,7 +971,6 @@ const TabManager: React.FC<TabManagerProps> = React.memo<TabManagerProps>(({ onF
   const pendingCloseTabIdsRef = useRef<Set<string>>(new Set());
 
   const onChange = (newActiveKey: string) => {
-    flushQueryEditorResultViewState(dockedActiveTabId);
     setActiveTab(newActiveKey);
   };
 
@@ -1504,7 +1499,7 @@ const TabManager: React.FC<TabManagerProps> = React.memo<TabManagerProps>(({ onF
   ), [appearance.tabDisplay, connections, connectionGroupNameById, dockedTabs]);
 
   const renderTabBar: TabsProps['renderTabBar'] = (tabBarProps, DefaultTabBar) => (
-    <DefaultTabBar {...tabBarProps}>
+    <DefaultTabBar {...tabBarProps} extra={<QueryEditorRunningTabsDock />}>
       {(node) => <DraggableTabNode key={node.key} node={node} />}
     </DefaultTabBar>
   );
@@ -1517,7 +1512,6 @@ const TabManager: React.FC<TabManagerProps> = React.memo<TabManagerProps>(({ onF
       : undefined;
     const displayTitle = displayModel.fullTitle;
     const hostSummary = resolveConnectionHostSummary(connection?.config);
-    const tabIsActive = tab.id === dockedActiveTabId;
     const renameQueryMenuState = resolveQueryTabRenameMenuState(tab);
 
     const menuItems: MenuProps['items'] = [
@@ -1608,10 +1602,9 @@ const TabManager: React.FC<TabManagerProps> = React.memo<TabManagerProps>(({ onF
       ),
       key: tab.id,
       closable: false,
-      destroyOnHidden: shouldDestroyHiddenTab(tab),
-      children: <WorkbenchTabContent tab={tab} isActive={tabIsActive} />,
+      children: <WorkbenchTabContent tab={tab} />,
     };
-  }), [dockedTabs, dockedActiveTabId, tabs, connections, connectionGroupNameById, appearance.tabDisplay, closeTab, closeTabsWithSQLFilePrompt, detachTabToWindow, true, languagePreference, shouldDestroyHiddenTab]);
+  }), [dockedTabs, tabs, connections, connectionGroupNameById, appearance.tabDisplay, closeTab, closeTabsWithSQLFilePrompt, detachTabToWindow, true, languagePreference]);
 
   const queryCapableConnections = useMemo(
     () => connections.filter((connection) => getDataSourceCapabilities(connection.config).supportsQueryEditor),
@@ -2180,6 +2173,7 @@ body[data-theme='dark'] .main-tabs .ant-tabs-tab.ant-tabs-tab-active {
             <Tabs
                 className={`main-tabs gn-v2-main-tabs${hasDoubleLineTabLabel ? ' gn-v2-main-tabs-double' : ''}`}
                 type="editable-card"
+                destroyOnHidden={false}
                 onChange={(newActiveKey) => {
                   if (Date.now() < suppressClickUntilRef.current) return;
                   onChange(newActiveKey);

@@ -2,16 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   applyDataGridFixedCellPreviewOffset,
+  applyDataGridHeaderPinOffset,
   calculateFixedVirtualRange,
+  clearDataGridHeaderPinOffset,
   commitDataGridFixedCellOffset,
   coversFixedVirtualRange,
   createDataGridIdleCommitScheduler,
   createDataGridVisualFrameGuard,
-  applyDataGridNativeHorizontalMaxScroll,
-  DATA_GRID_COMPOSITED_HORIZONTAL_OFFSET,
-  DATA_GRID_NATIVE_HORIZONTAL_MAX_VAR,
   readDataGridVirtualInnerOffset,
-  resolveDataGridNativeHorizontalMaxScroll,
   shouldVirtualizeDataGridColumns,
   type DataGridVisualFrameGuard,
 } from './dataGridVirtualScroll';
@@ -63,6 +61,52 @@ describe('fixed cell horizontal preview', () => {
 
 });
 
+describe('header fixed cell pin offset', () => {
+  it('writes the pin offset to fixed header cells instead of the header container', () => {
+    const left = { style: createStyleStub() };
+    const right = { style: createStyleStub() };
+    const plain = { style: createStyleStub() };
+    const header = {
+      style: createStyleStub(),
+      querySelectorAll: vi.fn(() => [left, right]),
+    };
+
+    expect(applyDataGridHeaderPinOffset(header as unknown as ParentNode, 640)).toBe(2);
+    expect(left.style.setProperty).toHaveBeenCalledWith('--gn-datagrid-h-scroll', '640px');
+    expect(right.style.setProperty).toHaveBeenCalledWith('--gn-datagrid-h-scroll', '640px');
+    // 容器上的变量会被全部表头单元格继承，宽表下每帧的样式失效范围随字段数放大。
+    expect(header.style.setProperty).not.toHaveBeenCalled();
+    expect(plain.style.setProperty).not.toHaveBeenCalled();
+  });
+
+  it('skips cells that already carry the same offset', () => {
+    const cell = { style: createStyleStub() };
+    const header = { querySelectorAll: vi.fn(() => [cell]) };
+
+    expect(applyDataGridHeaderPinOffset(header as unknown as ParentNode, 480)).toBe(1);
+    expect(applyDataGridHeaderPinOffset(header as unknown as ParentNode, 480)).toBe(0);
+    expect(applyDataGridHeaderPinOffset(header as unknown as ParentNode, 960)).toBe(1);
+    expect(cell.style.setProperty).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears the pin offset when leaving the composited path', () => {
+    const cell = { style: createStyleStub() };
+    const header = { querySelectorAll: vi.fn(() => [cell]) };
+    cell.style.setProperty('--gn-datagrid-h-scroll', '480px');
+
+    expect(clearDataGridHeaderPinOffset(header as unknown as ParentNode)).toBe(1);
+    expect(cell.style.removeProperty).toHaveBeenCalledWith('--gn-datagrid-h-scroll');
+    expect(clearDataGridHeaderPinOffset(header as unknown as ParentNode)).toBe(0);
+  });
+
+  it('tolerates a header without any fixed cell', () => {
+    const header = { querySelectorAll: vi.fn(() => []) };
+
+    expect(applyDataGridHeaderPinOffset(header as unknown as ParentNode, 240)).toBe(0);
+    expect(clearDataGridHeaderPinOffset(header as unknown as ParentNode)).toBe(0);
+  });
+});
+
 describe('virtual body horizontal offset', () => {
   it('reads a stale compositor offset before falling back to marginLeft', () => {
     const style = {
@@ -78,10 +122,6 @@ describe('virtual body horizontal offset', () => {
 });
 
 describe('column virtualization threshold', () => {
-  it('keeps native compositor horizontal offset on every platform', () => {
-    expect(DATA_GRID_COMPOSITED_HORIZONTAL_OFFSET).toBe(true);
-  });
-
   it('renders narrow tables directly and virtualizes wider tables', () => {
     expect(shouldVirtualizeDataGridColumns(16)).toBe(false);
     expect(shouldVirtualizeDataGridColumns(17)).toBe(true);
@@ -134,9 +174,9 @@ describe('calculateFixedVirtualRange', () => {
       scrollTop: 14_000_001,
     })).toEqual({
       scrollHeight: 28_000_000,
-      start: 499_991,
-      end: 500_020,
-      offset: 13_999_748,
+      start: 499_981,
+      end: 500_030,
+      offset: 13_999_468,
     });
   });
 
@@ -149,7 +189,7 @@ describe('calculateFixedVirtualRange', () => {
     })).toEqual({
       scrollHeight: 2_800,
       start: 0,
-      end: 21,
+      end: 31,
       offset: 0,
     });
   });
@@ -169,13 +209,13 @@ describe('calculateFixedVirtualRange', () => {
       scrollTop: Number.POSITIVE_INFINITY,
     })).toEqual({
       scrollHeight: 2_800,
-      start: 80,
+      start: 70,
       end: 99,
-      offset: 2_240,
+      offset: 1_960,
     });
   });
 
-  it('extends the dependency visible range by one viewport for native scroll coverage', () => {
+  it('extends the dependency visible range by two viewports for native scroll coverage', () => {
     const itemCount = 40;
     const itemHeight = 7;
     const viewportHeight = 70;
@@ -187,7 +227,7 @@ describe('calculateFixedVirtualRange', () => {
         viewportHeight,
         scrollTop,
       });
-      const overscanRows = Math.max(6, Math.ceil(viewportHeight / itemHeight));
+      const overscanRows = Math.max(8, Math.ceil(viewportHeight / itemHeight) * 2);
       expect(calculateFixedVirtualRange({
         itemCount,
         itemHeight,
@@ -214,6 +254,19 @@ describe('calculateFixedVirtualRange', () => {
     const jumpedViewportBottom = (15 * itemHeight) + viewportHeight;
 
     expect((initialRange.end + 1) * itemHeight).toBeGreaterThanOrEqual(jumpedViewportBottom);
+  });
+
+  it('keeps a two-screen native jump covered before React commits', () => {
+    const itemHeight = 28;
+    const viewportHeight = 840;
+    const initialRange = calculateFixedVirtualRange({
+      itemCount: 1_000,
+      itemHeight,
+      viewportHeight,
+      scrollTop: 0,
+    });
+
+    expect((initialRange.end + 1) * itemHeight).toBeGreaterThanOrEqual(viewportHeight * 3);
   });
 
   it('keeps the recorded reverse jump covered while React still has the old range', () => {
@@ -405,24 +458,5 @@ describe('createDataGridVisualFrameGuard', () => {
     expect(cancelFrame).toHaveBeenCalledWith(1);
     expect(appliedOffsets).toEqual([720]);
     expect(guard.hasPending()).toBe(false);
-  });
-});
-
-describe('native horizontal max scroll css variable', () => {
-  it('writes the compositor pin distance once until the viewport changes', () => {
-    expect(resolveDataGridNativeHorizontalMaxScroll({
-      scrollWidth: 2400,
-      clientWidth: 800,
-    })).toBe(1600);
-    expect(resolveDataGridNativeHorizontalMaxScroll({
-      scrollWidth: 800,
-      clientWidth: 800,
-    })).toBe(0);
-
-    const root = { style: createStyleStub() };
-    expect(applyDataGridNativeHorizontalMaxScroll(root as unknown as HTMLElement, 1600)).toBe(true);
-    expect(root.style.setProperty).toHaveBeenCalledWith(DATA_GRID_NATIVE_HORIZONTAL_MAX_VAR, '1600px');
-    expect(applyDataGridNativeHorizontalMaxScroll(root as unknown as HTMLElement, 1600)).toBe(false);
-    expect(root.style.setProperty).toHaveBeenCalledTimes(1);
   });
 });

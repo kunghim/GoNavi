@@ -38,7 +38,7 @@ CONTRIBUTED_BY_RE = re.compile(
 HUALONG_SPONSOR_URL = "https://api.hualong.online/register?promo=GONAVI%26HUALONG"
 HUALONG_SPONSOR_NOTICE = (
     f"> 💖 **赞助商 · [華龍算力]({HUALONG_SPONSOR_URL})**："
-    "国模大促销，DeepSeek、GLM、Kimi 降至官方定价 **3.8 折**"
+    "deepseek,glm,kimi降至**3.8折**，DeepSeek谷价仅**1.9折**！"
 )
 
 

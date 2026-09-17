@@ -1650,6 +1650,8 @@ describe('DataGrid layout', () => {
       expect(markup).toContain('vertical-align:middle');
       expect(markup).toContain('data-grid-row-number="true"');
       expect(markup).toContain('data-grid-row-number-action="true"');
+      expect(markup).toContain('data-col-name="id"');
+      expect(markup).toContain('data-col-name="name"');
       expect(markup).toContain(`title="${zhRowNumberHint}"`);
       expect(markup).toContain(
         `<span class="data-grid-row-number" data-grid-row-number="true" title="${zhRowNumberHint}"`,
@@ -1658,6 +1660,9 @@ describe('DataGrid layout', () => {
       expect(markup).toContain('width:100%');
       expect(markup).toContain('height:100%');
       expect(markup).toContain('width:36');
+      expect(markup).toContain('min-width:36');
+      expect(markup).toContain('max-width:36');
+      expect(markup).toContain('flex:0 0 36px');
       // ant Table fixed 列会渲染 fix 相关 class
       expect(markup.includes('ant-table-cell-fix') || markup.includes('fixed')).toBe(true);
       expect(markup).toContain('51');
@@ -2046,80 +2051,28 @@ describe('DataGrid layout', () => {
       source.indexOf('const handleExternalHorizontalScrollPointerDown = useCallback'),
     );
 
-    expect(virtualColumnSource).toContain('&& !virtualListItemHorizontalOffsetComposited');
+    expect(source).toContain('const isWindowsLike = useMemo(() => isWindowsPlatform(), []);');
+    expect(virtualColumnSource).toContain('&& !isWindowsLike');
+    expect(virtualColumnSource).not.toContain('&& !isMacLike');
     expect(virtualColumnSource).toContain('&& shouldVirtualizeDataGridColumns(displayColumnNames.length);');
-    expect(source).toContain('const virtualListItemHorizontalOffsetComposited = DATA_GRID_COMPOSITED_HORIZONTAL_OFFSET');
     expect(visualSyncSource).toContain('virtualHorizontalPostCommitGuardRef.current?.cancel();');
     expect(visualSyncSource).toContain('virtualHorizontalPreviewActiveRef.current = false;');
     expect(postCommitSource).toContain('virtualListItemHorizontalOffsetComposited) return;');
     expect(externalScrollSource).toContain("horizontalSyncSourceRef.current === 'table'");
   });
 
-  it('keeps the native vertical scrollbar when compositor horizontal scrolling is on', () => {
-    const css = buildDataGridCssText({
-      darkMode: false,
-      densityParams: { dataFontSize: 12 },
-      gridId: 'hscroll-grid',
-      floatingScrollbarHeight: 8,
-    });
-
-    expect(css).not.toContain(
-      '.hscroll-grid .ant-table-tbody-virtual-holder[data-horizontal-scroll-native="true"]::-webkit-scrollbar,',
-    );
-    expect(css).toContain('.hscroll-grid .ant-table-tbody-virtual-holder::-webkit-scrollbar');
-    expect(css).toContain('width: 8px');
-    const nativeOverflowStart = css.indexOf(
-      '.hscroll-grid .data-grid-table-wrap.data-grid-table-wrap-external-active .ant-table-tbody-virtual-holder[data-horizontal-scroll-native="true"]',
-    );
-    const nativeHolderRule = css.slice(
-      nativeOverflowStart,
-      css.indexOf('.hscroll-grid .ant-table-body {', nativeOverflowStart),
-    );
-    expect(nativeHolderRule).not.toContain('scrollbar-width: none');
-    expect(nativeHolderRule).not.toContain('scrollbar-width: thin');
-    expect(nativeHolderRule).not.toContain('scrollbar-width: unset');
-    expect(nativeHolderRule).toContain('contain: none');
-    expect(css).toContain('.hscroll-grid .ant-table-tbody-virtual-holder:not([data-horizontal-scroll-native="true"])');
-  });
-
-  it('keeps the native horizontal scrollbar and hides the floating bar', () => {
-    const css = buildDataGridCssText({
-      darkMode: false,
-      densityParams: { dataFontSize: 12 },
-      gridId: 'hscroll-grid',
-      floatingScrollbarHeight: 8,
-    });
-    const nativeHorizontal = css.slice(
-      css.indexOf('.hscroll-grid .ant-table-tbody-virtual-holder[data-horizontal-scroll-native="true"]::-webkit-scrollbar'),
-      css.indexOf('.hscroll-grid .rc-virtual-list-holder[data-horizontal-scroll-native="true"]::-webkit-scrollbar'),
-    );
+  it('keeps the macOS header on one transform path that follows every native scroll', () => {
     const source = readDataGridSource();
-
-    expect(nativeHorizontal).toContain('width: 8px');
-    expect(nativeHorizontal).toContain('height: 8px');
-    expect(nativeHorizontal).not.toContain('height: 0');
-    expect(css).toContain(
-      '.hscroll-grid .data-grid-table-wrap[data-horizontal-scroll-native="true"] > .data-grid-external-horizontal-scroll',
-    );
-    expect(source).toContain('virtualListItemHorizontalOffsetComposited ? null : (');
-    expect(source).toContain('reserveFloatingScrollbar: !DATA_GRID_COMPOSITED_HORIZONTAL_OFFSET');
-  });
-
-  it('pins the header with a compositor timeline and keeps a WebKit scrollLeft fallback', () => {
+    const shellSource = readDataGridShellSource();
     const css = buildDataGridCssText({
       darkMode: false,
       densityParams: { dataFontSize: 12 },
-      gridId: 'hscroll-grid',
+      gridId: 'mac-scroll-grid',
       floatingScrollbarHeight: 8,
     });
-    const source = readDataGridSource();
     const visualSyncSource = source.slice(
       source.indexOf('const syncVirtualHorizontalVisualOffset = useCallback'),
       source.indexOf('virtualHorizontalPostCommitFrameHandlerRef.current ='),
-    );
-    const wheelSource = source.slice(
-      source.indexOf('const handleHeaderHorizontalWheel = (event: WheelEvent)'),
-      source.indexOf('container.addEventListener(\'wheel\', handleContainerHorizontalWheel'),
     );
     const nativeScrollHandlerIndex = source.indexOf('const handleTargetScroll = (event: Event)');
     const nativeScrollBindingSource = source.slice(
@@ -2127,33 +2080,25 @@ describe('DataGrid layout', () => {
       source.indexOf('const paginationControlTotal = useMemo', nativeScrollHandlerIndex),
     );
 
-    expect(css).toContain('@supports (timeline-scope: none)');
-    expect(css).toContain('[data-horizontal-scroll-sync="timeline"]');
-    expect(css).toContain('timeline-scope: --hscroll-grid-h;');
-    expect(css).toContain('scroll-timeline-name: --hscroll-grid-h;');
-    expect(css).toContain('scroll-timeline-axis: x;');
-    expect(css).toContain('animation-timeline: --hscroll-grid-h;');
-    expect(css).toContain('@keyframes gn-hscroll-grid-header-follow');
-    expect(css).toContain('@keyframes gn-hscroll-grid-pin-left');
-    const nativeSticky = css.slice(
-      css.indexOf('.hscroll-grid .ant-table-tbody-virtual-holder[data-horizontal-scroll-native="true"] .ant-table-row > .ant-table-cell.ant-table-cell-fix-left,'),
-      css.indexOf('@supports (timeline-scope: none)'),
+    const nativeScrollFlushSource = source.slice(
+      source.indexOf('const flushNativeVirtualHorizontalScroll = useCallback'),
+      source.indexOf('const scheduleNativeVirtualHorizontalScroll = useCallback'),
     );
-    expect(nativeSticky).not.toContain('transform: none');
-    expect(source).toContain('data-horizontal-scroll-native={virtualListItemHorizontalOffsetComposited ? \'true\' : undefined}');
-    expect(source).toContain('data-horizontal-scroll-sync={virtualListItemHorizontalOffsetComposited ? virtualListItemHorizontalSyncMode : undefined}');
-    expect(source).toContain('const virtualListItemHorizontalSyncMode = resolveDataGridHorizontalSyncMode({');
-    expect(source).toContain("globalThis.CSS.supports('timeline-scope: none')");
-    expect(source).toContain("globalThis.CSS.supports('animation-timeline: --gonavi-data-grid-horizontal')");
-    expect(source).toContain('shouldBindDataGridCaptureHorizontalWheel');
-    expect(visualSyncSource).toContain('applyDataGridNativeHorizontalMaxScroll');
-    expect(visualSyncSource).toContain("virtualListItemHorizontalSyncMode === 'scroll-left'");
-    expect(visualSyncSource).toContain('headerEl.scrollLeft = clampedOffset');
-    expect(visualSyncSource).toContain('headerEl.scrollLeft = 0');
-    expect(nativeScrollBindingSource).toContain('scheduleNativeVirtualHorizontalScroll(tableContainer)');
-    expect(nativeScrollBindingSource).not.toContain('externalScroll instanceof HTMLDivElement');
-    expect(wheelSource).toContain('handleHeaderHorizontalWheel');
-    expect(wheelSource).toContain('headerEl.addEventListener(\'wheel\', handleHeaderHorizontalWheel');
+
+    expect(shellSource).toContain("data-horizontal-scroll-sync={virtualListItemHorizontalOffsetComposited ? 'transform' : undefined}");
+    expect(css).not.toContain('[data-horizontal-scroll-sync="timeline"]');
+    expect(css).toContain('[data-horizontal-scroll-sync="transform"] .ant-table-header > table');
+    expect(css).toContain('translate: var(--gn-datagrid-h-scroll, 0px) 0 !important;');
+    expect(css).not.toContain('animation-timeline:');
+    expect(source).not.toContain('resolveDataGridHorizontalSyncMode');
+    expect(visualSyncSource).toContain('applyDataGridHeaderPinOffset(headerEl, clampedOffset)');
+    expect(visualSyncSource).not.toContain("headerEl.style.setProperty('--gn-datagrid-h-scroll'");
+    expect(visualSyncSource).toContain('headerTable.style.translate = nextHeaderTranslate');
+    expect(visualSyncSource).not.toContain("cell.style.setProperty('transform'");
+    expect(nativeScrollBindingSource.indexOf('syncVirtualHorizontalVisualOffset(tableContainer, source.scrollLeft)'))
+      .toBeLessThan(nativeScrollBindingSource.indexOf('scheduleNativeVirtualHorizontalScroll(tableContainer)'));
+    expect(nativeScrollFlushSource).toContain('const visual = syncVirtualHorizontalVisualOffset(tableContainer, holderEl.scrollLeft);');
+    expect(nativeScrollFlushSource).not.toContain('timeline');
   });
 
   it('keeps overflowing table column references stable across viewport-only resizes', () => {
@@ -2161,6 +2106,7 @@ describe('DataGrid layout', () => {
 
     expect(source).toContain('const baseTableColumns = useMemo(() => (');
     expect(source).toContain('columns: baseTableColumns,');
+    expect(source).toContain('stretchToViewport: mergedColumns.length > 0');
   });
 
   it('keeps DataGrid scroll synchronization throttled to animation frames', () => {

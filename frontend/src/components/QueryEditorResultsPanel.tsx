@@ -6,7 +6,8 @@ import { useStore } from '../store';
 import type { EditRowLocator } from '../utils/rowLocator';
 import type { GridSortInfoItem } from '../utils/dataGridSort';
 import type { QueryResultPaginationState } from '../utils/queryResultPagination';
-import type { FilterCondition } from '../utils/sql';
+import { filterColumnNamesByGlobalHiddenColumns, useGlobalHiddenColumns } from '../utils/globalHiddenColumns';
+import { buildQueryResultColumnPinScope } from '../utils/queryResultColumnPinScope';
 import { t as defaultTranslate } from '../i18n';
 import { useOptionalI18n } from '../i18n/provider';
 import {
@@ -19,11 +20,14 @@ import DetachDragPreview, {
   buildDetachDragPreviewState,
   type DetachDragPreviewState,
 } from './DetachDragPreview';
+import DataGrid from './DataGrid';
 import LogPanel from './LogPanel';
 import { renderV2ActionMenuPopup } from './common/V2ActionMenuPopup';
-import QueryEditorResultGrid from './QueryEditorResultGrid';
-import QueryEditorResultTruncatedIndicator from './QueryEditorResultTruncatedIndicator';
-import { resolveMountedQueryResultKey, shouldDestroyHiddenQueryResult } from './queryEditor/queryEditorResultLifecycle';
+import { QueryEditorExecutionStatus } from './queryEditor/QueryEditorExecutionStatus';
+import {
+    resolveVisibleQueryEditorExecutionLifecycle,
+    type QueryEditorExecutionLifecycleState,
+} from './queryEditor/queryEditorExecutionLifecycle';
 
 export type OpenResultInWindowPreferred = Partial<Pick<DetachedWindowBounds, 'x' | 'y' | 'width' | 'height'>>;
 
@@ -65,18 +69,7 @@ export type QueryEditorResultSet = {
     sortInfo?: GridSortInfoItem[];
     page?: QueryResultPaginationState & { loading?: boolean };
     pinned?: boolean;
-    filterConditions?: FilterCondition[];
-    quickWhereCondition?: string;
-    selectedRowKeys?: React.Key[];
-    selectedCellKeys?: string[];
-    scrollSnapshot?: { top: number; left: number };
-    hasPendingChanges?: boolean;
 };
-
-export type QueryEditorResultViewState = Pick<
-    QueryEditorResultSet,
-    'filterConditions' | 'quickWhereCondition' | 'selectedRowKeys' | 'selectedCellKeys' | 'scrollSnapshot' | 'hasPendingChanges'
->;
 
 export const resolveEffectiveActiveResultKey = (
     resultSets: Pick<QueryEditorResultSet, 'key'>[],
@@ -97,7 +90,6 @@ interface QueryEditorResultsPanelProps {
     resultSets: QueryEditorResultSet[];
     activeResultKey: string;
     isActive: boolean;
-    hidden?: boolean;
     loading: boolean;
     executionError: string;
     sqlLogCount: number;
@@ -115,7 +107,6 @@ interface QueryEditorResultsPanelProps {
     onCloseResultTabsToRight: (key: string) => void;
     onCloseAllResultTabs: () => void;
     onResultPinnedChange: (key: string, pinned: boolean) => void;
-    onResultViewStateChange?: (key: string, patch: Partial<QueryEditorResultViewState>) => void;
     onOpenResultInWindow?: (key: string, preferred?: OpenResultInWindowPreferred) => void;
     onReloadResult: (key: string, sql: string) => void | Promise<void>;
     onResultPageChange: (key: string, page: number, pageSize: number) => void | Promise<void>;
@@ -124,10 +115,16 @@ interface QueryEditorResultsPanelProps {
     onCancelResultTotalCount?: (key: string) => void;
     onDiagnoseExecutionError: () => void;
     onCompareResult?: (resultKey: string) => void;
+    executionLifecycle?: QueryEditorExecutionLifecycleState | null;
 }
 
 const isAffectedRowsResult = (result: QueryEditorResultSet): boolean =>
     result.columns.length === 1 && result.columns[0] === 'affectedRows';
+
+const resolveVisibleQueryResultColumns = (columns: string[], globalHiddenColumns: string[]): string[] => {
+    const visibleColumns = filterColumnNamesByGlobalHiddenColumns(columns, globalHiddenColumns);
+    return visibleColumns.length > 0 || columns.length === 0 ? visibleColumns : columns;
+};
 
 const RESULT_TAB_DETACH_INTERACTIVE_SELECTOR = [
     '.query-result-tab-close',
@@ -158,7 +155,6 @@ const QueryEditorResultsPanel: React.FC<QueryEditorResultsPanelProps> = ({
     resultSets,
     activeResultKey,
     isActive,
-    hidden = false,
     loading,
     executionError,
     sqlLogCount,
@@ -176,7 +172,6 @@ const QueryEditorResultsPanel: React.FC<QueryEditorResultsPanelProps> = ({
     onCloseResultTabsToRight,
     onCloseAllResultTabs,
     onResultPinnedChange,
-    onResultViewStateChange,
     onOpenResultInWindow,
     onReloadResult,
     onResultPageChange,
@@ -185,10 +180,12 @@ const QueryEditorResultsPanel: React.FC<QueryEditorResultsPanelProps> = ({
     onCancelResultTotalCount,
     onDiagnoseExecutionError,
     onCompareResult,
+    executionLifecycle = null,
 }) => {
     const i18n = useOptionalI18n();
     const t = i18n?.t ?? defaultTranslate;
     const clearSqlLogs = useStore(state => state.clearSqlLogs);
+    const globalHiddenColumns = useGlobalHiddenColumns();
     const [draggingResultKey, setDraggingResultKey] = useState<string | null>(null);
     const [detachDragPreview, setDetachDragPreview] = useState<DetachDragPreviewState | null>(null);
     const [elasticsearchViewModes, setElasticsearchViewModes] = useState<Record<string, 'table' | 'raw'>>({});
@@ -208,10 +205,6 @@ const QueryEditorResultsPanel: React.FC<QueryEditorResultsPanelProps> = ({
     useEffect(() => () => {
         resultTabDragCleanupRef.current?.(false);
     }, []);
-
-    useEffect(() => {
-        if (hidden) resultTabDragCleanupRef.current?.();
-    }, [hidden]);
 
     const resolveResultTabTitle = useCallback((key: string) => {
         const index = resultSets.findIndex((item) => item.key === key);
@@ -402,11 +395,6 @@ const QueryEditorResultsPanel: React.FC<QueryEditorResultsPanelProps> = ({
         activeResultKey,
         true,
     );
-    const mountedResultKey = resolveMountedQueryResultKey(
-        resultSets,
-        resolvedActiveResultKey,
-        hidden,
-    );
 
     const handleMessageTextareaKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'a') {
@@ -549,7 +537,6 @@ const QueryEditorResultsPanel: React.FC<QueryEditorResultsPanelProps> = ({
 
     const resultTabItems = resultSets.map((rs, idx) => ({
         key: rs.key,
-        destroyOnHidden: shouldDestroyHiddenQueryResult(rs),
         label: (
             <Dropdown
                 menu={{ items: buildResultTabMenuItems(rs.key, idx) }}
@@ -594,7 +581,6 @@ const QueryEditorResultsPanel: React.FC<QueryEditorResultsPanelProps> = ({
                             <PushpinOutlined className="query-result-tab-pin" />
                         </Tooltip>
                     ) : null}
-                    {rs.truncated ? <QueryEditorResultTruncatedIndicator /> : null}
                     {(() => {
                         if (rs.resultType === 'message') return <span className="query-result-tab-count" data-query-result-tab-count="true">i</span>;
                         if (isAffectedRowsResult(rs)) return <span className="query-result-tab-count" data-query-result-tab-count="true">✓</span>;
@@ -679,22 +665,19 @@ const QueryEditorResultsPanel: React.FC<QueryEditorResultsPanelProps> = ({
                                 })}
                             </div>
                         ) : (
-                            <QueryEditorResultGrid
-                                result={rs}
+                            <DataGrid
                                 workbenchTabId={workbenchTabId}
+                                data={rs.rows}
+                                columnNames={resolveVisibleQueryResultColumns(rs.columns, globalHiddenColumns)}
                                 isActive={isActive && resolvedActiveResultKey === rs.key}
                                 loading={loading}
-                                currentDb={currentDb}
-                                currentConnectionId={currentConnectionId}
-                                maxRows={maxRows}
-                                dataPreviewRequest={dataPreviewRequest}
-                                variant="elasticsearch"
-                                onReloadResult={onReloadResult}
-                                onResultPageChange={onResultPageChange}
-                                onResultSort={onResultSort}
-                                onRequestResultTotalCount={onRequestResultTotalCount}
-                                onCancelResultTotalCount={onCancelResultTotalCount}
-                                onResultViewStateChange={onResultViewStateChange}
+                                columnPinScope={buildQueryResultColumnPinScope({ sql: rs.sql })}
+                                exportScope="queryResult"
+                                resultSql={rs.sql}
+                                dbName={currentDb}
+                                connectionId={currentConnectionId}
+                                pkColumns={[]}
+                                readOnly
                             />
                         )}
                     </div>
@@ -717,6 +700,8 @@ const QueryEditorResultsPanel: React.FC<QueryEditorResultsPanelProps> = ({
                     </div>
                 );
             }
+            const visibleColumns = resolveVisibleQueryResultColumns(rs.columns, globalHiddenColumns);
+            const resultTableName = rs.tableName;
             return (
                 <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                     {Array.isArray(rs.messages) && rs.messages.length > 0 ? (
@@ -729,22 +714,57 @@ const QueryEditorResultsPanel: React.FC<QueryEditorResultsPanelProps> = ({
                             })}
                         </div>
                     ) : null}
-                    <QueryEditorResultGrid
-                        result={rs}
+                    <DataGrid
                         workbenchTabId={workbenchTabId}
+                        data={rs.rows}
+                        columnNames={visibleColumns}
                         isActive={isActive && resolvedActiveResultKey === rs.key}
-                        loading={loading}
-                        currentDb={currentDb}
-                        currentConnectionId={currentConnectionId}
-                        maxRows={maxRows}
-                        dataPreviewRequest={dataPreviewRequest}
+                        loading={loading || rs.page?.loading === true}
+                        tableName={resultTableName}
+                        columnPinScope={resultTableName ? undefined : buildQueryResultColumnPinScope({
+                            sql: rs.exportSql || rs.sql,
+                            sourceStatementIndex: rs.sourceStatementIndex,
+                            statementResultIndex: rs.statementResultIndex,
+                        })}
+                        exportScope="queryResult"
+                        resultSql={rs.exportSql || rs.sql}
+                        resultExportAllSql={rs.page?.exportAllSql}
+                        dbName={rs.metadataDbName ?? rs.executionDbName ?? currentDb}
+                        ddlDbName={rs.ddlDbName}
+                        ddlTableName={rs.ddlTableName}
+                        connectionId={rs.executionConnectionId || currentConnectionId}
+                        connectionParamsOverride={rs.executionConnectionParams}
+                        queryMaxRows={rs.page ? maxRows : undefined}
+                        initialViewMode={dataPreviewRequest?.resultKey === rs.key ? 'table' : undefined}
+                        initialViewModeRequestId={dataPreviewRequest?.resultKey === rs.key ? dataPreviewRequest.requestId : undefined}
+                        initialViewModeScope={dataPreviewRequest?.resultKey === rs.key ? 'local' : undefined}
+                        pkColumns={rs.pkColumns}
+                        editLocator={rs.editLocator}
+                        onReload={() => {
+                            if (rs.page) {
+                                return onResultPageChange(rs.key, rs.page.current, rs.page.pageSize);
+                            }
+                            return onReloadResult(rs.key, rs.sql);
+                        }}
+                        pagination={rs.page ? {
+                            current: rs.page.current,
+                            pageSize: rs.page.pageSize,
+                            total: rs.page.total,
+                            totalKnown: rs.page.totalKnown,
+                            totalCountLoading: rs.page.totalCountLoading,
+                            totalCountCancelled: rs.page.totalCountCancelled,
+                        } : undefined}
+                        onPageChange={rs.page ? ((page, size) => onResultPageChange(rs.key, page, size)) : undefined}
+                        onSort={(field, order) => onResultSort(rs.key, field, order)}
+                        sortInfoExternal={rs.sortInfo || []}
+                        onRequestTotalCount={rs.page && onRequestResultTotalCount
+                            ? (() => onRequestResultTotalCount(rs.key))
+                            : undefined}
+                        onCancelTotalCount={rs.page && onCancelResultTotalCount
+                            ? (() => onCancelResultTotalCount(rs.key))
+                            : undefined}
+                        readOnly={rs.readOnly}
                         toolbarExtraActions={resolvedActiveResultKey === rs.key ? toolbarHideButton : null}
-                        onReloadResult={onReloadResult}
-                        onResultPageChange={onResultPageChange}
-                        onResultSort={onResultSort}
-                        onRequestResultTotalCount={onRequestResultTotalCount}
-                        onCancelResultTotalCount={onCancelResultTotalCount}
-                        onResultViewStateChange={onResultViewStateChange}
                     />
                 </div>
             );
@@ -753,7 +773,6 @@ const QueryEditorResultsPanel: React.FC<QueryEditorResultsPanelProps> = ({
 
     const logTabItem = {
             key: QUERY_EDITOR_SQL_LOG_TAB_KEY,
-            destroyOnHidden: true,
             label: (
                 <Tooltip title={t('log_panel.title')}>
                     <div className="query-result-tab-label">
@@ -804,6 +823,7 @@ const QueryEditorResultsPanel: React.FC<QueryEditorResultsPanelProps> = ({
             ),
         }
         : undefined;
+    const visibleExecutionLifecycle = resolveVisibleQueryEditorExecutionLifecycle(loading, executionLifecycle);
 
     return (
         <>
@@ -841,9 +861,12 @@ const QueryEditorResultsPanel: React.FC<QueryEditorResultsPanelProps> = ({
               .query-result-panel-tab-actions { display: inline-flex; flex-direction: row; align-items: center; gap: 4px; }
               .query-result-tabs .ant-tabs-extra-content .query-result-panel-tab-action { width: 28px; min-width: 28px; height: 28px !important; min-height: 28px !important; padding: 0 !important; display: inline-flex; align-items: center; justify-content: center; }
             `}</style>
-            <div data-gonavi-close-shortcut-scope="result" className="gn-v2-query-results" style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden', display: hidden ? 'none' : 'flex', flexDirection: 'column' }}>
+            <div data-gonavi-close-shortcut-scope="result" className="gn-v2-query-results" style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                {tabItems.length > 0 && visibleExecutionLifecycle ? (
+                    <QueryEditorExecutionStatus compact lifecycle={visibleExecutionLifecycle} />
+                ) : null}
                 {tabItems.length > 0 ? (
-                    <Tabs className="query-result-tabs" activeKey={mountedResultKey} onChange={onActiveResultKeyChange} animated={false} style={{ flex: 1, minHeight: 0 }} tabBarExtraContent={tabsExtraContent} items={tabItems} />
+                    <Tabs className="query-result-tabs" activeKey={resolvedActiveResultKey} onChange={onActiveResultKeyChange} animated={false} style={{ flex: 1, minHeight: 0 }} tabBarExtraContent={tabsExtraContent} items={tabItems} />
                 ) : executionError ? (
                     <>
                         <div className="query-result-panel-header gn-v2-query-result-panel-header">
@@ -871,12 +894,16 @@ const QueryEditorResultsPanel: React.FC<QueryEditorResultsPanelProps> = ({
                             <span className="query-result-panel-header-title">{t('query_editor.results_panel.panel.title')}</span>
                             {hideButton}
                         </div>
-                        <div className="gn-v2-query-empty" style={{ flex: 1, minHeight: 0 }}>
-                            <div>
+                        {visibleExecutionLifecycle ? (
+                            <QueryEditorExecutionStatus lifecycle={visibleExecutionLifecycle} />
+                        ) : (
+                            <div className="gn-v2-query-empty" style={{ flex: 1, minHeight: 0 }}>
+                                <div>
                                     <strong>{t('query_editor.empty_state.title')}</strong>
                                     <span>{t('query_editor.empty_state.description')}</span>
+                                </div>
                             </div>
-                        </div>
+                        )}
                     </>
                 )}
             </div>
