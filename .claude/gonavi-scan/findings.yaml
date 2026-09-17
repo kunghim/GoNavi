@@ -1,5 +1,5 @@
-scan_id: targeted-user-suggestions-20260917-4ac7e8f0
-head_commit: 4ac7e8f03d9ffcffbb2cface69d1120ce675d69d
+scan_id: full-independent-20260918-71c17ef9
+head_commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
 active_findings:
   - id: FIND-PM-REQUEST-DIAGNOSTICS-I18N-001
     title: 请求诊断工作台不响应应用语言设置
@@ -320,6 +320,7 @@ active_findings:
       - frontend/src/components/ai/messageBubble/AIMessageCodeBlock.tsx
       - frontend/src/components/TabManager.tsx
       - frontend/src/components/QueryEditor.tsx
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1271
   - id: FIND-PM-DUCKDB-SAVED-SOURCE-ATTACH-001
     title: DuckDB 查询无法安全复用已保存数据源
     status: 待修复
@@ -379,3 +380,461 @@ active_findings:
       - internal/app/headless.go
       - internal/app/methods_db.go
     issue_url: https://github.com/Syngnat/GoNavi/issues/1272
+  - id: FIND-PM-MCP-CLIENT-CONFIG-ATOMIC-WRITE-001
+    title: MCP 客户端配置写入中断会破坏现有配置
+    status: 待修复
+    type: 功能缺陷
+    severity: P1
+    confidence: 高
+    affected_capabilities:
+      - CAP-MCP-A03
+    conclusion: Claude Code、外部 MCP 客户端、DeepSeek Harness 和 Grok Build 的安装链路直接覆盖正式配置文件；进程退出、磁盘写入失败或机器中断可能留下截断或半写入配置，而 OpenCode 链路已经使用同目录临时文件加替换的原子写法。
+    evidence:
+      - internal/ai/service/claude_code_mcp.go:854
+      - internal/ai/service/claude_code_mcp.go:927
+      - internal/ai/service/external_mcp_client_json.go:375
+      - internal/ai/service/deepseek_harness_mcp.go:297
+      - internal/ai/service/grok_build_mcp.go:170
+      - internal/ai/service/open_code_mcp.go:528-562
+    impact: 一次失败的 MCP 安装或更新可能同时破坏用户已有的其他 MCP 服务配置，使客户端无法启动或需要手工恢复原文件。
+    recommendation: 统一复用经过验证的同目录临时文件、关闭并替换正式文件的原子写入 helper；失败时保留旧文件并清理临时文件。
+    acceptance_criteria:
+      - 四条受影响安装链路都先完整写入同目录临时文件，再以原子替换更新正式配置
+      - 序列化、写入、关闭或替换任一步失败时原配置字节保持不变
+      - 成功替换后保留客户端原有的无关配置项和文件权限语义
+      - 通过故障注入测试覆盖短写、关闭失败、替换失败和临时文件清理
+    affected_paths:
+      - internal/ai/service/claude_code_mcp.go
+      - internal/ai/service/external_mcp_client_json.go
+      - internal/ai/service/deepseek_harness_mcp.go
+      - internal/ai/service/grok_build_mcp.go
+      - internal/ai/service/open_code_mcp.go
+    verification_path: 将四条配置写入路径与 OpenCode 的原子替换实现逐一对照，并用可注入文件操作模拟写入和替换失败。
+    last_checked_result: 本轮新发现：多条 MCP 客户端安装链路缺少原子配置替换。
+    source_views:
+      - product
+      - developer
+    first_seen_commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
+    verification_status: 代码证据确认
+    verification_details:
+      mode: 只读验证
+      instance_id: full-independent-source-scan
+      verified_at: 2026-09-17T19:18:53.475Z
+      result: 源码确认四条路径直接写正式配置文件；同仓 OpenCode 路径提供了可复用的原子写入反例。
+    review_history:
+      - scan_id: full-independent-20260918-71c17ef9
+        checked_at: 2026-09-17T19:18:53.475Z
+        commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
+        action: 全量新问题扫描
+        result: 产品视角独立扫描发现，主 agent 复核写入边界后接受。
+    last_checked_commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1273
+  - id: FIND-PM-DESKTOP-EXPORT-ATOMIC-WRITE-001
+    title: 桌面文件导出会在查询或编码成功前截断既有目标文件
+    status: 待修复
+    type: 功能缺陷
+    severity: P1
+    confidence: 高
+    affected_capabilities:
+      - CAP-DATA-A11
+      - CAP-DATA-A13
+    conclusion: 桌面目标走 openExportFileForTarget(nil, filename) 时直接调用 os.Create；表、内存数据和查询导出会在查询读取或编码完成前截断同名旧文件，而同文件中的多表 SQL 导出已经采用临时文件完成后替换。
+    evidence:
+      - internal/app/web_file_transfer.go:856-860
+      - internal/app/methods_file.go:5285
+      - internal/app/methods_file.go:5411-5446
+      - internal/app/methods_file.go:7394
+      - internal/app/methods_file.go:7517
+    impact: 用户覆盖既有导出文件时，只要后续查询、编码、取消或磁盘写入失败，就可能同时失去旧文件并得到不完整的新文件。
+    recommendation: 桌面导出统一先写同目录临时文件，成功关闭后再替换目标；失败或取消时删除临时文件并保留原目标。
+    acceptance_criteria:
+      - 表、内存数据和查询导出在成功完成前不会改变已有目标文件
+      - 查询失败、编码失败、取消和写入失败后旧文件内容保持不变且临时文件被清理
+      - 成功导出以单次替换呈现完整新文件，并保留现有 Web 下载目标行为
+      - 用故障注入测试覆盖已有目标、无目标、跨格式和替换失败场景
+    affected_paths:
+      - internal/app/web_file_transfer.go
+      - internal/app/methods_file.go
+    verification_path: 对照 openExportFileForTarget 的桌面分支与现有多表 SQL 原子导出 helper，并用临时目录验证失败前后目标字节。
+    last_checked_result: 本轮新发现：桌面导出直接截断正式目标文件。
+    source_views:
+      - product
+      - developer
+    first_seen_commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
+    verification_status: 代码证据确认
+    verification_details:
+      mode: 只读验证
+      instance_id: full-independent-source-scan
+      verified_at: 2026-09-17T19:18:53.475Z
+      result: 源码确认三个桌面导出入口在业务处理完成前以 os.Create 打开目标；现有多表 SQL 路径证明仓库已有原子替换模式。
+    review_history:
+      - scan_id: full-independent-20260918-71c17ef9
+        checked_at: 2026-09-17T19:18:53.475Z
+        commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
+        action: 全量新问题扫描
+        result: 产品视角独立扫描发现，主 agent 复核三个调用点和同仓安全实现后接受。
+    last_checked_commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1274
+  - id: FIND-DB-DRIVER-AGENT-STREAM-DESYNC-001
+    title: Driver Agent 流式消费失败后可能污染后续请求响应
+    status: 待修复
+    type: 查询正确性缺陷
+    severity: P1
+    confidence: 高
+    affected_capabilities:
+      - CAP-QUERY-A11
+    conclusion: Driver Agent 客户端读取流式响应时没有校验响应 ID；当 JSON 解码、列设置或行消费中途失败时会直接返回，也没有排空本请求剩余帧或终止 transport，下一次串行请求可能把残留帧当作自己的响应。
+    evidence:
+      - internal/db/optional_driver_agent_impl.go:499-609
+      - cmd/optional-driver-agent/main.go:164-242
+      - cmd/optional-driver-agent/main.go:587-685
+    impact: 一次消费端错误可能让同一 Agent 会话后续查询收到错误列、错误行、提前完成或错误状态，形成跨请求结果串线。
+    recommendation: 为所有响应严格校验请求 ID；流消费中断时可靠排空至 done，无法排空则关闭并废弃 transport，禁止复用可能失步的会话。
+    acceptance_criteria:
+      - 每个普通和流式响应都必须与当前请求 ID 匹配，不匹配时立即废弃连接
+      - SetColumns 或 ConsumeRow 失败后不会让任何残留帧进入下一请求
+      - 解码失败、缺少 done、错误 ID 和消费取消均覆盖 transport 回收测试
+      - 正常多帧流和 queryMulti 的既有顺序、消息及性能边界保持不变
+    affected_paths:
+      - internal/db/optional_driver_agent_impl.go
+      - cmd/optional-driver-agent/main.go
+    verification_path: 使用内存管道构造两个连续请求，在首个请求消费或解码中断后断言第二个请求不能读取首个请求残留帧。
+    last_checked_result: 本轮新发现：流式失败路径可能导致 Driver Agent 协议失步。
+    source_views:
+      - db
+      - developer
+    failure_mode: stream_protocol_desynchronization
+    operation: query
+    data_state: test_fixture
+    server_side_effect: none
+    issue_projection:
+      title: "[DB][P1] Driver Agent 流式失败会污染后续请求响应"
+      labels:
+        - bug
+        - database
+        - driver-agent
+        - data-correctness
+        - ai-ready
+      body_sections:
+        summary: 流式响应未校验请求 ID，消费中断后残留帧可能被下一请求读取。
+        affected_behavior: 所有通过 optional Driver Agent 执行的流式查询及复用同一客户端的后续请求。
+        reproduction:
+          preconditions:
+            - 用内存管道启动可连续处理请求的测试 Agent。
+          steps:
+            - 让第一个流在首批行消费时返回错误。
+            - 立即发送第二个请求并记录其首个响应。
+            - 检查第二个请求是否读取了第一个请求的 row 或 done 帧。
+        expected: 消费失败后协议仍保持帧边界，或 transport 被废弃，第二个请求只能读取自己的响应。
+        actual: 客户端直接返回且不排空、不终止 transport，也不校验后续响应 ID。
+        root_cause: callStreamQueryLocked 持锁读取多帧响应，但错误分支在到达 done 前退出；生产端仍可能写入剩余帧，下一次调用继续从同一 reader 读取。
+        affected_files:
+          - internal/db/optional_driver_agent_impl.go:499-609
+          - cmd/optional-driver-agent/main.go:164-242
+          - cmd/optional-driver-agent/main.go:587-685
+        fix_boundary:
+          allowed_paths:
+            - internal/db/optional_driver_agent_impl.go
+            - internal/db/optional_driver_agent_impl_test.go
+            - cmd/optional-driver-agent/main.go
+            - cmd/optional-driver-agent/main_test.go
+          preserve:
+            - 现有 JSON 行协议字段
+            - 正常流式查询的列、行批次和 done 顺序
+            - 非流式调用兼容性
+          out_of_scope:
+            - 无关驱动实现重构
+            - 前端结果面板改版
+        acceptance_tests:
+          - 错误 ID 被拒绝并废弃连接。
+          - 消费失败后的第二请求不读取残留帧。
+          - 解码错误和缺少 done 后 transport 不再复用。
+        validation_commands:
+          - go test ./internal/db -run 'OptionalDriverAgent.*Stream|Stream.*Protocol' -count=1
+          - go test ./cmd/optional-driver-agent -run 'Stream|IPC' -count=1
+        risk_and_rollback: 测试只使用夹具数据且无服务端写入；修复若无法可靠排空，应关闭并重建 Agent transport，回滚不涉及业务数据。
+        verification_boundary: 当前为代码证据确认，尚未用双请求内存管道复现残留帧被下一请求读取。
+      operation: query
+      data_state: test_fixture
+      server_side_effect: none
+      security_constraints:
+        - 不记录真实连接信息或业务 SQL。
+        - 不连接生产数据库。
+        - 测试仅使用内存管道和夹具。
+    first_seen_commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
+    verification_status: 代码证据确认
+    verification_details:
+      mode: 只读验证
+      instance_id: full-independent-source-scan
+      verified_at: 2026-09-17T19:18:53.475Z
+      result: 源码确认读取循环未比较响应 ID，且消费或解码失败会在 Agent 完成写入剩余帧前返回；尚未运行双请求协议复现。
+    review_history:
+      - scan_id: full-independent-20260918-71c17ef9
+        checked_at: 2026-09-17T19:18:53.475Z
+        commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
+        action: 全量新问题扫描
+        result: DB 视角独立扫描发现，主 agent 按协议生产端与消费端双向追链后接受。
+    last_checked_commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1275
+  - id: FIND-DB-SQLSERVER-SSH-TLS-IDENTITY-001
+    title: SQL Server 经 SSH 转发时丢失远端 TLS 服务器身份
+    status: 待修复
+    type: 安全缺陷
+    severity: P1
+    confidence: 高
+    affected_capabilities:
+      - CAP-DS-SQLSERVER
+    conclusion: SQL Server SSH 路径先把远端主机替换为本地转发地址，再重新构建连接配置；Azure 主机识别和证书主机名随后基于本地地址计算，导致加密默认值和 TLS 身份校验不再代表真实远端。
+    evidence:
+      - internal/db/sqlserver_impl.go:145-213
+      - internal/db/ssl_mode.go:103-119
+      - internal/db/ssl_mode.go:186-224
+    impact: 通过 SSH 访问 Azure SQL 或要求证书主机名校验的 SQL Server 时，连接可能错误降级加密策略、校验本地地址或无法验证合法远端证书。
+    recommendation: 传输连接地址与 TLS 服务器身份分离：TCP 仍连接本地转发端口，但 Azure 判定和证书 ServerName 始终使用原始远端主机。
+    acceptance_criteria:
+      - SSH 转发只改变拨号地址，不改变原始 SQL Server TLS 身份
+      - Azure SQL 经 SSH 且未显式覆盖时仍采用 Azure 所需的加密默认值
+      - 证书主机名配置使用原始远端域名而不是本地转发地址
+      - 普通直连、显式 trustServerCertificate 和非 Azure SSH 场景保持兼容
+      - 使用本地转发与测试证书覆盖成功、主机名不匹配和加密默认值测试
+    affected_paths:
+      - internal/db/sqlserver_impl.go
+      - internal/db/ssl_mode.go
+    verification_path: 构造 Azure 域名配置与本地 SSH 转发地址，断言拨号目标、本地端口、encrypt 和 hostNameInCertificate 分别保持正确身份。
+    last_checked_result: 本轮新发现：SQL Server SSH 转发混淆拨号地址与 TLS 身份。
+    source_views:
+      - db
+    failure_mode: wrong_tls_server_identity
+    operation: runtime
+    data_state: external_read_only
+    server_side_effect: none
+    issue_projection:
+      title: "[DB][P1] SQL Server SSH 转发丢失远端 TLS 身份"
+      labels:
+        - bug
+        - database
+        - sqlserver
+        - security
+        - ai-ready
+      body_sections:
+        summary: SSH 转发地址覆盖远端主机后，Azure 加密识别和证书主机名使用了错误身份。
+        affected_behavior: 所有启用 SSH 的 SQL Server 连接，Azure SQL 和严格证书校验场景风险最高。
+        reproduction:
+          preconditions:
+            - 使用测试域名、测试证书和本地 SSH 转发夹具，不连接生产库。
+          steps:
+            - 配置远端 Azure 风格域名并启用 SSH。
+            - 捕获最终连接串或 TLS 设置。
+            - 比较拨号地址与证书身份。
+        expected: 拨号连接本地端口，但 Azure 判定和证书身份保持原始远端域名。
+        actual: 本地转发 Host 覆盖原始 Host，后续 TLS 设置基于本地地址。
+        root_cause: sqlserver.Open 的 SSH 分支复用完整 ConnectionConfig 表示传输与服务器身份，覆盖 Host 后递归执行依赖 Host 的 TLS 解析。
+        affected_files:
+          - internal/db/sqlserver_impl.go:145-213
+          - internal/db/ssl_mode.go:103-119
+          - internal/db/ssl_mode.go:186-224
+        fix_boundary:
+          allowed_paths:
+            - internal/db/sqlserver_impl.go
+            - internal/db/sqlserver_impl_test.go
+            - internal/db/ssl_mode.go
+            - internal/db/ssl_mode_sqlserver_test.go
+          preserve:
+            - SSH 本地转发生命周期
+            - 直连 SQL Server 行为
+            - 用户显式加密和信任设置
+          out_of_scope:
+            - 其他数据库 SSH 实现重构
+            - 证书管理 UI 改版
+        acceptance_tests:
+          - Azure 域名经 SSH 保留加密默认值。
+          - 证书身份使用原始远端域名。
+          - 本地拨号地址仍指向转发端口。
+          - 主机名不匹配测试必须失败。
+        validation_commands:
+          - go test ./internal/db -run 'SQLServer.*SSH|SQLServer.*TLS|AzureSQL' -count=1
+        risk_and_rollback: 验证只建立测试环境只读连接且无服务端写入；修复需保留显式用户设置，回滚仅恢复连接配置计算逻辑。
+        verification_boundary: 当前为代码证据确认，尚未在真实 Azure SQL、SSH 跳板机和受信任证书链上运行。
+      operation: runtime
+      data_state: external_read_only
+      server_side_effect: none
+      security_constraints:
+        - 不得关闭证书验证来掩盖身份错误。
+        - 测试不得包含真实连接凭据。
+        - 不连接生产数据库。
+    first_seen_commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
+    verification_status: 代码证据确认
+    verification_details:
+      mode: 只读验证
+      instance_id: full-independent-source-scan
+      verified_at: 2026-09-17T19:18:53.475Z
+      result: 源码确认 SSH 分支用本地地址覆盖 Host 后递归创建连接，TLS 辅助函数只读取当前 Host；尚未连接真实 SQL Server。
+    review_history:
+      - scan_id: full-independent-20260918-71c17ef9
+        checked_at: 2026-09-17T19:18:53.475Z
+        commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
+        action: 全量新问题扫描
+        result: DB 视角独立扫描发现，主 agent 复核 SSH 重写与 TLS helper 调用顺序后接受。
+    last_checked_commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1276
+  - id: FIND-PM-DESKTOP-EXPORT-CANCEL-001
+    title: 桌面导出工作台未暴露取消闭环
+    status: 待修复
+    type: 产品缺口
+    severity: P2
+    confidence: 高
+    affected_capabilities:
+      - CAP-DATA-A13
+    conclusion: 桌面导出工作台的进度 runner 只暴露 run、reset 和 isRunning，运行期间配置被锁定但没有取消动作；后端 headless 导出已经存在可取消 Context，因此缺口位于桌面用户从进度界面发起取消并确认终止的闭环。
+    evidence:
+      - frontend/src/components/useExportProgressRunner.ts:94-191
+      - frontend/src/components/TableExportWorkbench.tsx:895-908
+      - internal/app/methods_file.go:8351-8370
+    impact: 大表或误选范围启动后，桌面用户只能等待完成、失败或关闭应用，无法在工作台内停止资源消耗并确认临时文件已清理。
+    recommendation: 在桌面导出进度状态中增加取消命令和 cancelling/cancelled 状态，把取消传递到后端 Context，并在完成竞态、清理失败和重复取消时给出权威结果。
+    acceptance_criteria:
+      - 桌面长导出运行时显示可操作的取消入口，点击后进入明确的取消中状态
+      - 取消信号传递到当前导出任务并停止继续读取、编码和写入
+      - 取消完成后不会发布部分目标文件，临时文件和任务状态得到清理
+      - 完成与取消竞态、重复取消、后端取消失败和标签切换均有确定反馈
+      - 短导出正常完成路径和现有 headless Context 取消保持兼容
+    affected_paths:
+      - frontend/src/components/useExportProgressRunner.ts
+      - frontend/src/components/TableExportWorkbench.tsx
+      - internal/app/methods_file.go
+    verification_path: 先用组件测试确认取消入口、状态和调用链，再以可阻塞导出夹具验证 Context 终止、目标文件保护和清理。
+    last_checked_result: 本轮新发现：桌面导出进度没有连接后端取消能力。
+    source_views:
+      - product
+      - developer
+    target_task: 在桌面工作台启动大数据导出后随时取消，并确认任务和目标文件处于安全终态
+    current_boundary: 桌面工作台可以启动和观察导出，但不暴露取消；headless 导出已有 Context 取消基础。
+    checked_surfaces:
+      - frontend/src/components/useExportProgressRunner.ts
+      - frontend/src/components/TableExportWorkbench.tsx
+      - internal/app/methods_file.go
+    first_seen_commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
+    verification_status: 代码证据确认
+    verification_details:
+      mode: 只读验证
+      instance_id: full-independent-source-scan
+      verified_at: 2026-09-17T19:18:53.475Z
+      result: 源码确认桌面工作台没有取消命令且运行时只锁定配置；headless 路径已有 Context 取消能力。尚未实测长导出的取消时延和清理。
+    review_history:
+      - scan_id: full-independent-20260918-71c17ef9
+        checked_at: 2026-09-17T19:18:53.475Z
+        commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
+        action: 全量新问题扫描
+        result: 产品视角独立扫描发现，主 agent 将结论限定为桌面工作台未暴露取消闭环后接受。
+    last_checked_commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1277
+  - id: FIND-DEV-WEB-SQL-AUDIT-TIMEOUT-001
+    title: Web SQL 审计完整性校验超时后仍占用重任务槽
+    status: 待修复
+    type: 调用链/契约缺陷
+    severity: P2
+    confidence: 高
+    affected_capabilities:
+      - CAP-AUDIT-A03
+      - CAP-WEB-001
+    conclusion: 当 SQL 审计完整性校验超过 60 秒时，Web 响应可能受 HTTP 写超时影响；该方法虽被登记为长任务并清除局部写 deadline，但校验内部使用 context.Background()，客户端断开或响应失败后仍会继续扫描，并占用唯一重任务槽直至结束。
+    evidence:
+      - internal/httpserver/security.go:20-25
+      - internal/rpctimeout/methods.go:9-36
+      - internal/webserver/long_running_invoke.go:10-15
+      - internal/webserver/server.go:1089-1155
+      - internal/app/methods_sql_audit.go:929-939
+      - internal/sqlaudit/store.go:540-598
+    impact: 大型审计库校验时，用户可能先看到 Web 请求失败，但后台工作继续占用唯一重任务配额，随后导出或再次校验被拒绝或长时间等待。
+    recommendation: 让 Web 请求 Context 贯穿 App 与 sqlaudit 校验循环，并明确长任务写超时策略；客户端断开或超时后释放重任务槽并返回可区分的取消状态。
+    acceptance_criteria:
+      - 超过 60 秒的受控完整性校验不会因普通 HTTP WriteTimeout 丢失响应
+      - 客户端取消、断开或服务端超时会停止数据库扫描并及时释放唯一重任务槽
+      - 校验完成、取消、超时和完整性失败返回可区分状态
+      - 取消一个校验后可以立即启动下一项允许的重任务
+    affected_paths:
+      - internal/httpserver/security.go
+      - internal/rpctimeout/methods.go
+      - internal/webserver/long_running_invoke.go
+      - internal/webserver/server.go
+      - internal/app/methods_sql_audit.go
+      - internal/sqlaudit/store.go
+    verification_path: 用可阻塞的审计存储夹具模拟超过 60 秒及请求取消，验证响应 deadline、Context 传播和重任务槽释放。
+    last_checked_result: 本轮新发现：Web SQL 审计校验的超时、取消和重任务槽生命周期断裂。
+    source_views:
+      - developer
+    affected_symbols:
+      - httpserverlimits.WriteTimeout
+      - rpctimeout.IsLongRunningAppMethod
+      - clearLongRunningInvokeWriteDeadline
+      - webserver.(*Server).handleInvoke
+      - app.(*App).VerifySQLAuditIntegrity
+      - sqlaudit.(*Store).VerifyIntegrity
+    contract_boundary: Web 请求生命周期、长任务并发槽与 SQL 审计存储扫描 Context 之间的取消和超时契约
+    reproduction:
+      preconditions:
+        - 使用可阻塞或包含足够事件的测试审计存储，使完整性校验持续超过 60 秒。
+      steps:
+        - 通过 Web invoke 启动 VerifySQLAuditIntegrity。
+        - 等待超过写超时或主动断开客户端。
+        - 立即发起第二个受重任务槽限制的操作并观察后台校验。
+      expected: 长任务响应使用明确的 deadline 策略；请求结束后校验停止且重任务槽释放。
+      actual: 校验使用 background Context，Web 响应失败或客户端离开后后台扫描仍可能继续占槽。
+    root_cause: Web handler 识别长任务并尝试清除 ResponseController 写 deadline，但 App 方法没有接收请求 Context，sqlaudit.Store 又以 context.Background() 查询和遍历；请求取消无法传到存储层，defer 释放的重任务槽只能等同步调用结束。
+    fix_boundary:
+      allowed_paths:
+        - internal/webserver/server.go
+        - internal/webserver/long_running_invoke.go
+        - internal/app/methods_sql_audit.go
+        - internal/sqlaudit/store.go
+        - internal/webserver/*test.go
+        - internal/app/methods_sql_audit_test.go
+        - internal/sqlaudit/store_test.go
+      preserve:
+        - 桌面 Wails 的现有无参数方法兼容入口
+        - SQL 审计哈希校验语义
+        - 单一重任务并发保护
+      out_of_scope:
+        - SQL 审计格式迁移
+        - 无关 Web RPC 方法重构
+    regression_risk: VerifySQLAuditIntegrity 同时服务桌面和 Web；增加 Context 入口时需避免改变桌面绑定签名，并防止并发槽被提前释放而后台仍运行。
+    regression_tests:
+      - 阻塞存储收到请求取消并退出。
+      - 超过 60 秒的长任务写 deadline 行为。
+      - 取消后第二个重任务能够获取槽。
+      - 正常完整性校验结果保持不变。
+    verification_commands:
+      - go test ./internal/webserver -run 'LongRunning|SQLAudit|Invoke' -count=1
+      - go test ./internal/app -run 'SQLAudit.*Integrity' -count=1
+      - go test ./internal/sqlaudit -run 'Integrity|Cancel' -count=1
+    verification_boundary: 未运行超过 60 秒的 Web 校验复现，也未在真实大型审计库上测量取消时延；当前结论来自调用链和 Context 代码证据。
+    issue_url: https://github.com/Syngnat/GoNavi/issues/1278
+    issue:
+      title: "[P2] Web SQL 审计校验超时后仍占用重任务槽"
+      labels:
+        - bug
+        - developer
+        - web
+        - sql-audit
+        - ai-ready
+      operation: runtime
+      data_state: test_fixture
+      server_side_effect: none
+      security_constraints:
+        - 测试只使用脱敏审计夹具。
+        - 不读取生产审计记录。
+        - 不通过提高全局超时掩盖取消断链。
+    first_seen_commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
+    verification_status: 代码证据确认
+    verification_details:
+      mode: 只读验证
+      instance_id: full-independent-source-scan
+      verified_at: 2026-09-17T19:18:53.475Z
+      result: 源码确认完整性校验由 context.Background() 驱动并在 Web 重任务槽内同步执行；尚未实际运行超过 60 秒的 Web 请求复现。
+    review_history:
+      - scan_id: full-independent-20260918-71c17ef9
+        checked_at: 2026-09-17T19:18:53.475Z
+        commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
+        action: 全量新问题扫描
+        result: 开发视角独立扫描发现，主 agent 将结论限定为超过写超时的条件路径后接受。
+    last_checked_commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
