@@ -56,6 +56,9 @@ const readAppSource = (): string =>
 const readQueryEditorHelpersSource = (): string =>
   readFileSync(new URL("../components/queryEditor/QueryEditorHelpers.ts", import.meta.url), "utf8");
 
+const readQueryEditorAiContextSource = (): string =>
+  readFileSync(new URL("../components/queryEditor/queryEditorAiContext.ts", import.meta.url), "utf8");
+
 const readQueryEditorResultsPanelSource = (): string =>
   readFileSync(new URL("../components/QueryEditorResultsPanel.tsx", import.meta.url), "utf8");
 
@@ -502,6 +505,9 @@ describe("i18n catalog", () => {
       "data_grid.column.comment_tooltip",
       "data_grid.column.foreign_key_tooltip",
       "data_grid.column.foreign_key_jump_title",
+      "data_grid.column.primary_key_tooltip",
+      "data_grid.column.unique_key_tooltip",
+      "data_grid.column.index_tooltip",
       "data_grid.column_quick_find.tooltip",
       "data_grid.column_quick_find.placeholder",
       "data_grid.column_settings.display_settings",
@@ -545,6 +551,9 @@ describe("i18n catalog", () => {
     expect(t("zh-CN", "data_grid.column.type_tooltip", { type: "uuid" })).toBe("类型：uuid");
     expect(t("zh-CN", "data_grid.column.comment_tooltip", { comment: "账户编号" })).toBe("注释：账户编号");
     expect(t("zh-CN", "data_grid.column.foreign_key_tooltip", { target: "public.users.id" })).toBe("外键：public.users.id");
+    expect(t("zh-CN", "data_grid.column.primary_key_tooltip")).toBe("主键");
+    expect(t("zh-CN", "data_grid.column.unique_key_tooltip")).toBe("唯一索引");
+    expect(t("zh-CN", "data_grid.column.index_tooltip")).toBe("索引");
     expect(t("en-US", "data_grid.column.foreign_key_jump_title", { tableName: "audit.log" })).toBe("Open foreign key table: audit.log");
     assertSourceDoesNotInlineCatalogValues(source, dataGridColumnControlKeys);
   });
@@ -1023,7 +1032,7 @@ describe("i18n catalog", () => {
     const source = readQueryEditorSource();
     const handleReloadSource = sliceBetween(
       source,
-      "  const handleReloadResult = async (resultKey: string, sql: string) => {",
+      "  const handleReloadResult = async (",
       "  const handleRun = async (runScope: QueryEditorRunScope = 'default') => {",
     );
 
@@ -1682,13 +1691,13 @@ describe("i18n catalog", () => {
     const aiContextKeys = [
       "query_editor.ai_prompt.default_source",
       "query_editor.ai_prompt.default_database",
+      "query_editor.ai_prompt.default_version",
       "query_editor.ai_prompt.context",
     ] as const;
-    const source = readQueryEditorSource();
     const aiContextSource = sliceBetween(
-      source,
-      "const buildQueryEditorAiContextPrompt = (connection: any, database: string): string => {",
-      "// HMR 重载时释放旧注册避免补全和 hover 内容重复",
+      readQueryEditorAiContextSource(),
+      "export const buildQueryEditorAiContextPrompt = (",
+      "  return translate('query_editor.ai_prompt.context', {",
     );
 
     for (const language of SUPPORTED_LANGUAGES) {
@@ -1696,12 +1705,18 @@ describe("i18n catalog", () => {
         expect(catalogs[language]).toHaveProperty(key);
         expect(catalogs[language][key]).toBeTruthy();
       }
+      expect(getPlaceholders(catalogs[language]["query_editor.ai_prompt.context"])).toEqual([
+        "database",
+        "name",
+        "type",
+        "version",
+      ]);
     }
 
-    for (const key of aiContextKeys) {
-    }
-
-    assertSourceDoesNotInlineCatalogValues(aiContextSource, aiContextKeys);
+    assertSourceDoesNotInlineCatalogValues(aiContextSource, [
+      "query_editor.ai_prompt.default_version",
+      "query_editor.ai_prompt.context",
+    ]);
   });
 
   it("keeps QueryEditor AI context menu prompts in catalogs instead of source literals", () => {
@@ -1903,7 +1918,7 @@ describe("i18n catalog", () => {
       sliceBetween(
         source,
         "const buildQueryEditorEditableDefinitionSql = (",
-        "const buildQueryEditorAiContextPrompt = (",
+        "const SQL_COMPLETION_PROVIDER_VERSION = '20260831-hover-ddl-v6';",
       ),
       sliceBetween(
         source,

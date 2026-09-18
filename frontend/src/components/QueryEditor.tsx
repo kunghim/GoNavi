@@ -178,12 +178,17 @@ import QueryEditorToolbar, {
     useQueryExecutionElapsed,
 } from './QueryEditorToolbar';
 import { useQueryEditorExecutionLifecycle } from './queryEditor/useQueryEditorExecutionLifecycle';
+import { useQueryEditorSqlErrorLocator } from './queryEditor/useQueryEditorSqlErrorLocator';
+import { resolveQueryEditorAiConnectionHost } from './queryEditor/queryEditorAiContext';
+import { injectQueryEditorAiPromptWithContext } from './queryEditor/queryEditorAiPromptInject';
+import { peekDatabaseServerVersion } from './queryEditor/queryEditorServerVersion';
 import { useQueryEditorTabExecutionBroadcast } from './queryEditor/queryEditorTabExecutionState';
 import {
     buildQueryEditorLifecycleAffectedRowsResult,
     isQueryEditorCancelledRpcError,
     queryEditorExecutionTimerStatusI18nKey,
-    shouldRetainQueryEditorRun,
+    shouldFinishQueryEditorRunAfterCancelMiss,
+    shouldRetainQueryEditorRunAfterRpc,
     shouldRetainQueryEditorRunAfterRpcFailure,
     type QueryEditorExecutionLifecycleState,
 } from './queryEditor/queryEditorExecutionLifecycle';
@@ -301,6 +306,7 @@ import {
     stripCompletionIdentifierQuotes,
     shouldHandleQueryEditorRunShortcutFallback,
 } from './queryEditor/QueryEditorHelpers';
+import { finalizeQueryEditorSqlServerResultSets, resolveQueryEditorExecutionSuccessToast } from './queryEditor/queryEditorSqlServerResultMessages';
 import {
     applyQueryEditorCompletionFragmentCase,
     buildQueryEditorAiInlineSuggestOptions,
@@ -1104,37 +1110,8 @@ const extractQueryEditorTriggerDefinition = (dialect: string, data: any[]): stri
     return String(getQueryEditorObjectEditRawValue(row, ['TRIGGER_BODY', 'trigger_body', 'TEXT', 'text']) || Object.values(row)[0] || '');
 };
 
-const buildQueryEditorAiContextPrompt = (connection: any, database: string): string => {
-    if (!connection) {
-        return '';
-    }
-
-    const sourceLabel = String(connection.config?.type || '').trim() || translate('query_editor.ai_prompt.default_source');
-    const databaseLabel = String(database || '').trim() || translate('query_editor.ai_prompt.default_database');
-
-    return translate('query_editor.ai_prompt.context', {
-        type: sourceLabel,
-        name: `"${connection.name}"`,
-        database: `"${databaseLabel}"`,
-    });
-};
-
-const resolveQueryEditorAiConnectionHost = (connection: any): string => {
-    const config = connection?.config || {};
-    if (Array.isArray(config.hosts)) {
-        const hosts = config.hosts
-            .map((item: any) => String(typeof item === 'string' ? item : item?.host || item?.hostname || item?.address || '').trim())
-            .filter(Boolean);
-        if (hosts.length > 0) {
-            return hosts.join(', ');
-        }
-    }
-    return String(config.host || config.hostname || config.server || config.address || '').trim();
-};
-
-// HMR 重载时释放旧注册避免补全和 hover 内容重复
-const _g = globalThis as any;
 const SQL_COMPLETION_PROVIDER_VERSION = '20260831-hover-ddl-v6';
+const _g = globalThis as any;
 const SQL_COMPLETION_PROVIDER_MODULE_TOKEN = {};
 const QUERY_EDITOR_MONACO_LANGUAGE_IDS = ['sql', 'mysql'] as const;
 if (!_g.__gonaviSqlCompletionState) {
@@ -2288,6 +2265,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
   const lastEditorCursorPositionRef = useRef<any>(null);
   const lastHoverTargetPositionRef = useRef<{ lineNumber: number; column: number } | null>(null);
   const lastExecutedEditorQueryRef = useRef<string>('');
+  const { recordExecutionOrigin, locateExecutionError } = useQueryEditorSqlErrorLocator(editorRef);
   const linkDecorationIdsRef = useRef<string[]>([]);
   const ctrlMetaPressedRef = useRef(false);
   const objectDecorationIdsRef = useRef<string[]>([]);
@@ -3462,6 +3440,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           visibleDbsRef.current,
           appearance.customTableAliasPrefixEnabled,
           appearance.customTableAliasPrefix,
+          peekDatabaseServerVersion(resolvedConnectionId),
       ];
       const cached = aiContextCacheRef.current;
       if (cached && cached.deps.every((dep, index) => dep === cacheDeps[index])) {
@@ -3495,6 +3474,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           mergedColumnsByKey.set(columnKey, column);
       });
       const value: QueryEditorAiContext = {
+          connectionId: resolvedConnectionId,
           connectionName: conn?.name,
           host: resolveQueryEditorAiConnectionHost(conn),
           port: conn?.config?.port,
@@ -3511,6 +3491,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           visibleDbs: visibleDbsRef.current,
           tables: [...mergedTablesByKey.values()],
           columns: [...mergedColumnsByKey.values()],
+          databaseVersion: peekDatabaseServerVersion(resolvedConnectionId),
       };
       aiContextCacheRef.current = { deps: cacheDeps, value };
       return value;
@@ -4569,19 +4550,17 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
               label: action.label,
               contextMenuGroupId: '9_ai',
               contextMenuOrder: 1,
-              run: (ed: any) => {
+              run: async (ed: any) => {
                   const selection = ed.getModel()?.getValueInRange(ed.getSelection());
-                  const conn = connectionsRef.current.find(c => c.id === currentConnectionIdRef.current);
-                  const ctxText = buildQueryEditorAiContextPrompt(conn, currentDbRef.current);
-                  let prompt = ctxText + action.prompt;
+                  let prompt = action.prompt;
                   if (action.useSelection && selection) {
                       prompt = prompt.replace(QUERY_EDITOR_SQL_PROMPT_PLACEHOLDER, selection);
                   }
-                  const store = useStore.getState();
-                  if (!store.aiPanelVisible) {
-                      store.setAIPanelVisible(true);
-                  }
-                  window.dispatchEvent(new CustomEvent('gonavi:ai:inject-prompt', { detail: { prompt } }));
+                  await injectQueryEditorAiPromptWithContext({
+                      connection: connectionsRef.current.find((c) => c.id === currentConnectionIdRef.current),
+                      database: currentDbRef.current,
+                      prompt,
+                  });
               },
           })
       ));
@@ -9224,24 +9203,19 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           model.setValue(newText);
           _handlingSlash = false;
 
-          // 组装 prompt
           const conn = connectionsRef.current.find(c => c.id === currentConnectionIdRef.current);
-          const ctxText = buildQueryEditorAiContextPrompt(conn, currentDbRef.current);
-          let finalPrompt = ctxText + cmdDef.prompt;
+          let prompt = cmdDef.prompt;
           if (cmdDef.useSelection) {
               const sel = editor.getSelection();
               const selText = sel ? model.getValueInRange(sel) : '';
-              finalPrompt = finalPrompt.replace(QUERY_EDITOR_SQL_PROMPT_PLACEHOLDER, selText || getCurrentQuery());
+              prompt = prompt.replace(QUERY_EDITOR_SQL_PROMPT_PLACEHOLDER, selText || getCurrentQuery());
           }
-
-          // 打开 AI 面板并注入 prompt
-          const store = useStore.getState();
-          if (!store.aiPanelVisible) {
-              store.setAIPanelVisible(true);
-          }
-          setTimeout(() => {
-              window.dispatchEvent(new CustomEvent('gonavi:ai:inject-prompt', { detail: { prompt: finalPrompt } }));
-          }, store.aiPanelVisible ? 0 : 350);
+          void injectQueryEditorAiPromptWithContext({
+              connection: conn,
+              database: currentDbRef.current,
+              prompt,
+              delayIfPanelClosedMs: 350,
+          });
       });
   };
 
@@ -9429,22 +9403,16 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       const editor = editorRef.current;
       const selection = editor?.getModel()?.getValueInRange(editor.getSelection()) || '';
       const fullSQL = getCurrentQuery();
-
-      const conn = connections.find(c => c.id === currentConnectionId);
-      const ctxText = buildQueryEditorAiContextPrompt(conn, currentDb);
-
       const prompts: Record<string, string> = {
-          generate: `${ctxText}${translate('query_editor.ai_prompt.generate')}`,
-          explain: `${ctxText}${translate('query_editor.ai_prompt.explain', { sql: selection || fullSQL || QUERY_EDITOR_SQL_PROMPT_PLACEHOLDER })}`,
-          optimize: `${ctxText}${translate('query_editor.ai_prompt.optimize', { sql: selection || fullSQL || QUERY_EDITOR_SQL_PROMPT_PLACEHOLDER })}`,
-          schema: `${ctxText}${translate('query_editor.ai_prompt.schema')}`,
+          explain: translate('query_editor.ai_prompt.explain', { sql: selection || fullSQL || QUERY_EDITOR_SQL_PROMPT_PLACEHOLDER }),
+          optimize: translate('query_editor.ai_prompt.optimize', { sql: selection || fullSQL || QUERY_EDITOR_SQL_PROMPT_PLACEHOLDER }),
+          schema: translate('query_editor.ai_prompt.schema'),
       };
-
-      const store = useStore.getState();
-      if (!store.aiPanelVisible) {
-          store.setAIPanelVisible(true);
-      }
-      window.dispatchEvent(new CustomEvent('gonavi:ai:inject-prompt', { detail: { prompt: prompts[action] } }));
+      void injectQueryEditorAiPromptWithContext({
+          connection: connections.find((c) => c.id === currentConnectionId),
+          database: currentDb,
+          prompt: prompts[action] || '',
+      });
   };
 
   const formatSettingsMenu: MenuProps['items'] = [
@@ -9781,14 +9749,34 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
   }, [buildSqlExecutionConnectionConfig, invokeRequestScopedApp]);
 
   // 精准重查询单个结果集（提交事务 / 刷新按钮使用），不会重跑整个编辑器 SQL
-  const handleReloadResult = async (resultKey: string, sql: string) => {
+  const handleReloadResult = async (
+      resultKey: string,
+      sql: string,
+      executionContext?: {
+          executionConnectionId?: string;
+          executionDbName?: string;
+          executionConnectionParams?: string;
+          statementResultIndex?: number;
+      },
+  ) => {
+      // Result keys are positional (`result-N`) and get reused across runs, so a
+      // live lookup can resolve to a *different* result than the grid the user
+      // clicked. Prefer the caller's own execution context, which is the result
+      // actually being displayed.
       const currentResult = resultSets.find((item) => item.key === resultKey);
-      const executionConnectionId = currentResult?.executionConnectionId || currentConnectionId;
+      const executionConnectionId = executionContext?.executionConnectionId
+          || currentResult?.executionConnectionId
+          || currentConnectionId;
       const conn = connections.find(c => c.id === executionConnectionId);
       if (!conn) return;
-      const executionDbName = currentResult?.executionDbName ?? currentDb;
+      const executionDbName = executionContext?.executionDbName
+          ?? currentResult?.executionDbName
+          ?? currentDb;
       if (!sql?.trim() || !canUseQueryEditorDatabaseContext(conn, executionDbName)) return;
-      const statementResultIndex = Math.max(1, Number(currentResult?.statementResultIndex || 1));
+      const statementResultIndex = Math.max(
+          1,
+          Number(executionContext?.statementResultIndex ?? currentResult?.statementResultIndex ?? 1),
+      );
 
       const config = {
           ...conn.config,
@@ -9844,7 +9832,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                   queryId,
                   splitSQLStatements(sql, normalizedDbType),
                   normalizedDbType,
-                  currentResult?.executionConnectionParams,
+                  executionContext?.executionConnectionParams ?? currentResult?.executionConnectionParams,
                   executionConnectionId,
               );
           } finally {
@@ -10610,6 +10598,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
     lockQueryContextForRun(runSeq);
     setLoading(true);
     setExecutionError('');
+    recordExecutionOrigin(currentQuery, executableSQL);
     updateResultPanelVisibility(true);
     rpcLostWithoutResultRef.current = false;
     const runStartTime = Date.now();
@@ -11058,6 +11047,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             const fullSQL = shouldPreserveOraclePlsqlBatch
                 ? normalizeOracleSqlPlusSlashTerminators(normalizedRawSQL)
                 : executableStatements.join(';\n');
+            recordExecutionOrigin(currentQuery, executableSQL, fullSQL, executablePlans);
 
             let queryId: string;
             try {
@@ -11480,14 +11470,15 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                     readOnly: true,
                 });
             }
+            const visibleResultSets = finalizeQueryEditorSqlServerResultSets(normalizedDbType, nextResultSets);
 
-            if (nextResultSets.length > 0) {
+            if (visibleResultSets.length > 0) {
                 updateResultPanelVisibility(true);
             }
             const shouldReplaceAllResults = didExecuteWholeEditor;
-            const mergedResultSets = mergeResultSets(resultSets, nextResultSets, shouldReplaceAllResults);
+            const mergedResultSets = mergeResultSets(resultSets, visibleResultSets, shouldReplaceAllResults);
             setResultSets(mergedResultSets);
-            activateExecutedResult(mergedResultSets, nextResultSets, runSeq);
+            activateExecutedResult(mergedResultSets, visibleResultSets, runSeq);
             if (didExecuteAppendedSql || didExecuteWholeEditor) {
                 lastExecutedEditorQueryRef.current = currentQuery;
             }
@@ -11500,12 +11491,9 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             if (res.message) {
                 message.info(res.message);
             }
-            if (resultSetDataArray.length > 1) {
-                message.success(translate('query_editor.message.execution_result_sets_success', {
-                    results: nextResultSets.length,
-                }));
-            } else if (nextResultSets.length === 0) {
-                message.success(translate('query_editor.message.execution_success'));
+            const successToast = resolveQueryEditorExecutionSuccessToast(resultSetDataArray.length, visibleResultSets);
+            if (successToast) {
+                message.success(translate(successToast.key, successToast.params));
             }
 
         }
@@ -11532,9 +11520,9 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
         clearUnpinnedResultSets(QUERY_EDITOR_SQL_LOG_TAB_KEY);
     } finally {
         unlockQueryContextForRun(runSeq);
-        const retainRun = isCurrentRun() && (
-            rpcLostWithoutResultRef.current
-            || shouldRetainQueryEditorRun(executionLifecycleRef.current)
+        const retainRun = isCurrentRun() && shouldRetainQueryEditorRunAfterRpc(
+            rpcLostWithoutResultRef.current,
+            executionLifecycleRef.current,
         );
         if (isCurrentRun() && !retainRun) setLoading(false);
         if (runQueryId && currentQueryIdRef.current === runQueryId && !retainRun) {
@@ -11627,6 +11615,12 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           finishCancelledRun();
           clearQueryId();
         }
+      } else if (
+        currentQueryIdRef.current === queryIdToCancel
+        && shouldFinishQueryEditorRunAfterCancelMiss(res, loading)
+      ) {
+        finishCancelledRun();
+        clearQueryId();
       } else {
         message.warning(res.message);
       }
@@ -13591,6 +13585,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           onRequestResultTotalCount={handleRequestResultTotalCount}
           onCancelResultTotalCount={handleCancelResultTotalCount}
           onDiagnoseExecutionError={handleDiagnoseExecutionError}
+          onLocateExecutionError={() => locateExecutionError(executionError)}
           onCompareResult={(resultKey) => {
             setResultDiffAnchorKey(resultKey);
             setResultDiffWizardOpen(true);

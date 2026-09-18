@@ -325,6 +325,19 @@ export const isMCPClientConnected = (
   status?: Pick<AIMCPClientInstallStatus, 'client' | 'installMode' | 'clientDetected' | 'matchesCurrent'> | null,
 ): boolean => status?.matchesCurrent === true && !isLocalMCPClientUnavailable(status);
 
+export const needsMCPClientUpdate = (
+  status?: Pick<AIMCPClientInstallStatus, 'client' | 'installMode' | 'clientDetected' | 'installed' | 'matchesCurrent'> | null,
+): boolean => Boolean(
+  status?.installed
+  && status.matchesCurrent !== true
+  && supportsAutoMCPClientInstall(status)
+  && !isLocalMCPClientUnavailable(status),
+);
+
+export const listMCPClientsNeedingUpdate = (
+  items?: AIMCPClientInstallStatus[] | null,
+): AIMCPClientInstallStatus[] => (Array.isArray(items) ? items : []).filter(needsMCPClientUpdate);
+
 const hasStatusError = (status: AIMCPClientInstallStatus): boolean =>
   MCP_CLIENT_STATUS_ERROR_PATTERNS.some((pattern) => pattern.test(String(status.message || '').trim()));
 
@@ -441,7 +454,7 @@ export const buildRemoteMCPClientGuide = (
     `- ${translateMCPClientCopy(
       translate,
       'ai_settings.mcp_server.remote_quick_start.guide.goal.tools_only',
-      'The cloud Agent only reads get_connections/get_databases/get_objects/get_tables/get_views/get_columns/get_table_ddl results through MCP tools.',
+      'The cloud Agent only reads get_connections/get_server_version/get_databases/get_objects/get_tables/get_views/get_columns/get_table_ddl results through MCP tools.',
     )}`,
     `- ${translateMCPClientCopy(
       translate,
@@ -490,7 +503,7 @@ export const buildRemoteMCPClientGuide = (
     translateMCPClientCopy(
       translate,
       'ai_settings.mcp_server.remote_quick_start.guide.step.inspect_schema',
-      '4. Call get_connections first to obtain connectionId, then call schema tools; do not write database host/user/password into the cloud Agent config.',
+      '4. Call get_connections first to obtain connectionId, then call get_server_version and schema tools; do not write database host/user/password into the cloud Agent config.',
     ),
     '',
     translateMCPClientCopy(
@@ -522,7 +535,7 @@ export const buildRemoteMCPClientGuide = (
     translateMCPClientCopy(
       translate,
       'ai_settings.mcp_server.remote_quick_start.guide.execute_sql_note',
-      'If remote SQL execution is explicitly required, remove --schema-only; execute_sql remains constrained by GoNavi AI safety controls, and writes must explicitly pass allowMutating=true.',
+      'If remote SQL execution is needed, remove --schema-only. execute_sql then follows the same AI safety controls as the built-in assistant; calling execute_sql is the confirmation and allowMutating is not required.',
     ),
     '',
     status?.message
