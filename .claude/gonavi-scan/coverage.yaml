@@ -1,47 +1,345 @@
 version: 3
-scan_id: full-new-20260913-46cb0628-v4
-head_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+scan_id: full-independent-20260918-71c17ef9
+head_commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
 campaign:
-  id: full-new-campaign-20260913
-  mode: continue
-  continuation_from: full-new-20260913-e7e3eb74-1789320000
+  id: full-independent-campaign-20260918
+  mode: new
   completion_scope: full_repository
   remaining_assessment_ids:
+    - A-TASK-PROD-CONNECTIONS
+    - A-TASK-PROD-RELATIONAL-SOURCES
+    - A-TASK-PROD-OBJECTS
+    - A-TASK-PROD-QUERY
+    - A-TASK-PROD-DATA
+    - A-TASK-PROD-SYNC
+    - A-TASK-PROD-REDIS
+    - A-TASK-PROD-VECTOR
+    - A-TASK-PROD-SEARCH
+    - A-TASK-PROD-MESSAGING
+    - A-TASK-PROD-NACOS
+    - A-TASK-PROD-JVM
+    - A-TASK-PROD-AI
+    - A-TASK-PROD-MCP
+    - A-TASK-PROD-WEB-CLI
+    - A-TASK-PROD-OPS
     - A-TASK-DB-CONNECTIONS
     - A-TASK-DB-QUERY
     - A-TASK-DB-METADATA
+    - A-TASK-DB-WRITES
+    - A-TASK-DB-LOGGING
     - A-TASK-DB-TRANSFER
+    - A-TASK-DEV-LAUNCH
     - A-TASK-DEV-CONNECTIONS
     - A-TASK-DEV-METADATA
+    - A-TASK-DEV-SQL-EDIT
     - A-TASK-DEV-QUERY-RUNTIME
     - A-TASK-DEV-TABLE
+    - A-TASK-DEV-IMPORT
+    - A-TASK-DEV-SYNC
     - A-TASK-DEV-SPECIALIZED
+    - A-TASK-DEV-AI
+    - A-TASK-DEV-WEB
+    - A-TASK-DEV-CLI
     - A-TASK-DEV-DESKTOP
+    - A-TASK-DEV-DELIVERY
+    - A-TASK-DEV-BINDINGS
+    - A-DB-DRIVER-AGENT-STREAM-SYNC
+    - A-DB-SQLSERVER-SSH-TLS-IDENTITY
+    - A-DEVELOPER-WEB-SQL-AUDIT-TIMEOUT
 knowledge_snapshot:
   baseline_commit: ec366c21ca28660c248e06f6bbebc75aa686e899
-  skill_revision: sha256:d59687572127ae0239949ac756f01de085341c2673d5f0455de8f7ebb5ca19db
-  registry_digest: sha256:0bd99d5f7dd3f2076547bb7938ff1f0bbe9d7dd5b86f5f92620ccbc1a37e7bc0
-  checked_at: 2026-09-13T14:10:00+08:00
+  skill_revision: sha256:06b212c32f436bb26e04100262114b571bfc2b95ac977d98245f7a492c090c8a
+  registry_digest: sha256:aced875d377a54cf82be871c71ac679eeb8efa7e3faddedc353d12b6a993a38d
+  checked_at: 2026-09-17T19:18:53.475Z
   change_review:
     from_commit: ec366c21ca28660c248e06f6bbebc75aa686e899
-    to_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+    to_commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
     changed_paths:
-      - frontend/src/components/QueryEditor.external-sql-save.test.tsx
-      - tools/project-tools.mjs
+      - .claude/ARCHITECTURE.md
+      - .claude/CONTRIBUTING.local.md
+      - .claude/DEVELOPMENT.md
+      - .claude/LOCAL_ENVIRONMENT.md
+      - .claude/MODULE_INDEX.md
+      - .claude/PROJECT_CONTEXT.md
+      - .claude/TASK_WORKFLOW.md
+      - .claude/TESTING.md
+      - .claude/gonavi-scan/coverage.yaml
+      - .claude/gonavi-scan/entry-inventory.yaml
+      - .claude/gonavi-scan/findings-archive.md
+      - .claude/gonavi-scan/findings-deferred.yaml
+      - .claude/gonavi-scan/findings.yaml
+      - .claude/gonavi-scan/scan-manifest.yaml
+      - .claude/gonavi-scan/state.yaml
+      - .claude/scripts/build-and-run.ps1
+      - .claude/settings.local.json
+      - .claude/tasks/README.md
+      - .claude/tasks/archive/datagrid-column-header-controls-pr.md
+      - '".claude/\346\265\213\350\257\225\347\216\257\345\242\203\346\225\260\346\215\256\345\272\223.md"'
+      - .cursor/rules/gonavi-core.mdc
+      - .cursor/rules/gonavi-frontend.mdc
+      - .cursor/rules/gonavi-go.mdc
+      - .cursor/rules/gonavi-i18n.mdc
+      - .cursor/rules/gonavi-java.mdc
+      - .github/workflows/dev-build.yml
+      - .github/workflows/release.yml
+      - .gitignore
+      - AGENTS.md
+      - CLAUDE.md
+      - CONTRIBUTING.md
+      - GO_STYLE.md
+      - README.md
+      - README.zh-CN.md
+      - frontend/index.html
+      - frontend/patches/rc-virtual-list+3.19.2.patch
+      - frontend/src/App.css
+      - frontend/src/App.sidebar-resize-hit-area.test.ts
+      - frontend/src/App.sidebar-resize-hit-area.test.tsx
+      - frontend/src/App.tool-center.test.ts
+      - frontend/src/App.tsx
+      - frontend/src/bootSplashMarkup.test.ts
+      - frontend/src/bootstrap.ts
+      - frontend/src/brand/brandIcons.test.ts
+      - frontend/src/components/BatchConnectionTreeSelect.css
+      - frontend/src/components/BatchConnectionTreeSelect.test.tsx
+      - frontend/src/components/BatchConnectionTreeSelect.tsx
+      - frontend/src/components/BatchConnectionWorkbench.test.tsx
+      - frontend/src/components/BatchConnectionWorkbench.tsx
+      - frontend/src/components/DataGrid.ddl.test.tsx
+      - frontend/src/components/DataGrid.layout.test.tsx
+      - frontend/src/components/DataGrid.tsx
+      - frontend/src/components/DataGridShell.tsx
+      - frontend/src/components/DataViewer.primary-key.test.tsx
+      - frontend/src/components/DataViewer.tsx
+      - frontend/src/components/DefinitionViewer.object-edit.test.tsx
+      - frontend/src/components/DriverManagerModal.layout.test.ts
+      - frontend/src/components/DriverManagerModal.tsx
+      - frontend/src/components/DriverManagerWorkbench.css
+      - frontend/src/components/DriverManagerWorkbench.tsx
+      - frontend/src/components/NativeDetachedWindowApp.tsx
+      - frontend/src/components/QueryEditor.results-and-drop.test.tsx
+      - frontend/src/components/QueryEditor.tsx
+      - frontend/src/components/QueryEditorResultsPanel.tsx
+      - frontend/src/components/QueryEditorToolbar.layout.test.tsx
+      - frontend/src/components/QueryEditorToolbar.tsx
+      - frontend/src/components/RootErrorBoundary.tsx
+      - frontend/src/components/Sidebar.locate-toolbar.test.tsx
+      - frontend/src/components/Sidebar.tsx
+      - frontend/src/components/TabManager.tsx
+      - frontend/src/components/TableDesigner.tsx
+      - frontend/src/components/TableDesignerCopyColumnsModal.tsx
+      - frontend/src/components/TableExportWorkbench.test.tsx
+      - frontend/src/components/TableExportWorkbench.tsx
+      - frontend/src/components/TableOverview.tsx
+      - frontend/src/components/TriggerViewer.object-edit.test.tsx
+      - frontend/src/components/V2TableContextMenu.tsx
+      - frontend/src/components/WorkbenchTabContent.tsx
+      - frontend/src/components/ai/AIMCPClientInstallPanel.test.tsx
+      - frontend/src/components/ai/AIMCPClientSelectorPanel.tsx
+      - frontend/src/components/ai/AIProviderLogo.test.tsx
+      - frontend/src/components/ai/AIProviderLogo.tsx
+      - frontend/src/components/ai/AISettingsAnalysisSection.test.tsx
+      - frontend/src/components/ai/AISettingsProvidersSection.css
+      - frontend/src/components/ai/AISettingsProvidersSection.mounted.test.tsx
+      - frontend/src/components/ai/AISettingsProvidersSection.test.tsx
+      - frontend/src/components/ai/AISettingsProvidersSection.tsx
+      - frontend/src/components/ai/mcpClientInstallPanelState.test.ts
+      - frontend/src/components/ai/mcpClientInstallPanelState.ts
+      - frontend/src/components/ai/providerPresetOrder.test.ts
+      - frontend/src/components/ai/providerPresetOrder.ts
+      - frontend/src/components/ai/useAIChatPanelResize.test.tsx
+      - frontend/src/components/ai/useAIChatPanelResize.ts
+      - frontend/src/components/ai/useAIMCPClientInstaller.test.tsx
+      - frontend/src/components/ai/useAIMCPClientInstaller.ts
+      - frontend/src/components/ai/useAIProviderLayout.ts
+      - frontend/src/components/batchConnectionSelectionTree.test.ts
+      - frontend/src/components/batchConnectionSelectionTree.ts
+      - frontend/src/components/data-sync/DataSyncConnectionTreeSelect.tsx
+      - frontend/src/components/dataGridColumnOrder.test.ts
+      - frontend/src/components/dataGridColumnOrder.ts
+      - frontend/src/components/dataGridLayout.test.ts
+      - frontend/src/components/dataGridLayout.ts
+      - frontend/src/components/dataGridStyles.ts
+      - frontend/src/components/dataGridTransactionLog.test.ts
+      - frontend/src/components/dataGridTransactionLog.ts
+      - frontend/src/components/dataGridVirtualScroll.test.ts
+      - frontend/src/components/dataGridVirtualScroll.ts
+      - frontend/src/components/queryEditor/QueryEditorExecutionStatus.test.tsx
+      - frontend/src/components/queryEditor/QueryEditorExecutionStatus.tsx
+      - frontend/src/components/queryEditor/QueryEditorHelpers.test.ts
+      - frontend/src/components/queryEditor/QueryEditorHelpers.ts
+      - frontend/src/components/queryEditor/QueryEditorRunningTabsDock.test.tsx
+      - frontend/src/components/queryEditor/QueryEditorRunningTabsDock.tsx
+      - frontend/src/components/queryEditor/QueryEditorTabRunningIndicator.test.tsx
+      - frontend/src/components/queryEditor/QueryEditorTabRunningIndicator.tsx
+      - frontend/src/components/queryEditor/queryEditorExecutionContext.test.ts
+      - frontend/src/components/queryEditor/queryEditorExecutionLifecycle.test.ts
+      - frontend/src/components/queryEditor/queryEditorExecutionLifecycle.ts
+      - frontend/src/components/queryEditor/queryEditorTabExecutionState.test.ts
+      - frontend/src/components/queryEditor/queryEditorTabExecutionState.ts
+      - frontend/src/components/queryEditor/queryEditorVisibilityContext.test.ts
+      - frontend/src/components/queryEditor/queryEditorVisibilityContext.ts
+      - frontend/src/components/queryEditor/useQueryEditorEverActive.test.tsx
+      - frontend/src/components/queryEditor/useQueryEditorEverActive.ts
+      - frontend/src/components/queryEditor/useQueryEditorExecutionLifecycle.test.tsx
+      - frontend/src/components/queryEditor/useQueryEditorExecutionLifecycle.ts
+      - frontend/src/components/settings/ConnectionImportSettingsPanel.test.tsx
+      - frontend/src/components/sidebar/SidebarSearchPanel.interaction.test.tsx
+      - frontend/src/components/sidebar/SidebarSearchPanel.tsx
+      - frontend/src/components/sidebar/oracleObjectCompilation.test.ts
+      - frontend/src/components/sidebar/oracleObjectCompilation.ts
+      - frontend/src/components/sidebar/sidebarHelpers.connection-double-click.test.ts
+      - frontend/src/components/sidebar/sidebarHelpers.ts
+      - frontend/src/components/sidebar/sidebarLocateActiveTab.test.ts
+      - frontend/src/components/sidebar/sidebarLocateActiveTab.ts
+      - frontend/src/components/sidebar/sidebarLocateDatabaseObject.test.ts
+      - frontend/src/components/sidebar/sidebarLocateDatabaseObject.ts
+      - frontend/src/components/sidebar/sidebarMetadataLoaders.test.ts
+      - frontend/src/components/sidebar/sidebarMetadataLoaders.ts
+      - frontend/src/components/sidebar/sidebarNodeMenu.oracle-compilation.test.tsx
+      - frontend/src/components/sidebar/sidebarNodeMenu.query-capability.test.tsx
+      - frontend/src/components/sidebar/sidebarNodeMenu.tsx
+      - frontend/src/components/sidebar/sidebarTreeScrollRequest.test.ts
+      - frontend/src/components/sidebar/sidebarTreeScrollRequest.ts
+      - frontend/src/components/sidebar/useSidebarBatchExport.test.ts
+      - frontend/src/components/sidebar/useSidebarBatchExport.ts
+      - frontend/src/components/sidebar/useSidebarCommandSearchRunner.titlebarContext.test.tsx
+      - frontend/src/components/sidebar/useSidebarCommandSearchRunner.ts
+      - frontend/src/components/sidebar/useSidebarObjectActions.tsx
+      - frontend/src/components/sidebar/useSidebarSearchModel.search-dedupe.test.tsx
+      - frontend/src/components/sidebar/useSidebarSearchModel.tsx
+      - frontend/src/components/sidebar/useSidebarTreeLoaders.progressive.test.tsx
+      - frontend/src/components/sidebar/useSidebarTreeLoaders.tsx
+      - frontend/src/components/sidebar/useSidebarV2ActionHandlers.tsx
+      - frontend/src/components/sidebarV2Utils.command-search.test.ts
+      - frontend/src/components/sidebarV2Utils.ts
+      - frontend/src/components/tableDesignerColumnClipboard.test.ts
+      - frontend/src/components/tableDesignerColumnClipboard.ts
+      - frontend/src/components/tableDesignerColumnClipboardShortcuts.test.ts
+      - frontend/src/components/tableDesignerColumnClipboardShortcuts.ts
+      - frontend/src/components/tableDesignerCopyColumnsToTable.test.ts
+      - frontend/src/components/tableDesignerCopyColumnsToTable.ts
+      - frontend/src/components/tableDesignerSchemaSql.ts
+      - frontend/src/components/useTableDesignerColumnClipboard.ts
+      - frontend/src/components/useWorkbenchTabActivation.test.tsx
+      - frontend/src/components/useWorkbenchTabActivation.ts
+      - frontend/src/components/virtualListNativeScroll.test.tsx
+      - frontend/src/i18n/catalog.test.ts
+      - frontend/src/main.browserMock.test.ts
+      - frontend/src/main.tsx
+      - frontend/src/nativeDetachedMain.tsx
+      - frontend/src/styles/v2-theme-ai.css
+      - frontend/src/styles/v2-theme-workbench.css
+      - frontend/src/types.ts
+      - frontend/src/utils/aiPanelLayout.test.ts
+      - frontend/src/utils/aiPanelLayout.ts
+      - frontend/src/utils/aiProviderManagement.test.ts
+      - frontend/src/utils/aiProviderManagement.ts
+      - frontend/src/utils/aiThinkingIntensity.test.ts
+      - frontend/src/utils/bootSplash.test.ts
+      - frontend/src/utils/bootSplash.ts
+      - frontend/src/utils/cursorCLIModelEffort.test.ts
+      - frontend/src/utils/cursorCLIModelEffort.ts
+      - frontend/src/utils/mainWindowStartup.test.ts
+      - frontend/src/utils/mainWindowStartup.ts
+      - frontend/src/utils/mcpClientInstallStatus.test.ts
+      - frontend/src/utils/mcpClientInstallStatus.ts
+      - frontend/src/utils/nativeContextMenu.test.ts
+      - frontend/src/utils/nativeContextMenu.ts
+      - frontend/src/utils/sidebarLayout.test.ts
+      - frontend/src/utils/sidebarLayout.ts
+      - frontend/src/utils/sidebarLocate.ts
+      - frontend/src/utils/sqlServerObjectDefinition.test.ts
+      - frontend/src/utils/sqlServerObjectDefinition.ts
+      - frontend/src/utils/tableExportTab.test.ts
+      - frontend/src/utils/tableExportTab.ts
+      - frontend/src/v2-theme.css
+      - frontend/wailsjs/go/aiservice/Service.d.ts
+      - frontend/wailsjs/go/aiservice/Service.js
+      - frontend/wailsjs/go/models.ts
+      - internal/ai/provider/cli_capabilities.go
+      - internal/ai/provider/cli_capabilities_test.go
+      - internal/ai/provider/cli_lookup.go
+      - internal/ai/provider/cli_lookup_test.go
+      - internal/ai/provider/cli_model_catalog.go
+      - internal/ai/provider/cursor_cli.go
+      - internal/ai/provider/cursor_cli_effort.go
+      - internal/ai/provider/cursor_cli_test.go
+      - internal/ai/service/claude_code_mcp.go
+      - internal/ai/service/claude_code_mcp_test.go
+      - internal/ai/service/external_mcp_client_json.go
+      - internal/ai/service/external_mcp_clients_test.go
+      - internal/ai/service/provider_management_test.go
+      - internal/ai/service/service.go
+      - internal/app/app.go
+      - internal/app/app_startup_connect_retry_test.go
+      - internal/app/application_icon_windows.go
+      - internal/app/application_icon_windows_ico.go
+      - internal/app/application_icon_windows_ico_test.go
+      - internal/app/application_icon_windows_test.go
+      - internal/app/methods_db.go
+      - internal/app/methods_db_create_test.go
+      - internal/app/methods_db_multi_test.go
+      - internal/app/methods_db_objects.go
+      - internal/app/methods_db_objects_test.go
+      - internal/app/methods_db_transaction.go
+      - internal/app/methods_file.go
+      - internal/app/methods_file_app_log_test.go
+      - internal/app/methods_file_apply_changes_test.go
+      - internal/app/methods_redis.go
+      - internal/app/methods_redis_log_test.go
+      - internal/app/query_execution_context.go
+      - internal/app/query_execution_lifecycle.go
+      - internal/app/query_execution_lifecycle_test.go
+      - internal/app/query_registry.go
+      - internal/app/windows_shortcut_repair.ps1
+      - internal/app/windows_shortcut_repair_windows_test.go
+      - internal/connection/types.go
+      - internal/db/dsn_test.go
+      - internal/db/elasticsearch_bulk_response_test.go
+      - internal/db/elasticsearch_impl.go
+      - internal/db/iris_impl.go
+      - internal/db/iris_impl_test.go
+      - internal/db/milvus_impl.go
+      - internal/db/milvus_impl_test.go
+      - internal/db/sqlserver_catalog.go
+      - internal/db/sqlserver_catalog_test.go
+      - internal/db/sqlserver_impl.go
+      - internal/db/ssl_mode.go
+      - internal/db/ssl_mode_sqlserver_test.go
+      - internal/nativewindow/bridge.go
+      - internal/nativewindow/bridge_timeout_test.go
+      - internal/rpctimeout/methods.go
+      - internal/rpctimeout/methods_test.go
+      - internal/uievents/uievents.go
+      - internal/uievents/uievents_test.go
+      - internal/webserver/long_running_invoke.go
+      - internal/webserver/long_running_invoke_test.go
+      - internal/webserver/server.go
+      - main.go
+      - main_test.go
+      - shared/i18n/catalog.zip
+      - shared/i18n/de-DE.json
+      - shared/i18n/en-US.json
+      - shared/i18n/ja-JP.json
+      - shared/i18n/ru-RU.json
+      - shared/i18n/zh-CN.json
+      - shared/i18n/zh-TW.json
+      - tools/generate-driver-agent-revisions.sh
+      - tools/generate-driver-agent-revisions.test.sh
+      - tools/generate-release-notes.py
+      - tools/generate-release-notes.test.py
       - tools/wails-fast-dev.mjs
-    new_task_candidates:
-      - 为 InterSystems Caché 独立用户入口新增 CAP-DS-CACHE
-      - 登记请求诊断中心的追踪、诊断包和复现包能力
-      - 登记 SQL snippets 管理入口
-      - 补充下载源配置的共享设置入口
-    stale_locators:
-      - CAP-CONN-003 的 12 内置 + 22 optional/Custom 数量描述不能清楚表达 Caché 与 Custom 的独立计数
-    result: 已复核代码变化和新入口；四项知识登记与一项数量定位仍待更新，因此本轮保持 partial。
+      - wails.json
+      - windows_startup_window.go
+      - windows_startup_window_test.go
+    new_task_candidates: []
+    stale_locators: []
+    result: 已按当前 HEAD 复核三视角独立扫描的六条候选入口、实现链与反例；未发现阻止本轮 partial 发布的知识失效项。
 task_targets:
   - id: TASK-PROD-CONNECTIONS
     user_task: 创建、测试、保存、组织并安全复用连接
     origin: capability_registry
-    capability_ids: &a66
+    capability_ids: &a1
       - CAP-CONN-001
       - CAP-CONN-002
       - CAP-CONN-003
@@ -66,7 +364,7 @@ task_targets:
       - 连接侧栏
       - 连接编辑弹窗
       - 连接工具
-    implementation_paths: &a1
+    implementation_paths:
       - frontend/src/components/ConnectionModal.tsx
       - internal/app/methods_saved_connections.go
     applicable_views:
@@ -76,7 +374,7 @@ task_targets:
   - id: TASK-PROD-RELATIONAL-SOURCES
     user_task: 选择关系型及可选数据源并保持产品身份
     origin: capability_registry
-    capability_ids: &a67
+    capability_ids: &a2
       - CAP-DS-MYSQL
       - CAP-DS-GOLDENDB
       - CAP-DS-POSTGRES
@@ -105,7 +403,7 @@ task_targets:
       - 连接类型目录
       - 驱动管理器
       - 对象树
-    implementation_paths: &a3
+    implementation_paths:
       - frontend/src/utils/connectionTypeCatalog.ts
       - internal/db/driver_support.go
     applicable_views:
@@ -115,7 +413,7 @@ task_targets:
   - id: TASK-PROD-OBJECTS
     user_task: 浏览对象并从对象继续查询、设计和交换任务
     origin: capability_registry
-    capability_ids: &a68
+    capability_ids: &a3
       - CAP-EXP-001
       - CAP-EXP-A01
       - CAP-EXP-A02
@@ -135,7 +433,7 @@ task_targets:
       - 侧栏对象树
       - 对象菜单
       - 定义工作台
-    implementation_paths: &a5
+    implementation_paths:
       - frontend/src/components/Sidebar.tsx
       - frontend/src/components/WorkbenchTabContent.tsx
     applicable_views:
@@ -145,7 +443,7 @@ task_targets:
   - id: TASK-PROD-QUERY
     user_task: 编写、执行、保存和治理 SQL
     origin: capability_registry
-    capability_ids: &a69
+    capability_ids: &a4
       - CAP-QUERY-001
       - CAP-QUERY-002
       - CAP-QUERY-A01
@@ -174,7 +472,7 @@ task_targets:
       - 查询标签
       - SQL 文件
       - SQL 审计
-    implementation_paths: &a7
+    implementation_paths:
       - frontend/src/components/QueryEditor.tsx
       - frontend/src/utils/sqlDialect.ts
     applicable_views:
@@ -184,7 +482,7 @@ task_targets:
   - id: TASK-PROD-DATA
     user_task: 编辑数据、导入导出并设计结构
     origin: capability_registry
-    capability_ids: &a70
+    capability_ids: &a5
       - CAP-DATA-001
       - CAP-DATA-002
       - CAP-DATA-A01
@@ -209,7 +507,7 @@ task_targets:
       - 数据网格
       - 导入导出工作台
       - 结构设计
-    implementation_paths: &a9
+    implementation_paths:
       - frontend/src/components/DataGrid.tsx
       - frontend/src/components/DataImportWorkbench.tsx
     applicable_views:
@@ -219,7 +517,7 @@ task_targets:
   - id: TASK-PROD-SYNC
     user_task: 创建、运行和恢复同步、比较及调度任务
     origin: capability_registry
-    capability_ids: &a71
+    capability_ids: &a6
       - CAP-SYNC-001
       - CAP-SYNC-A01
       - CAP-SYNC-A02
@@ -237,7 +535,7 @@ task_targets:
       - Runs
       - Schedules
       - CDC
-    implementation_paths: &a11
+    implementation_paths:
       - frontend/src/components/data-sync/DataSyncWorkbenchShell.tsx
       - frontend/src/components/data-sync/DataSyncOperationalViews.tsx
     applicable_views:
@@ -247,7 +545,7 @@ task_targets:
   - id: TASK-PROD-REDIS
     user_task: 浏览 Redis 键并执行命令和监控
     origin: capability_registry
-    capability_ids: &a72
+    capability_ids: &a7
       - CAP-DS-REDIS
       - CAP-REDIS-001
       - CAP-REDIS-A01
@@ -261,7 +559,7 @@ task_targets:
       - Redis Keys
       - Command
       - Monitor
-    implementation_paths: &a13
+    implementation_paths:
       - frontend/src/components/RedisViewer.tsx
       - internal/app/methods_redis.go
     applicable_views:
@@ -271,7 +569,7 @@ task_targets:
   - id: TASK-PROD-VECTOR
     user_task: 浏览并检索向量数据源
     origin: capability_registry
-    capability_ids: &a73
+    capability_ids: &a8
       - CAP-DS-CHROMA
       - CAP-DS-QDRANT
       - CAP-DS-MILVUS
@@ -283,7 +581,7 @@ task_targets:
     entrypoints:
       - 向量连接树
       - 向量查询标签
-    implementation_paths: &a15
+    implementation_paths:
       - frontend/src/utils/dataSourceCapabilities.ts
       - internal/db/milvus_impl.go
     applicable_views:
@@ -293,7 +591,7 @@ task_targets:
   - id: TASK-PROD-SEARCH
     user_task: 使用 Elasticsearch 和 Sphinx 搜索工作台
     origin: capability_registry
-    capability_ids: &a74
+    capability_ids: &a9
       - CAP-DS-ELASTICSEARCH
       - CAP-DS-SPHINX
       - CAP-ES-001
@@ -315,7 +613,7 @@ task_targets:
     entrypoints:
       - Elasticsearch Console
       - Sphinx 查询标签
-    implementation_paths: &a17
+    implementation_paths:
       - frontend/src/components/QueryEditor.tsx
       - internal/db/sphinx_impl.go
     applicable_views:
@@ -325,7 +623,7 @@ task_targets:
   - id: TASK-PROD-MESSAGING
     user_task: 浏览、生产和预览消息队列数据
     origin: capability_registry
-    capability_ids: &a75
+    capability_ids: &a10
       - CAP-DS-ROCKETMQ
       - CAP-DS-MQTT
       - CAP-DS-KAFKA
@@ -357,7 +655,7 @@ task_targets:
       - CAP-RABBIT-A05
     entrypoints:
       - Message Queue Workbench
-    implementation_paths: &a19
+    implementation_paths:
       - frontend/src/components/MessageQueueWorkbench.tsx
       - internal/db/kafka_impl.go
     applicable_views:
@@ -367,7 +665,7 @@ task_targets:
   - id: TASK-PROD-NACOS
     user_task: 管理 Nacos 配置、命名空间、服务和实例
     origin: capability_registry
-    capability_ids: &a76
+    capability_ids: &a11
       - CAP-NACOS-001
       - CAP-NACOS-A01
       - CAP-NACOS-A02
@@ -380,7 +678,7 @@ task_targets:
     entrypoints:
       - Nacos Config
       - Nacos Services
-    implementation_paths: &a21
+    implementation_paths:
       - frontend/src/components/NacosViewer.tsx
       - internal/app/methods_nacos.go
     applicable_views:
@@ -390,7 +688,7 @@ task_targets:
   - id: TASK-PROD-JVM
     user_task: 浏览 JVM 资源并执行、取消和审计诊断
     origin: capability_registry
-    capability_ids: &a77
+    capability_ids: &a12
       - CAP-JVM-001
       - CAP-JVM-A01
       - CAP-JVM-A02
@@ -406,7 +704,7 @@ task_targets:
       - Audit
       - Diagnostic
       - Monitoring
-    implementation_paths: &a23
+    implementation_paths:
       - frontend/src/components/JVMResourceBrowser.tsx
       - internal/app/methods_jvm.go
     applicable_views:
@@ -416,7 +714,7 @@ task_targets:
   - id: TASK-PROD-AI
     user_task: 配置并使用 AI 完成数据库任务
     origin: capability_registry
-    capability_ids: &a78
+    capability_ids: &a13
       - CAP-AI-001
       - CAP-AI-A01
       - CAP-AI-A02
@@ -430,7 +728,7 @@ task_targets:
       - AI 面板
       - AI 设置
       - 独立窗口
-    implementation_paths: &a25
+    implementation_paths:
       - frontend/src/components/AIChatPanel.tsx
       - internal/ai/service/service_agent_harness.go
     applicable_views:
@@ -440,7 +738,7 @@ task_targets:
   - id: TASK-PROD-MCP
     user_task: 配置、安装并运行 MCP 服务和客户端
     origin: capability_registry
-    capability_ids: &a79
+    capability_ids: &a14
       - CAP-MCP-001
       - CAP-MCP-A01
       - CAP-MCP-A02
@@ -449,7 +747,7 @@ task_targets:
     entrypoints:
       - AI 设置 MCP
       - MCP HTTP 面板
-    implementation_paths: &a27
+    implementation_paths:
       - frontend/src/components/ai/AISettingsMCPSection.tsx
       - internal/mcpserver/service.go
     applicable_views:
@@ -459,7 +757,7 @@ task_targets:
   - id: TASK-PROD-WEB-CLI
     user_task: 通过 Web 和 CLI 使用 GoNavi
     origin: capability_registry
-    capability_ids: &a80
+    capability_ids: &a15
       - CAP-WEB-001
       - CAP-WEB-A01
       - CAP-WEB-A02
@@ -475,7 +773,7 @@ task_targets:
     entrypoints:
       - Web 登录
       - CLI 命令
-    implementation_paths: &a29
+    implementation_paths:
       - frontend/src/App.tsx
       - internal/cli/cli.go
     applicable_views:
@@ -485,7 +783,7 @@ task_targets:
   - id: TASK-PROD-OPS
     user_task: 配置、诊断、备份、更新并管理桌面工作区
     origin: capability_registry
-    capability_ids: &a81
+    capability_ids: &a16
       - CAP-OPS-001
       - CAP-OPS-A01
       - CAP-OPS-A02
@@ -507,7 +805,7 @@ task_targets:
       - 设置中心
       - 请求诊断
       - 更新与备份
-    implementation_paths: &a31
+    implementation_paths:
       - frontend/src/components/settings/SettingsCenterWorkbench.tsx
       - frontend/src/components/requestDiagnostics/RequestDiagnosticsWorkbench.tsx
     applicable_views:
@@ -517,7 +815,7 @@ task_targets:
   - id: TASK-DB-CONNECTIONS
     user_task: 在各独立驱动上建立、复用并释放连接
     origin: capability_registry
-    capability_ids: &a82
+    capability_ids: &a17
       - CAP-CONN-001
       - CAP-CONN-002
       - CAP-CONN-003
@@ -576,7 +874,7 @@ task_targets:
       - DBConnect
       - TestConnection
       - Driver Agent
-    implementation_paths: &a33
+    implementation_paths:
       - internal/db/driver_support.go
       - internal/db/optional_driver_agent_impl.go
     applicable_views:
@@ -586,7 +884,7 @@ task_targets:
   - id: TASK-DB-QUERY
     user_task: 在各驱动执行、取消查询并正确返回部分结果和错误
     origin: capability_registry
-    capability_ids: &a83
+    capability_ids: &a18
       - CAP-QUERY-002
       - CAP-QUERY-A10
       - CAP-QUERY-A11
@@ -601,7 +899,7 @@ task_targets:
       - DBQueryWithCancel
       - DBQueryMulti
       - 消息预览
-    implementation_paths: &a34
+    implementation_paths:
       - internal/app/methods_db.go
       - internal/db/kafka_impl.go
       - internal/db/mqtt_impl.go
@@ -612,7 +910,7 @@ task_targets:
   - id: TASK-DB-METADATA
     user_task: 用受限账号浏览跨方言对象和特殊标识符
     origin: capability_registry
-    capability_ids: &a84
+    capability_ids: &a19
       - CAP-EXP-001
       - CAP-EXP-A01
       - CAP-EXP-A02
@@ -634,7 +932,7 @@ task_targets:
       - DBGetDatabases
       - DBGetTables
       - DBGetColumns
-    implementation_paths: &a35
+    implementation_paths:
       - internal/db/database.go
       - internal/db/pg_metadata.go
       - internal/db/oracle_impl.go
@@ -645,7 +943,7 @@ task_targets:
   - id: TASK-DB-WRITES
     user_task: 从数据网格预览并安全提交跨驱动批量变更
     origin: capability_registry
-    capability_ids: &a85
+    capability_ids: &a20
       - CAP-DATA-001
       - CAP-DATA-A06
       - CAP-DATA-A07
@@ -665,7 +963,7 @@ task_targets:
       - DataGrid commitChanges
       - App.ApplyChanges
       - BatchApplier
-    implementation_paths: &a36
+    implementation_paths:
       - frontend/src/components/DataGrid.tsx
       - internal/app/methods_file.go
       - internal/db/mysql_impl.go
@@ -677,7 +975,7 @@ task_targets:
   - id: TASK-DB-LOGGING
     user_task: 执行 Redis 命令并在日志和诊断链中保持敏感参数脱敏
     origin: capability_registry
-    capability_ids: &a86
+    capability_ids: &a21
       - CAP-DS-REDIS
       - CAP-REDIS-001
       - CAP-REDIS-A05
@@ -687,7 +985,7 @@ task_targets:
     entrypoints:
       - Redis Command Editor
       - ReadAppLogTail
-    implementation_paths: &a38
+    implementation_paths:
       - internal/app/methods_redis.go
       - internal/app/methods_file.go
       - internal/sqlaudit/redact.go
@@ -698,7 +996,7 @@ task_targets:
   - id: TASK-DB-TRANSFER
     user_task: 导入、导出、同步并从安全检查点恢复
     origin: capability_registry
-    capability_ids: &a87
+    capability_ids: &a22
       - CAP-DATA-002
       - CAP-DATA-A10
       - CAP-DATA-A11
@@ -721,7 +1019,7 @@ task_targets:
       - 数据导入
       - 流式导出
       - 同步 Runs
-    implementation_paths: &a40
+    implementation_paths:
       - internal/app/import_pipeline.go
       - internal/app/import_job_recovery.go
       - internal/syncjob/manager.go
@@ -732,7 +1030,7 @@ task_targets:
   - id: TASK-DEV-LAUNCH
     user_task: 启动桌面、Web、MCP 或分离窗口模式并安全退出
     origin: capability_registry
-    capability_ids: &a88
+    capability_ids: &a23
       - CAP-WEB-001
       - CAP-WEB-A01
       - CAP-MCP-A04
@@ -740,7 +1038,7 @@ task_targets:
       - CAP-OPS-A11
     entrypoints:
       - 用户入口与对应 API/CLI
-    implementation_paths: &a41
+    implementation_paths:
       - main.go
       - internal/webserver/server.go
       - internal/mcpserver/run.go
@@ -752,7 +1050,7 @@ task_targets:
   - id: TASK-DEV-CONNECTIONS
     user_task: 创建、导入、测试和保存连接并管理可选驱动生命周期
     origin: capability_registry
-    capability_ids: &a89
+    capability_ids: &a24
       - CAP-CONN-001
       - CAP-CONN-002
       - CAP-CONN-003
@@ -775,7 +1073,7 @@ task_targets:
       - CAP-CONN-A17
     entrypoints:
       - 用户入口与对应 API/CLI
-    implementation_paths: &a43
+    implementation_paths:
       - frontend/src/components/ConnectionModal.tsx
       - internal/app/methods_driver.go
       - internal/db/optional_driver_agent_impl.go
@@ -787,7 +1085,7 @@ task_targets:
   - id: TASK-DEV-METADATA
     user_task: 浏览跨驱动数据库对象和元数据
     origin: capability_registry
-    capability_ids: &a90
+    capability_ids: &a25
       - CAP-EXP-001
       - CAP-EXP-A01
       - CAP-EXP-A02
@@ -795,7 +1093,7 @@ task_targets:
       - CAP-EXP-A14
     entrypoints:
       - 用户入口与对应 API/CLI
-    implementation_paths: &a44
+    implementation_paths:
       - frontend/src/components/Sidebar.tsx
       - internal/app/methods_db_objects.go
       - internal/db/database.go
@@ -806,7 +1104,7 @@ task_targets:
   - id: TASK-DEV-SQL-EDIT
     user_task: 编辑、补全、定位并保存 SQL
     origin: capability_registry
-    capability_ids: &a91
+    capability_ids: &a26
       - CAP-QUERY-001
       - CAP-QUERY-A04
       - CAP-QUERY-A05
@@ -818,7 +1116,7 @@ task_targets:
       - CAP-AI-A05
     entrypoints:
       - 用户入口与对应 API/CLI
-    implementation_paths: &a46
+    implementation_paths:
       - frontend/src/components/QueryEditor.tsx
       - frontend/src/utils/sqlDialect.ts
       - frontend/src/components/queryEditor/QueryEditorAiAssist.ts
@@ -829,7 +1127,7 @@ task_targets:
   - id: TASK-DEV-QUERY-RUNTIME
     user_task: 执行、取消和导出查询并维护事务状态
     origin: capability_registry
-    capability_ids: &a92
+    capability_ids: &a27
       - CAP-QUERY-002
       - CAP-QUERY-A10
       - CAP-QUERY-A11
@@ -842,7 +1140,7 @@ task_targets:
       - CAP-AUDIT-A01
     entrypoints:
       - 用户入口与对应 API/CLI
-    implementation_paths: &a48
+    implementation_paths:
       - frontend/src/components/QueryEditor.tsx
       - internal/app/methods_db.go
       - internal/app/methods_db_transaction.go
@@ -854,7 +1152,7 @@ task_targets:
   - id: TASK-DEV-TABLE
     user_task: 分页浏览、预览并提交表数据变更
     origin: capability_registry
-    capability_ids: &a93
+    capability_ids: &a28
       - CAP-DATA-001
       - CAP-DATA-A01
       - CAP-DATA-A02
@@ -870,7 +1168,7 @@ task_targets:
       - CAP-DESIGN-A02
     entrypoints:
       - 用户入口与对应 API/CLI
-    implementation_paths: &a49
+    implementation_paths:
       - frontend/src/components/DataGrid.tsx
       - frontend/src/components/dataGridVirtualScroll.ts
       - internal/db/change_preview.go
@@ -882,7 +1180,7 @@ task_targets:
   - id: TASK-DEV-IMPORT
     user_task: 导入 CSV、XLSX 和 SQL 并恢复失败任务
     origin: capability_registry
-    capability_ids: &a94
+    capability_ids: &a29
       - CAP-DATA-002
       - CAP-DATA-A10
       - CAP-DATA-A14
@@ -891,7 +1189,7 @@ task_targets:
       - CAP-CONN-A17
     entrypoints:
       - 用户入口与对应 API/CLI
-    implementation_paths: &a50
+    implementation_paths:
       - frontend/src/components/DataImportWorkbench.tsx
       - internal/app/import_pipeline.go
       - internal/app/import_job_recovery.go
@@ -902,7 +1200,7 @@ task_targets:
   - id: TASK-DEV-SYNC
     user_task: 预检、批准、运行、停止和恢复同步、CDC 与调度
     origin: capability_registry
-    capability_ids: &a95
+    capability_ids: &a30
       - CAP-SYNC-001
       - CAP-SYNC-A01
       - CAP-SYNC-A02
@@ -917,7 +1215,7 @@ task_targets:
       - CAP-DIFF-A01
     entrypoints:
       - 用户入口与对应 API/CLI
-    implementation_paths: &a52
+    implementation_paths:
       - frontend/src/components/data-sync/DataSyncOperationalViews.tsx
       - internal/app/data_sync_job_executor.go
       - internal/syncjob/manager.go
@@ -928,7 +1226,7 @@ task_targets:
   - id: TASK-DEV-SPECIALIZED
     user_task: 运行 Redis、消息、向量、Elasticsearch、Nacos 和 JVM 工作台
     origin: capability_registry
-    capability_ids: &a96
+    capability_ids: &a31
       - CAP-REDIS-001
       - CAP-REDIS-A01
       - CAP-REDIS-A02
@@ -998,7 +1296,7 @@ task_targets:
       - CAP-JVM-A08
     entrypoints:
       - 用户入口与对应 API/CLI
-    implementation_paths: &a54
+    implementation_paths:
       - internal/redis/redis_impl.go
       - internal/db/kafka_impl.go
       - internal/db/elasticsearch_impl.go
@@ -1011,7 +1309,7 @@ task_targets:
   - id: TASK-DEV-AI
     user_task: 配置 AI、运行 agent 并管理 MCP 调用和可观测性
     origin: capability_registry
-    capability_ids: &a97
+    capability_ids: &a32
       - CAP-AI-001
       - CAP-AI-A01
       - CAP-AI-A02
@@ -1028,7 +1326,7 @@ task_targets:
       - CAP-MCP-A04
     entrypoints:
       - 用户入口与对应 API/CLI
-    implementation_paths: &a55
+    implementation_paths:
       - frontend/src/components/ai/AISettingsAnalysisSection.tsx
       - internal/ai/service/service_agent_harness.go
       - internal/mcpserver/service.go
@@ -1039,14 +1337,14 @@ task_targets:
   - id: TASK-DEV-WEB
     user_task: 在 Web 会话中调用 RPC、传输文件并接收事件
     origin: capability_registry
-    capability_ids: &a98
+    capability_ids: &a33
       - CAP-WEB-001
       - CAP-WEB-A01
       - CAP-WEB-A02
       - CAP-WEB-A03
     entrypoints:
       - 用户入口与对应 API/CLI
-    implementation_paths: &a57
+    implementation_paths:
       - frontend/src/utils/webRpc.ts
       - internal/webserver/server.go
       - internal/webserver/file_transfer.go
@@ -1057,7 +1355,7 @@ task_targets:
   - id: TASK-DEV-CLI
     user_task: 用 CLI 管理连接、查询、导出、审计、MCP 和 agent
     origin: capability_registry
-    capability_ids: &a99
+    capability_ids: &a34
       - CAP-CLI-001
       - CAP-CLI-A01
       - CAP-CLI-A02
@@ -1068,7 +1366,7 @@ task_targets:
       - CAP-CLI-A07
     entrypoints:
       - 用户入口与对应 API/CLI
-    implementation_paths: &a59
+    implementation_paths:
       - cmd/gonavi/main.go
       - internal/cli/cli.go
       - internal/cli/connection_file.go
@@ -1079,7 +1377,7 @@ task_targets:
   - id: TASK-DEV-DESKTOP
     user_task: 管理分离窗口、退出保护、备份和跨平台更新
     origin: capability_registry
-    capability_ids: &a100
+    capability_ids: &a35
       - CAP-OPS-001
       - CAP-OPS-A01
       - CAP-OPS-A02
@@ -1091,7 +1389,7 @@ task_targets:
       - CAP-OPS-A14
     entrypoints:
       - 用户入口与对应 API/CLI
-    implementation_paths: &a61
+    implementation_paths:
       - internal/nativewindow/manager.go
       - internal/app/cloud_backup.go
       - internal/app/methods_update.go
@@ -1103,7 +1401,7 @@ task_targets:
   - id: TASK-DEV-DELIVERY
     user_task: 安装固定工具并构建和发布各平台产物
     origin: capability_registry
-    capability_ids: &a101
+    capability_ids: &a36
       - CAP-CONN-A13
       - CAP-CONN-A14
       - CAP-CLI-A07
@@ -1112,8 +1410,8 @@ task_targets:
       - CAP-OPS-A13
     entrypoints:
       - 用户入口与对应 API/CLI
-    implementation_paths: &a62
-      - tools/project-tools.mjs
+    implementation_paths:
+      - tools/validate-driver-release-assets.py
       - tools/wails-fast-dev.mjs
       - build-release.sh
       - .github/workflows/release.yml
@@ -1124,14 +1422,14 @@ task_targets:
   - id: TASK-DEV-BINDINGS
     user_task: 刷新并校验 Go 与 Wails 生成绑定
     origin: capability_registry
-    capability_ids: &a102
+    capability_ids: &a37
       - CAP-AI-001
       - CAP-WEB-001
       - CAP-QUERY-002
       - CAP-OPS-A10
     entrypoints:
       - 用户入口与对应 API/CLI
-    implementation_paths: &a64
+    implementation_paths:
       - tools/wails-fast-dev.mjs
       - frontend/wailsjs/go/app/App.js
       - frontend/wailsjs/go/aiservice/Service.js
@@ -1140,6 +1438,98 @@ task_targets:
       - developer
     scenario_ids:
       - SCN-TASK-DEV-BINDINGS
+  - id: TASK-MCP-CONFIG-ATOMIC
+    user_task: 安装或更新 MCP 客户端配置且任何失败都不破坏已有配置
+    origin: code_change
+    capability_ids: &a38
+      - CAP-MCP-A03
+    entrypoints:
+      - AI 设置中的 MCP 客户端安装动作
+    implementation_paths:
+      - internal/ai/service/claude_code_mcp.go
+      - internal/ai/service/external_mcp_client_json.go
+      - internal/ai/service/open_code_mcp.go
+    applicable_views:
+      - product
+    scenario_ids:
+      - SCN-MCP-CONFIG-INTERRUPTION
+  - id: TASK-DESKTOP-EXPORT-ATOMIC
+    user_task: 覆盖桌面导出文件时在失败或取消后保留旧文件
+    origin: code_change
+    capability_ids: &a39
+      - CAP-DATA-A11
+      - CAP-DATA-A13
+    entrypoints:
+      - 查询结果导出
+      - 表导出
+      - 数据导出
+    implementation_paths:
+      - internal/app/web_file_transfer.go
+      - internal/app/methods_file.go
+    applicable_views:
+      - product
+    scenario_ids:
+      - SCN-DESKTOP-EXPORT-FAILURE
+  - id: TASK-DRIVER-AGENT-STREAM-SYNC
+    user_task: 流式查询失败后继续使用 Driver Agent 时仍读取正确请求的响应
+    origin: code_change
+    capability_ids: &a40
+      - CAP-QUERY-A11
+    entrypoints:
+      - Optional Driver Agent StreamQuery
+    implementation_paths:
+      - internal/db/optional_driver_agent_impl.go
+      - cmd/optional-driver-agent/main.go
+    applicable_views:
+      - db
+    scenario_ids:
+      - SCN-DRIVER-AGENT-TWO-REQUESTS
+  - id: TASK-SQLSERVER-SSH-TLS-IDENTITY
+    user_task: 经 SSH 连接 SQL Server 时仍按远端主机验证 TLS 身份
+    origin: code_change
+    capability_ids: &a41
+      - CAP-DS-SQLSERVER
+    entrypoints:
+      - SQL Server 连接测试与打开
+    implementation_paths:
+      - internal/db/sqlserver_impl.go
+      - internal/db/ssl_mode.go
+    applicable_views:
+      - db
+    scenario_ids:
+      - SCN-SQLSERVER-SSH-AZURE-TLS
+  - id: TASK-DESKTOP-EXPORT-CANCEL
+    user_task: 从桌面导出进度界面取消长任务并确认安全结束
+    origin: issue_pattern
+    capability_ids: &a42
+      - CAP-DATA-A13
+    entrypoints:
+      - 桌面表导出工作台
+    implementation_paths:
+      - frontend/src/components/useExportProgressRunner.ts
+      - frontend/src/components/TableExportWorkbench.tsx
+      - internal/app/methods_file.go
+    applicable_views:
+      - product
+    scenario_ids:
+      - SCN-DESKTOP-EXPORT-CANCEL
+  - id: TASK-WEB-SQL-AUDIT-TIMEOUT
+    user_task: 通过 Web 校验大型 SQL 审计库时让超时、取消和并发槽生命周期一致
+    origin: code_change
+    capability_ids: &a43
+      - CAP-AUDIT-A03
+      - CAP-WEB-001
+    entrypoints:
+      - Web invoke VerifySQLAuditIntegrity
+    implementation_paths:
+      - internal/webserver/server.go
+      - internal/webserver/long_running_invoke.go
+      - internal/app/methods_sql_audit.go
+      - internal/sqlaudit/store.go
+    applicable_views:
+      - developer
+    scenario_ids:
+      - SCN-WEB-SQL-AUDIT-OVER-60S
 scenarios:
   - id: SCN-TASK-PROD-CONNECTIONS
     task_target_id: TASK-PROD-CONNECTIONS
@@ -1585,311 +1975,765 @@ scenarios:
     selection_reason: 该场景覆盖入口到结果边界，并包含可区分的反例
     relevant_views:
       - developer
+  - id: SCN-MCP-CONFIG-INTERRUPTION
+    task_target_id: TASK-MCP-CONFIG-ATOMIC
+    title: 覆盖已有 MCP 配置时发生写入或替换故障
+    preconditions:
+      - 已有包含其他服务的合法客户端配置。
+    actions:
+      - 触发 MCP 安装。
+      - 在写入、关闭和替换阶段分别注入失败。
+      - 比较正式配置和临时文件。
+    oracle: 任一失败均保留原配置，成功时完整替换且无临时文件残留。
+    selection_reason: 直接覆盖正式配置的失败后果会让整个 MCP 客户端不可用。
+    relevant_views:
+      - product
+  - id: SCN-DESKTOP-EXPORT-FAILURE
+    task_target_id: TASK-DESKTOP-EXPORT-ATOMIC
+    title: 覆盖已有导出文件时查询或编码失败
+    preconditions:
+      - 目标路径已有可识别内容。
+    actions:
+      - 启动覆盖导出。
+      - 在查询、编码和写入阶段注入失败。
+      - 比较目标文件和临时文件。
+    oracle: 失败不改变旧目标，成功只呈现完整新文件。
+    selection_reason: os.Create 在业务完成前截断目标，会把普通导出失败升级为已有文件丢失。
+    relevant_views:
+      - product
+  - id: SCN-DRIVER-AGENT-TWO-REQUESTS
+    task_target_id: TASK-DRIVER-AGENT-STREAM-SYNC
+    title: 首个流消费失败后立即发起第二个请求
+    preconditions:
+      - 测试 Agent 可以连续写入两个请求的响应。
+    actions:
+      - 让首个流在行消费时失败。
+      - 立即发送第二个请求。
+      - 检查响应 ID、首帧和 transport 生命周期。
+    oracle: 第二请求只读取自己的响应；无法恢复同步时客户端废弃旧 transport。
+    selection_reason: 连续请求最直接暴露残留帧和 ID 未校验造成的协议失步。
+    relevant_views:
+      - db
+  - id: SCN-SQLSERVER-SSH-AZURE-TLS
+    task_target_id: TASK-SQLSERVER-SSH-TLS-IDENTITY
+    title: 通过本地 SSH 端口访问 Azure 风格 SQL Server 域名
+    preconditions:
+      - 有本地转发夹具和测试证书。
+    actions:
+      - 配置 Azure 风格远端域名并启用 SSH。
+      - 捕获最终拨号地址、encrypt 和证书主机名。
+      - 验证主机名不匹配时失败。
+    oracle: 拨号目标使用本地端口，TLS 和 Azure 判断保持远端域名。
+    selection_reason: 该组合同时触发 Host 重写、Azure 默认值和证书身份三条路径。
+    relevant_views:
+      - db
+  - id: SCN-DESKTOP-EXPORT-CANCEL
+    task_target_id: TASK-DESKTOP-EXPORT-CANCEL
+    title: 长导出运行中从工作台发起取消
+    preconditions:
+      - 桌面工作台启动可阻塞的长导出。
+    actions:
+      - 等待进入运行状态。
+      - 查找并触发取消。
+      - 检查 Context、任务状态和目标文件。
+    oracle: 用户可以取消，后端停止且目标文件安全；当前实现没有该桌面动作。
+    selection_reason: 运行中锁定但不能取消是用户可直接感知的任务生命周期缺口。
+    relevant_views:
+      - product
+  - id: SCN-WEB-SQL-AUDIT-OVER-60S
+    task_target_id: TASK-WEB-SQL-AUDIT-TIMEOUT
+    title: 完整性校验超过 60 秒后断开并启动第二个重任务
+    preconditions:
+      - 审计存储夹具可阻塞超过 60 秒。
+    actions:
+      - 通过 Web 启动校验。
+      - 等待超时或断开客户端。
+      - 立即启动第二个重任务并观察 Context。
+    oracle: 长任务响应策略明确；请求结束会取消扫描并释放唯一重任务槽。
+    selection_reason: 超过 HTTP 写超时并紧接第二任务可同时验证响应、Context 和并发槽契约。
+    relevant_views:
+      - developer
 assessments:
   - id: A-TASK-PROD-CONNECTIONS
     target_id: TASK-PROD-CONNECTIONS
     view: product
-    execution_status: completed
+    execution_status: queued
     required_stages:
       - entrypoint
       - implementation_trace
       - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a1
-    evidence_refs: &a2
-      - E-TASK-PROD-CONNECTIONS
-    remaining_steps: []
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
     scenario_results:
       - scenario_id: SCN-TASK-PROD-CONNECTIONS
-        status: passed
-        evidence_refs: *a2
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
   - id: A-TASK-PROD-RELATIONAL-SOURCES
     target_id: TASK-PROD-RELATIONAL-SOURCES
     view: product
-    execution_status: completed
+    execution_status: queued
     required_stages:
       - entrypoint
       - implementation_trace
       - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a3
-    evidence_refs: &a4
-      - E-TASK-PROD-RELATIONAL-SOURCES
-    remaining_steps: []
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
     scenario_results:
       - scenario_id: SCN-TASK-PROD-RELATIONAL-SOURCES
-        status: passed
-        evidence_refs: *a4
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
   - id: A-TASK-PROD-OBJECTS
     target_id: TASK-PROD-OBJECTS
     view: product
-    execution_status: completed
+    execution_status: queued
     required_stages:
       - entrypoint
       - implementation_trace
       - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a5
-    evidence_refs: &a6
-      - E-TASK-PROD-OBJECTS
-    remaining_steps: []
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
     scenario_results:
       - scenario_id: SCN-TASK-PROD-OBJECTS
-        status: passed
-        evidence_refs: *a6
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
   - id: A-TASK-PROD-QUERY
     target_id: TASK-PROD-QUERY
     view: product
-    execution_status: completed
+    execution_status: queued
     required_stages:
       - entrypoint
       - implementation_trace
       - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a7
-    evidence_refs: &a8
-      - E-TASK-PROD-QUERY
-    remaining_steps: []
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
     scenario_results:
       - scenario_id: SCN-TASK-PROD-QUERY
-        status: passed
-        evidence_refs: *a8
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
   - id: A-TASK-PROD-DATA
     target_id: TASK-PROD-DATA
     view: product
-    execution_status: completed
+    execution_status: queued
     required_stages:
       - entrypoint
       - implementation_trace
       - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a9
-    evidence_refs: &a10
-      - E-TASK-PROD-DATA
-    remaining_steps: []
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
     scenario_results:
       - scenario_id: SCN-TASK-PROD-DATA
-        status: passed
-        evidence_refs: *a10
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
   - id: A-TASK-PROD-SYNC
     target_id: TASK-PROD-SYNC
     view: product
-    execution_status: completed
+    execution_status: queued
     required_stages:
       - entrypoint
       - implementation_trace
       - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a11
-    evidence_refs: &a12
-      - E-TASK-PROD-SYNC
-      - E-PROD-DIFF-EXPORT-LANGUAGE
-      - E-PROD-SCHEDULE-CONTROL
-    remaining_steps: []
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
     scenario_results:
       - scenario_id: SCN-TASK-PROD-SYNC
-        status: failed
-        evidence_refs: *a12
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
   - id: A-TASK-PROD-REDIS
     target_id: TASK-PROD-REDIS
     view: product
-    execution_status: completed
+    execution_status: queued
     required_stages:
       - entrypoint
       - implementation_trace
       - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a13
-    evidence_refs: &a14
-      - E-TASK-PROD-REDIS
-    remaining_steps: []
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
     scenario_results:
       - scenario_id: SCN-TASK-PROD-REDIS
-        status: passed
-        evidence_refs: *a14
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
   - id: A-TASK-PROD-VECTOR
     target_id: TASK-PROD-VECTOR
     view: product
-    execution_status: completed
+    execution_status: queued
     required_stages:
       - entrypoint
       - implementation_trace
       - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a15
-    evidence_refs: &a16
-      - E-TASK-PROD-VECTOR
-    remaining_steps: []
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
     scenario_results:
       - scenario_id: SCN-TASK-PROD-VECTOR
-        status: passed
-        evidence_refs: *a16
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
   - id: A-TASK-PROD-SEARCH
     target_id: TASK-PROD-SEARCH
     view: product
-    execution_status: completed
+    execution_status: queued
     required_stages:
       - entrypoint
       - implementation_trace
       - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a17
-    evidence_refs: &a18
-      - E-TASK-PROD-SEARCH
-    remaining_steps: []
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
     scenario_results:
       - scenario_id: SCN-TASK-PROD-SEARCH
-        status: passed
-        evidence_refs: *a18
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
   - id: A-TASK-PROD-MESSAGING
     target_id: TASK-PROD-MESSAGING
     view: product
-    execution_status: completed
+    execution_status: queued
     required_stages:
       - entrypoint
       - implementation_trace
       - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a19
-    evidence_refs: &a20
-      - E-TASK-PROD-MESSAGING
-    remaining_steps: []
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
     scenario_results:
       - scenario_id: SCN-TASK-PROD-MESSAGING
-        status: passed
-        evidence_refs: *a20
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
   - id: A-TASK-PROD-NACOS
     target_id: TASK-PROD-NACOS
     view: product
-    execution_status: completed
+    execution_status: queued
     required_stages:
       - entrypoint
       - implementation_trace
       - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a21
-    evidence_refs: &a22
-      - E-TASK-PROD-NACOS
-    remaining_steps: []
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
     scenario_results:
       - scenario_id: SCN-TASK-PROD-NACOS
-        status: passed
-        evidence_refs: *a22
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
   - id: A-TASK-PROD-JVM
     target_id: TASK-PROD-JVM
     view: product
-    execution_status: completed
+    execution_status: queued
     required_stages:
       - entrypoint
       - implementation_trace
       - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a23
-    evidence_refs: &a24
-      - E-TASK-PROD-JVM
-    remaining_steps: []
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
     scenario_results:
       - scenario_id: SCN-TASK-PROD-JVM
-        status: passed
-        evidence_refs: *a24
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
   - id: A-TASK-PROD-AI
     target_id: TASK-PROD-AI
     view: product
-    execution_status: completed
+    execution_status: queued
     required_stages:
       - entrypoint
       - implementation_trace
       - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a25
-    evidence_refs: &a26
-      - E-TASK-PROD-AI
-    remaining_steps: []
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
     scenario_results:
       - scenario_id: SCN-TASK-PROD-AI
-        status: passed
-        evidence_refs: *a26
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
   - id: A-TASK-PROD-MCP
     target_id: TASK-PROD-MCP
     view: product
-    execution_status: completed
+    execution_status: queued
     required_stages:
       - entrypoint
       - implementation_trace
       - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a27
-    evidence_refs: &a28
-      - E-TASK-PROD-MCP
-    remaining_steps: []
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
     scenario_results:
       - scenario_id: SCN-TASK-PROD-MCP
-        status: passed
-        evidence_refs: *a28
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
   - id: A-TASK-PROD-WEB-CLI
     target_id: TASK-PROD-WEB-CLI
     view: product
-    execution_status: completed
+    execution_status: queued
     required_stages:
       - entrypoint
       - implementation_trace
       - counterexample
-    completed_stages:
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-PROD-WEB-CLI
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-PROD-OPS
+    target_id: TASK-PROD-OPS
+    view: product
+    execution_status: queued
+    required_stages:
       - entrypoint
       - implementation_trace
       - counterexample
-    checked_paths: *a29
-    evidence_refs: &a30
-      - E-TASK-PROD-WEB-CLI
-    remaining_steps: []
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
     scenario_results:
-      - scenario_id: SCN-TASK-PROD-WEB-CLI
-        status: passed
-        evidence_refs: *a30
-  - id: A-TASK-PROD-OPS
-    target_id: TASK-PROD-OPS
+      - scenario_id: SCN-TASK-PROD-OPS
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-DB-CONNECTIONS
+    target_id: TASK-DB-CONNECTIONS
+    view: db
+    execution_status: queued
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+      - runtime
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-DB-CONNECTIONS
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-DB-QUERY
+    target_id: TASK-DB-QUERY
+    view: db
+    execution_status: queued
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+      - runtime
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-DB-QUERY
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-DB-METADATA
+    target_id: TASK-DB-METADATA
+    view: db
+    execution_status: queued
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+      - runtime
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-DB-METADATA
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-DB-WRITES
+    target_id: TASK-DB-WRITES
+    view: db
+    execution_status: queued
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-DB-WRITES
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-DB-LOGGING
+    target_id: TASK-DB-LOGGING
+    view: db
+    execution_status: queued
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-DB-LOGGING
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-DB-TRANSFER
+    target_id: TASK-DB-TRANSFER
+    view: db
+    execution_status: queued
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+      - runtime
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-DB-TRANSFER
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-DEV-LAUNCH
+    target_id: TASK-DEV-LAUNCH
+    view: developer
+    execution_status: queued
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-DEV-LAUNCH
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-DEV-CONNECTIONS
+    target_id: TASK-DEV-CONNECTIONS
+    view: developer
+    execution_status: queued
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+      - runtime
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-DEV-CONNECTIONS
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-DEV-METADATA
+    target_id: TASK-DEV-METADATA
+    view: developer
+    execution_status: queued
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+      - runtime
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-DEV-METADATA
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-DEV-SQL-EDIT
+    target_id: TASK-DEV-SQL-EDIT
+    view: developer
+    execution_status: queued
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+      - runtime
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-DEV-SQL-EDIT
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-DEV-QUERY-RUNTIME
+    target_id: TASK-DEV-QUERY-RUNTIME
+    view: developer
+    execution_status: queued
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+      - runtime
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-DEV-QUERY-RUNTIME
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-DEV-TABLE
+    target_id: TASK-DEV-TABLE
+    view: developer
+    execution_status: queued
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+      - runtime
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-DEV-TABLE
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-DEV-IMPORT
+    target_id: TASK-DEV-IMPORT
+    view: developer
+    execution_status: queued
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-DEV-IMPORT
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-DEV-SYNC
+    target_id: TASK-DEV-SYNC
+    view: developer
+    execution_status: queued
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-DEV-SYNC
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-DEV-SPECIALIZED
+    target_id: TASK-DEV-SPECIALIZED
+    view: developer
+    execution_status: queued
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+      - runtime
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-DEV-SPECIALIZED
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-DEV-AI
+    target_id: TASK-DEV-AI
+    view: developer
+    execution_status: queued
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+      - runtime
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-DEV-AI
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-DEV-WEB
+    target_id: TASK-DEV-WEB
+    view: developer
+    execution_status: queued
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-DEV-WEB
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-DEV-CLI
+    target_id: TASK-DEV-CLI
+    view: developer
+    execution_status: queued
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-DEV-CLI
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-DEV-DESKTOP
+    target_id: TASK-DEV-DESKTOP
+    view: developer
+    execution_status: queued
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+      - runtime
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-DEV-DESKTOP
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-DEV-DELIVERY
+    target_id: TASK-DEV-DELIVERY
+    view: developer
+    execution_status: queued
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-DEV-DELIVERY
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-TASK-DEV-BINDINGS
+    target_id: TASK-DEV-BINDINGS
+    view: developer
+    execution_status: queued
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+    completed_stages: []
+    checked_paths: []
+    evidence_refs: []
+    remaining_steps:
+      - 按本轮全仓任务继续执行入口、实现链和反例检查。
+    scenario_results:
+      - scenario_id: SCN-TASK-DEV-BINDINGS
+        status: not_run
+        reason: 本轮优先写入三视角独立扫描已确认候选，该全仓队列项尚未执行。
+        evidence_refs: []
+  - id: A-PRODUCT-MCP-CONFIG-ATOMIC
+    target_id: TASK-MCP-CONFIG-ATOMIC
     view: product
     execution_status: completed
     required_stages:
@@ -1900,17 +2744,45 @@ assessments:
       - entrypoint
       - implementation_trace
       - counterexample
-    checked_paths: *a31
-    evidence_refs: &a32
-      - E-TASK-PROD-OPS
-      - E-PROD-DIAGNOSTICS-I18N
+    checked_paths:
+      - internal/ai/service/claude_code_mcp.go
+      - internal/ai/service/external_mcp_client_json.go
+      - internal/ai/service/deepseek_harness_mcp.go
+      - internal/ai/service/grok_build_mcp.go
+      - internal/ai/service/open_code_mcp.go
+    evidence_refs:
+      - E-MCP-CONFIG-ATOMIC-SOURCE
     remaining_steps: []
     scenario_results:
-      - scenario_id: SCN-TASK-PROD-OPS
+      - scenario_id: SCN-MCP-CONFIG-INTERRUPTION
         status: failed
-        evidence_refs: *a32
-  - id: A-TASK-DB-CONNECTIONS
-    target_id: TASK-DB-CONNECTIONS
+        evidence_refs:
+          - E-MCP-CONFIG-ATOMIC-SOURCE
+  - id: A-PRODUCT-DESKTOP-EXPORT-ATOMIC
+    target_id: TASK-DESKTOP-EXPORT-ATOMIC
+    view: product
+    execution_status: completed
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+    completed_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+    checked_paths:
+      - internal/app/web_file_transfer.go
+      - internal/app/methods_file.go
+    evidence_refs:
+      - E-DESKTOP-EXPORT-ATOMIC-SOURCE
+    remaining_steps: []
+    scenario_results:
+      - scenario_id: SCN-DESKTOP-EXPORT-FAILURE
+        status: failed
+        evidence_refs:
+          - E-DESKTOP-EXPORT-ATOMIC-SOURCE
+  - id: A-DB-DRIVER-AGENT-STREAM-SYNC
+    target_id: TASK-DRIVER-AGENT-STREAM-SYNC
     view: db
     execution_status: in_progress
     required_stages:
@@ -1922,18 +2794,20 @@ assessments:
       - entrypoint
       - implementation_trace
       - counterexample
-    checked_paths: *a33
+    checked_paths:
+      - internal/db/optional_driver_agent_impl.go
+      - cmd/optional-driver-agent/main.go
     evidence_refs:
-      - E-DB-CONNECTIONS
+      - E-DRIVER-AGENT-STREAM-SOURCE
     remaining_steps:
-      - 在隔离服务矩阵验证连接、权限、网络中断和资源释放
+      - 运行双请求内存管道复现，确认残留帧是否进入第二请求。
     scenario_results:
-      - scenario_id: SCN-TASK-DB-CONNECTIONS
+      - scenario_id: SCN-DRIVER-AGENT-TWO-REQUESTS
         status: not_run
+        reason: 已确认协议断点，尚未运行双请求复现。
         evidence_refs: []
-        reason: 34 类真实服务及 TLS、SSH、代理和权限组合未提供
-  - id: A-TASK-DB-QUERY
-    target_id: TASK-DB-QUERY
+  - id: A-DB-SQLSERVER-SSH-TLS-IDENTITY
+    target_id: TASK-SQLSERVER-SSH-TLS-IDENTITY
     view: db
     execution_status: in_progress
     required_stages:
@@ -1945,20 +2819,45 @@ assessments:
       - entrypoint
       - implementation_trace
       - counterexample
-    checked_paths: *a34
+    checked_paths:
+      - internal/db/sqlserver_impl.go
+      - internal/db/ssl_mode.go
     evidence_refs:
-      - E-DB-KAFKA-CANCEL
-      - E-DB-MQTT-CANCEL
+      - E-SQLSERVER-SSH-TLS-SOURCE
     remaining_steps:
-      - 运行 Kafka group/direct 与 MQTT 部分消息后取消场景
+      - 用本地转发与测试证书运行身份分离和主机名不匹配测试。
     scenario_results:
-      - scenario_id: SCN-TASK-DB-QUERY
+      - scenario_id: SCN-SQLSERVER-SSH-AZURE-TLS
         status: not_run
+        reason: 已确认配置重写顺序，尚未建立测试 TLS 与 SSH 环境。
         evidence_refs: []
-        reason: Kafka/MQTT 部分消息后取消需要隔离 broker 验证返回语义
-  - id: A-TASK-DB-METADATA
-    target_id: TASK-DB-METADATA
-    view: db
+  - id: A-PRODUCT-DESKTOP-EXPORT-CANCEL
+    target_id: TASK-DESKTOP-EXPORT-CANCEL
+    view: product
+    execution_status: completed
+    required_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+    completed_stages:
+      - entrypoint
+      - implementation_trace
+      - counterexample
+    checked_paths:
+      - frontend/src/components/useExportProgressRunner.ts
+      - frontend/src/components/TableExportWorkbench.tsx
+      - internal/app/methods_file.go
+    evidence_refs:
+      - E-DESKTOP-EXPORT-CANCEL-SOURCE
+    remaining_steps: []
+    scenario_results:
+      - scenario_id: SCN-DESKTOP-EXPORT-CANCEL
+        status: failed
+        evidence_refs:
+          - E-DESKTOP-EXPORT-CANCEL-SOURCE
+  - id: A-DEVELOPER-WEB-SQL-AUDIT-TIMEOUT
+    target_id: TASK-WEB-SQL-AUDIT-TIMEOUT
+    view: developer
     execution_status: in_progress
     required_stages:
       - entrypoint
@@ -1969,1159 +2868,335 @@ assessments:
       - entrypoint
       - implementation_trace
       - counterexample
-    checked_paths: *a35
+    checked_paths:
+      - internal/httpserver/security.go
+      - internal/rpctimeout/methods.go
+      - internal/webserver/long_running_invoke.go
+      - internal/webserver/server.go
+      - internal/app/methods_sql_audit.go
+      - internal/sqlaudit/store.go
     evidence_refs:
-      - E-DB-METADATA
+      - E-WEB-SQL-AUDIT-TIMEOUT-SOURCE
     remaining_steps:
-      - 在隔离实例验证权限、大小写、catalog/schema 和部分元数据失败
+      - 运行超过 60 秒的阻塞夹具，验证响应、取消传播和重任务槽释放。
     scenario_results:
-      - scenario_id: SCN-TASK-DB-METADATA
+      - scenario_id: SCN-WEB-SQL-AUDIT-OVER-60S
         status: not_run
+        reason: 已确认 Context 断链，尚未执行超过 60 秒的 Web 运行复现。
         evidence_refs: []
-        reason: 缺少长尾驱动的受限账号、多版本服务和特殊对象夹具
-  - id: A-TASK-DB-WRITES
-    target_id: TASK-DB-WRITES
-    view: db
-    execution_status: completed
-    required_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a36
-    evidence_refs: &a37
-      - E-DB-OUTCOME-UNKNOWN
-      - E-DB-MYSQL-IDENT
-      - E-DB-MARIADB-IDENT
-    remaining_steps: []
-    scenario_results:
-      - scenario_id: SCN-TASK-DB-WRITES
-        status: failed
-        evidence_refs: *a37
-  - id: A-TASK-DB-LOGGING
-    target_id: TASK-DB-LOGGING
-    view: db
-    execution_status: completed
-    required_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a38
-    evidence_refs: &a39
-      - E-DB-REDIS-LOG
-    remaining_steps: []
-    scenario_results:
-      - scenario_id: SCN-TASK-DB-LOGGING
-        status: failed
-        evidence_refs: *a39
-  - id: A-TASK-DB-TRANSFER
-    target_id: TASK-DB-TRANSFER
-    view: db
-    execution_status: in_progress
-    required_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-      - runtime
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a40
-    evidence_refs:
-      - E-DB-TRANSFER
-    remaining_steps:
-      - 验证代表性长尾源到目标、部分提交、进程中断和恢复检查点
-    scenario_results:
-      - scenario_id: SCN-TASK-DB-TRANSFER
-        status: not_run
-        evidence_refs: []
-        reason: 各专用迁移 planner 的源到目标组合与真实断点恢复未运行
-  - id: A-TASK-DEV-LAUNCH
-    target_id: TASK-DEV-LAUNCH
-    view: developer
-    execution_status: completed
-    required_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a41
-    evidence_refs: &a42
-      - E-TASK-DEV-LAUNCH-1
-      - E-TASK-DEV-LAUNCH-2
-    remaining_steps: []
-    scenario_results:
-      - scenario_id: SCN-TASK-DEV-LAUNCH
-        status: passed
-        evidence_refs: *a42
-  - id: A-TASK-DEV-CONNECTIONS
-    target_id: TASK-DEV-CONNECTIONS
-    view: developer
-    execution_status: blocked
-    required_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-      - runtime
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a43
-    evidence_refs:
-      - E-TASK-DEV-CONNECTIONS-1
-    remaining_steps:
-      - 准备所需环境后执行运行场景
-    scenario_results:
-      - scenario_id: SCN-TASK-DEV-CONNECTIONS
-        status: blocked
-        evidence_refs: []
-        reason: 本机没有任务所需的真实外部服务与隔离凭据
-    blocker: &a45
-      condition: 本机没有任务所需的真实外部服务与隔离凭据
-      attempted: 已运行本地 fake、单元及 full-driver 标签测试并检查可用服务
-      next_step: 准备隔离服务矩阵后按剩余场景继续只读或受控验证
-  - id: A-TASK-DEV-METADATA
-    target_id: TASK-DEV-METADATA
-    view: developer
-    execution_status: blocked
-    required_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-      - runtime
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a44
-    evidence_refs:
-      - E-TASK-DEV-METADATA-1
-    remaining_steps:
-      - 准备所需环境后执行运行场景
-    scenario_results:
-      - scenario_id: SCN-TASK-DEV-METADATA
-        status: blocked
-        evidence_refs: []
-        reason: 本机没有任务所需的真实外部服务与隔离凭据
-    blocker: *a45
-  - id: A-TASK-DEV-SQL-EDIT
-    target_id: TASK-DEV-SQL-EDIT
-    view: developer
-    execution_status: completed
-    required_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-      - runtime
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-      - runtime
-    checked_paths: *a46
-    evidence_refs: &a47
-      - E-TASK-DEV-SQL-EDIT-1
-      - E-TASK-DEV-SQL-EDIT-2
-      - E-DEV-ORACLE-ALIAS
-    remaining_steps: []
-    scenario_results:
-      - scenario_id: SCN-TASK-DEV-SQL-EDIT
-        status: failed
-        evidence_refs: *a47
-  - id: A-TASK-DEV-QUERY-RUNTIME
-    target_id: TASK-DEV-QUERY-RUNTIME
-    view: developer
-    execution_status: blocked
-    required_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-      - runtime
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a48
-    evidence_refs:
-      - E-TASK-DEV-QUERY-RUNTIME-1
-    remaining_steps:
-      - 准备所需环境后执行运行场景
-    scenario_results:
-      - scenario_id: SCN-TASK-DEV-QUERY-RUNTIME
-        status: blocked
-        evidence_refs: []
-        reason: 本机没有任务所需的真实外部服务与隔离凭据
-    blocker: *a45
-  - id: A-TASK-DEV-TABLE
-    target_id: TASK-DEV-TABLE
-    view: developer
-    execution_status: in_progress
-    required_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-      - runtime
-    completed_stages:
-      - entrypoint
-      - counterexample
-    checked_paths: *a49
-    evidence_refs:
-      - E-TASK-DEV-TABLE-1
-      - E-DEV-VIRTUAL-LIST-RECHECK
-    remaining_steps:
-      - 逐项追踪剩余独立实现并运行压力反例
-    scenario_results:
-      - scenario_id: SCN-TASK-DEV-TABLE
-        status: not_run
-        evidence_refs: []
-        reason: 部分实现链仍在队列中
-  - id: A-TASK-DEV-IMPORT
-    target_id: TASK-DEV-IMPORT
-    view: developer
-    execution_status: completed
-    required_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a50
-    evidence_refs: &a51
-      - E-TASK-DEV-IMPORT-1
-    remaining_steps: []
-    scenario_results:
-      - scenario_id: SCN-TASK-DEV-IMPORT
-        status: passed
-        evidence_refs: *a51
-  - id: A-TASK-DEV-SYNC
-    target_id: TASK-DEV-SYNC
-    view: developer
-    execution_status: completed
-    required_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a52
-    evidence_refs: &a53
-      - E-TASK-DEV-SYNC-1
-    remaining_steps: []
-    scenario_results:
-      - scenario_id: SCN-TASK-DEV-SYNC
-        status: passed
-        evidence_refs: *a53
-  - id: A-TASK-DEV-SPECIALIZED
-    target_id: TASK-DEV-SPECIALIZED
-    view: developer
-    execution_status: blocked
-    required_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-      - runtime
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a54
-    evidence_refs:
-      - E-TASK-DEV-SPECIALIZED-1
-    remaining_steps:
-      - 准备所需环境后执行运行场景
-    scenario_results:
-      - scenario_id: SCN-TASK-DEV-SPECIALIZED
-        status: blocked
-        evidence_refs: []
-        reason: 本机没有任务所需的真实外部服务与隔离凭据
-    blocker: *a45
-  - id: A-TASK-DEV-AI
-    target_id: TASK-DEV-AI
-    view: developer
-    execution_status: completed
-    required_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-      - runtime
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-      - runtime
-    checked_paths: *a55
-    evidence_refs: &a56
-      - E-TASK-DEV-AI-1
-      - E-TASK-DEV-AI-2
-      - E-DEV-AI-DATE
-    remaining_steps: []
-    scenario_results:
-      - scenario_id: SCN-TASK-DEV-AI
-        status: failed
-        evidence_refs: *a56
-  - id: A-TASK-DEV-WEB
-    target_id: TASK-DEV-WEB
-    view: developer
-    execution_status: completed
-    required_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a57
-    evidence_refs: &a58
-      - E-TASK-DEV-WEB-1
-    remaining_steps: []
-    scenario_results:
-      - scenario_id: SCN-TASK-DEV-WEB
-        status: passed
-        evidence_refs: *a58
-  - id: A-TASK-DEV-CLI
-    target_id: TASK-DEV-CLI
-    view: developer
-    execution_status: completed
-    required_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a59
-    evidence_refs: &a60
-      - E-TASK-DEV-CLI-1
-    remaining_steps: []
-    scenario_results:
-      - scenario_id: SCN-TASK-DEV-CLI
-        status: passed
-        evidence_refs: *a60
-  - id: A-TASK-DEV-DESKTOP
-    target_id: TASK-DEV-DESKTOP
-    view: developer
-    execution_status: blocked
-    required_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-      - runtime
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a61
-    evidence_refs:
-      - E-TASK-DEV-DESKTOP-1
-    remaining_steps:
-      - 准备所需环境后执行运行场景
-    scenario_results:
-      - scenario_id: SCN-TASK-DEV-DESKTOP
-        status: blocked
-        evidence_refs: []
-        reason: 当前 macOS 环境没有 Windows/Linux 发布产物和对应原生运行时
-    blocker:
-      condition: 当前 macOS 环境没有 Windows/Linux 发布产物和对应原生运行时
-      attempted: 已运行源码、平台分支测试和可执行的本地构建检查
-      next_step: 在对应平台或 CI 产物环境继续验证
-  - id: A-TASK-DEV-DELIVERY
-    target_id: TASK-DEV-DELIVERY
-    view: developer
-    execution_status: completed
-    required_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a62
-    evidence_refs: &a63
-      - E-TASK-DEV-DELIVERY-1
-      - E-TASK-DEV-DELIVERY-2
-      - E-DEV-TEST-POLICY
-      - E-DEV-WAILS-PATH
-      - E-DEV-NPM-AUDIT
-    remaining_steps: []
-    scenario_results:
-      - scenario_id: SCN-TASK-DEV-DELIVERY
-        status: failed
-        evidence_refs: *a63
-  - id: A-TASK-DEV-BINDINGS
-    target_id: TASK-DEV-BINDINGS
-    view: developer
-    execution_status: completed
-    required_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    completed_stages:
-      - entrypoint
-      - implementation_trace
-      - counterexample
-    checked_paths: *a64
-    evidence_refs: &a65
-      - E-TASK-DEV-BINDINGS-1
-    remaining_steps: []
-    scenario_results:
-      - scenario_id: SCN-TASK-DEV-BINDINGS
-        status: passed
-        evidence_refs: *a65
 evidence_records:
-  - id: E-TASK-PROD-CONNECTIONS
-    method: test
-    path: frontend/src/components/ConnectionModal.i18n.test.tsx
-    result: 连接入口、保存、能力门控和相邻安全入口已追链；相关前后端测试通过
-    check_scope: 创建、测试、保存、组织并安全复用连接
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-PROD-CONNECTIONS
-    attachments: []
-  - id: E-TASK-PROD-RELATIONAL-SOURCES
-    method: test
-    path: frontend/src/utils/dataSourceCapabilities.test.ts
-    result: 内置、可选、Custom 和 Caché/IRIS 身份分支已逐项核对；能力契约测试通过
-    check_scope: 选择关系型及可选数据源并保持产品身份
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-PROD-RELATIONAL-SOURCES
-    attachments: []
-  - id: E-TASK-PROD-OBJECTS
-    method: test
-    path: frontend/src/components/Sidebar.locate-toolbar.test.tsx
-    result: 对象分派、定位、刷新及相邻入口已追链；定向测试通过
-    check_scope: 浏览对象并从对象继续查询、设计和交换任务
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-PROD-OBJECTS
-    attachments: []
-  - id: E-TASK-PROD-QUERY
-    method: test
-    path: frontend/src/utils/sqlDialect.test.ts
-    result: 查询任务链与方言反例已核对；Oracle 裸别名契约测试通过，组件中的旧断言另行登记
-    check_scope: 编写、执行、保存和治理 SQL
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-PROD-QUERY
-    attachments: []
-  - id: E-TASK-PROD-DATA
-    method: test
-    path: frontend/src/components/DataGrid.ddl.test.tsx
-    result: 数据浏览、编辑、DDL 和导入恢复入口已追链；DataGrid 定向测试 93 项通过
-    check_scope: 编辑数据、导入导出并设计结构
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-PROD-DATA
-    attachments: []
-  - id: E-TASK-PROD-SYNC
-    method: test
-    path: frontend/src/components/data-sync/DataSyncWorkbenchShell.test.tsx
-    result: 同步任务、运行、调度和结果差异链已核对；70 个定向前端测试通过
-    check_scope: 创建、运行和恢复同步、比较及调度任务
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-PROD-SYNC
-    attachments: []
-  - id: E-TASK-PROD-REDIS
-    method: test
-    path: frontend/src/components/RedisViewer.interaction.test.tsx
-    result: Redis 工作台入口、键操作与命令调用链已核对；定向测试通过
-    check_scope: 浏览 Redis 键并执行命令和监控
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-PROD-REDIS
-    attachments: []
-  - id: E-TASK-PROD-VECTOR
-    method: test
-    path: frontend/src/utils/dataSourceCapabilities.test.ts
-    result: 三种向量源的能力门控和内部对照已核对；契约测试通过
-    check_scope: 浏览并检索向量数据源
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-PROD-VECTOR
-    attachments: []
-  - id: E-TASK-PROD-SEARCH
-    method: test
-    path: frontend/src/utils/elasticsearchConsole.test.ts
-    result: 搜索数据源入口、能力门控和服务分支已追链；契约测试通过
-    check_scope: 使用 Elasticsearch 和 Sphinx 搜索工作台
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-PROD-SEARCH
-    attachments: []
-  - id: E-TASK-PROD-MESSAGING
-    method: test
-    path: frontend/src/utils/messageConsume.test.ts
-    result: 四类消息源的入口与生产/预览边界已核对；工作台和驱动测试通过
-    check_scope: 浏览、生产和预览消息队列数据
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-PROD-MESSAGING
-    attachments: []
-  - id: E-TASK-PROD-NACOS
-    method: test
-    path: frontend/src/components/NacosViewer.selection.test.tsx
-    result: Nacos 配置与服务的连续操作链已核对；定向测试通过
-    check_scope: 管理 Nacos 配置、命名空间、服务和实例
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-PROD-NACOS
-    attachments: []
-  - id: E-TASK-PROD-JVM
-    method: test
-    path: frontend/src/components/JVMResourceBrowser.interaction.test.tsx
-    result: JVM 资源、诊断、取消和审计任务链已核对；定向测试通过
-    check_scope: 浏览 JVM 资源并执行、取消和审计诊断
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-PROD-JVM
-    attachments: []
-  - id: E-TASK-PROD-AI
-    method: test
-    path: frontend/src/components/AIChatPanel.message-boundary.test.tsx
-    result: AI 上下文、运行、取消、恢复及窗口链路已核对；定向测试通过
-    check_scope: 配置并使用 AI 完成数据库任务
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-PROD-AI
-    attachments: []
-  - id: E-TASK-PROD-MCP
-    method: test
-    path: frontend/src/components/ai/AISettingsMCPSection.test.tsx
-    result: 本地与 HTTP MCP 的配置、安装和错误恢复已追链；定向测试通过
-    check_scope: 配置、安装并运行 MCP 服务和客户端
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-PROD-MCP
-    attachments: []
-  - id: E-TASK-PROD-WEB-CLI
-    method: test
-    path: internal/webserver/server_test.go
-    result: Web 认证/RPC 与 CLI 任务链已核对；后端测试通过；页面可访问性不属于本轮 UI 排除范围
-    check_scope: 通过 Web 和 CLI 使用 GoNavi
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-PROD-WEB-CLI
-    attachments: []
-  - id: E-TASK-PROD-OPS
-    method: test
-    path: frontend/src/components/requestDiagnostics/RequestDiagnosticsWorkbench.test.tsx
-    result: 平台设置和请求诊断链已追踪；诊断工作台固定中文，语言切换任务失败
-    check_scope: 配置、诊断、备份、更新并管理桌面工作区
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-PROD-OPS
-    attachments: []
-  - id: E-DB-CONNECTIONS
-    method: test
-    path: internal/db/driver_support_test.go
-    result: 内置、可选和 Driver Agent 实现已逐项追踪；internal/db 与 full-driver 标签测试通过
-    check_scope: 驱动注册、连接、代理协议和资源边界
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DB-CONNECTIONS
-    attachments: []
-  - id: E-DB-KAFKA-CANCEL
+  - id: E-MCP-CONFIG-ATOMIC-SOURCE
     method: source
-    path: internal/db/kafka_impl.go
-    result: 取消与短读超时进入同一 break 分支并可返回 records,nil
-    check_scope: Kafka group/direct 部分消息后的取消映射
-    executed_at: 2026-09-13T14:10:00+08:00
+    path: internal/ai/service/claude_code_mcp.go:854
+    result: 四条 MCP 客户端配置路径直接覆盖正式文件，OpenCode 路径已提供同目录临时文件加替换的安全反例。
+    check_scope: Claude Code、外部 JSON 客户端、DeepSeek Harness、Grok Build 与 OpenCode 配置写入。
+    executed_at: 2026-09-17T19:18:53.475Z
     covered_assessment_ids:
-      - A-TASK-DB-QUERY
+      - A-PRODUCT-MCP-CONFIG-ATOMIC
     attachments: []
-  - id: E-DB-MQTT-CANCEL
+  - id: E-DESKTOP-EXPORT-ATOMIC-SOURCE
     method: source
-    path: internal/db/mqtt_impl.go
-    result: 已有消息时 ctx.Done 分支返回 result,nil
-    check_scope: MQTT 部分消息后的取消映射
-    executed_at: 2026-09-13T14:10:00+08:00
+    path: internal/app/web_file_transfer.go:856
+    result: 桌面分支直接 os.Create 正式目标，三个导出入口在查询或编码完成前调用；多表 SQL 导出已有临时文件替换实现。
+    check_scope: 桌面表导出、内存数据导出、查询导出和多表 SQL 安全对照。
+    executed_at: 2026-09-17T19:18:53.475Z
     covered_assessment_ids:
-      - A-TASK-DB-QUERY
+      - A-PRODUCT-DESKTOP-EXPORT-ATOMIC
     attachments: []
-  - id: E-DB-METADATA
-    method: test
-    path: internal/db/metadata_context_test.go
-    result: 关系型、文档、向量和消息驱动的独立元数据实现已追踪；本地测试通过
-    check_scope: 元数据 SQL、对象模型、权限与特殊标识符
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DB-METADATA
-    attachments: []
-  - id: E-DB-OUTCOME-UNKNOWN
+  - id: E-DRIVER-AGENT-STREAM-SOURCE
     method: source
-    path: internal/app/methods_file.go
-    result: BatchApplier 错误分支只返回 Success、Message 和预览，未映射 IsWriteOutcomeUnknown
-    check_scope: 驱动 unknown-outcome 经 Wails 到 DataGrid 的完整消费者链
-    executed_at: 2026-09-13T14:10:00+08:00
+    path: internal/db/optional_driver_agent_impl.go:499
+    result: 客户端不校验响应 ID，消费或解码错误直接返回；生产端按多帧继续写到 done，transport 没有排空或废弃。
+    check_scope: Driver Agent 流式请求的客户端读取循环、服务端帧生产和 transport 复用。
+    executed_at: 2026-09-17T19:18:53.475Z
     covered_assessment_ids:
-      - A-TASK-DB-WRITES
+      - A-DB-DRIVER-AGENT-STREAM-SYNC
     attachments: []
-  - id: E-DB-MYSQL-IDENT
+  - id: E-SQLSERVER-SSH-TLS-SOURCE
     method: source
-    path: internal/db/mysql_impl.go
-    result: update/delete 直接插入反引号标识符，insert 对照路径调用 escapeMySQLBacktickIdent
-    check_scope: MySQL/GoldenDB 数据编辑 SQL 标识符生成
-    executed_at: 2026-09-13T14:10:00+08:00
+    path: internal/db/sqlserver_impl.go:145
+    result: SSH 分支把 Host 改成本地转发地址后重新创建 SQL Server 连接，而 Azure 与证书主机名 helper 只读取当前 Host。
+    check_scope: SQL Server 打开、SSH 地址重写、Azure 加密默认值与证书主机名计算。
+    executed_at: 2026-09-17T19:18:53.475Z
     covered_assessment_ids:
-      - A-TASK-DB-WRITES
+      - A-DB-SQLSERVER-SSH-TLS-IDENTITY
     attachments: []
-  - id: E-DB-MARIADB-IDENT
+  - id: E-DESKTOP-EXPORT-CANCEL-SOURCE
     method: source
-    path: internal/db/mariadb_impl.go
-    result: MariaDB 独立 update/delete 实现同样未转义反引号，insert 对照路径已转义
-    check_scope: MariaDB 数据编辑 SQL 标识符生成
-    executed_at: 2026-09-13T14:10:00+08:00
+    path: frontend/src/components/useExportProgressRunner.ts:94
+    result: 桌面 runner 未暴露取消且工作台运行中锁定配置；headless 导出路径已有可取消 Context。
+    check_scope: 桌面导出进度 hook、工作台运行态控制和后端 headless Context。
+    executed_at: 2026-09-17T19:18:53.475Z
     covered_assessment_ids:
-      - A-TASK-DB-WRITES
+      - A-PRODUCT-DESKTOP-EXPORT-CANCEL
     attachments: []
-  - id: E-DB-REDIS-LOG
+  - id: E-WEB-SQL-AUDIT-TIMEOUT-SOURCE
     method: source
-    path: internal/app/methods_redis.go
-    result: 失败分支把完整 command 写入持久日志；日志读取只识别 SQL 字段，现有 Redis RedactQuery 未接入该链
-    check_scope: Redis 原始命令从执行失败到持久日志和日志查看的字符串流
-    executed_at: 2026-09-13T14:10:00+08:00
+    path: internal/webserver/server.go:1089
+    result: 完整性校验在唯一重任务槽内同步调用，存储层使用 background Context；Web 长任务 deadline 特判不能把请求取消传播到扫描。
+    check_scope: HTTP 写超时、Web invoke 长任务分类、并发槽、App 绑定和审计存储扫描。
+    executed_at: 2026-09-17T19:18:53.475Z
     covered_assessment_ids:
-      - A-TASK-DB-LOGGING
-    attachments: []
-  - id: E-DB-TRANSFER
-    method: test
-    path: internal/app/import_job_recovery_test.go
-    result: 公共流式读取、批次提交、恢复和 outcomeUnknown 门控已追踪；定向测试通过
-    check_scope: 导入、导出、同步及恢复的数据库边界
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DB-TRANSFER
-    attachments: []
-  - id: E-TASK-DEV-LAUNCH-1
-    method: test
-    path: internal/nativewindow/manager_test.go
-    result: 入口和退出链已追踪；internal/cmd 包测试通过
-    check_scope: 启动桌面、Web、MCP 或分离窗口模式并安全退出
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-LAUNCH
-    attachments: []
-  - id: E-TASK-DEV-LAUNCH-2
-    method: source
-    path: main.go
-    result: 入口和退出链已追踪；internal/cmd 包测试通过
-    check_scope: 启动桌面、Web、MCP 或分离窗口模式并安全退出
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-LAUNCH
-    attachments: []
-  - id: E-TASK-DEV-CONNECTIONS-1
-    method: test
-    path: internal/db/optional_driver_agent_impl_test.go
-    result: 连接和 Driver Agent 调用链及反例已完成；本地测试通过
-    check_scope: 创建、导入、测试和保存连接并管理可选驱动生命周期
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-CONNECTIONS
-    attachments: []
-  - id: E-TASK-DEV-METADATA-1
-    method: test
-    path: internal/app/methods_db_objects_test.go
-    result: 元数据入口、错误映射和代表实现已追踪；本地测试通过
-    check_scope: 浏览跨驱动数据库对象和元数据
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-METADATA
-    attachments: []
-  - id: E-TASK-DEV-SQL-EDIT-1
-    method: test
-    path: frontend/src/components/QueryEditor.external-sql-save.test.tsx
-    result: 组件定向测试 382 项中 1 项失败；方言单元测试确认 Oracle 使用裸别名
-    check_scope: 编辑、补全、定位并保存 SQL
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-SQL-EDIT
-    attachments: []
-  - id: E-TASK-DEV-SQL-EDIT-2
-    method: test
-    path: frontend/src/utils/sqlDialect.test.ts
-    result: 组件定向测试 382 项中 1 项失败；方言单元测试确认 Oracle 使用裸别名
-    check_scope: 编辑、补全、定位并保存 SQL
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-SQL-EDIT
-    attachments: []
-  - id: E-TASK-DEV-QUERY-RUNTIME-1
-    method: test
-    path: internal/app/methods_db_cancel_test.go
-    result: 执行、取消、错误和资源链已追踪；本地测试通过
-    check_scope: 执行、取消和导出查询并维护事务状态
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-QUERY-RUNTIME
-    attachments: []
-  - id: E-TASK-DEV-TABLE-1
-    method: test
-    path: frontend/src/components/virtualListNativeScroll.test.tsx
-    result: 虚拟列表在干净依赖下定向测试连续通过；独立驱动 mutation 分支仍未全部追完
-    check_scope: 分页浏览、预览并提交表数据变更
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-TABLE
-    attachments: []
-  - id: E-TASK-DEV-IMPORT-1
-    method: test
-    path: internal/app/import_job_recovery_test.go
-    result: 导入、停止、失败行和检查点恢复链已追踪；本地测试通过
-    check_scope: 导入 CSV、XLSX 和 SQL 并恢复失败任务
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-IMPORT
-    attachments: []
-  - id: E-TASK-DEV-SYNC-1
-    method: test
-    path: internal/syncjob/manager_test.go
-    result: 同步状态、取消、恢复及持久化边界已追踪；前后端定向测试通过
-    check_scope: 预检、批准、运行、停止和恢复同步、CDC 与调度
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-SYNC
-    attachments: []
-  - id: E-TASK-DEV-SPECIALIZED-1
-    method: test
-    path: internal/db/kafka_impl_test.go
-    result: 各专用实现和错误边界已追踪；本地驱动测试通过
-    check_scope: 运行 Redis、消息、向量、Elasticsearch、Nacos 和 JVM 工作台
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-SPECIALIZED
-    attachments: []
-  - id: E-TASK-DEV-AI-1
-    method: test
-    path: frontend/src/components/ai/AISettingsAnalysisSection.test.tsx
-    result: 组件测试因固定日期有 3 项失败；纯可观测性 helper 测试 11 项通过
-    check_scope: 配置 AI、运行 agent 并管理 MCP 调用和可观测性
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-AI
-    attachments: []
-  - id: E-TASK-DEV-AI-2
-    method: test
-    path: frontend/src/components/ai/aiObservability.test.ts
-    result: 组件测试因固定日期有 3 项失败；纯可观测性 helper 测试 11 项通过
-    check_scope: 配置 AI、运行 agent 并管理 MCP 调用和可观测性
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-AI
-    attachments: []
-  - id: E-TASK-DEV-WEB-1
-    method: test
-    path: internal/webserver/server_test.go
-    result: Web RPC、认证、文件和关闭链已追踪；后端测试通过
-    check_scope: 在 Web 会话中调用 RPC、传输文件并接收事件
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-WEB
-    attachments: []
-  - id: E-TASK-DEV-CLI-1
-    method: test
-    path: internal/cli/cli_test.go
-    result: CLI 命令、退出码和配置边界已追踪；后端测试通过
-    check_scope: 用 CLI 管理连接、查询、导出、审计、MCP 和 agent
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-CLI
-    attachments: []
-  - id: E-TASK-DEV-DESKTOP-1
-    method: test
-    path: internal/nativewindow/manager_test.go
-    result: 平台分支、失败恢复和回滚链已追踪；本地测试通过
-    check_scope: 管理分离窗口、退出保护、备份和跨平台更新
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-DESKTOP
-    attachments: []
-  - id: E-TASK-DEV-DELIVERY-1
-    method: source
-    path: build-release.sh
-    result: bash 语法、快速开发 dry-run 和质量闸门已运行；裸 wails 路径及两个新 source-text offender 使契约失败
-    check_scope: 安装固定工具并构建和发布各平台产物
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-DELIVERY
-    attachments: []
-  - id: E-TASK-DEV-DELIVERY-2
-    method: test
-    path: frontend/src/testPolicy.test.ts
-    result: bash 语法、快速开发 dry-run 和质量闸门已运行；裸 wails 路径及两个新 source-text offender 使契约失败
-    check_scope: 安装固定工具并构建和发布各平台产物
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-DELIVERY
-    attachments: []
-  - id: E-TASK-DEV-BINDINGS-1
-    method: test
-    path: frontend/wailsjs/go/app/App.d.ts
-    result: TypeScript 编译通过；导出方法与 JS binding 只读比较 App 368/368、AI Service 60/60、Manager 9/9
-    check_scope: 刷新并校验 Go 与 Wails 生成绑定
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-BINDINGS
-    attachments: []
-  - id: E-PROD-DIAGNOSTICS-I18N
-    method: source
-    path: frontend/src/components/requestDiagnostics/RequestDiagnosticsWorkbench.tsx
-    result: 工作台及复现包组件未读取 i18n，标题、按钮、错误、状态和 ARIA 文案固定中文；入口与 tab builder 同样固定中文
-    check_scope: 切换非中文语言后打开及保持请求诊断工作台
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-PROD-OPS
-    attachments: []
-  - id: E-PROD-DIFF-EXPORT-LANGUAGE
-    method: source
-    path: frontend/src/utils/resultDiff/exportDiff.ts
-    result: 并排 HTML 固定 zh-CN lang 与中文图例，但产品尚未定义导出语言契约
-    check_scope: 非中文界面导出并排差异 HTML
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-PROD-SYNC
-    attachments: []
-  - id: E-PROD-SCHEDULE-CONTROL
-    method: source
-    path: frontend/src/components/data-sync/DataSyncOperationalViews.tsx
-    result: 当前 Schedules 清单只展示状态并提供刷新，没有启停、立即运行、最近错误和运行详情入口；任务状态变更后不会自动刷新清单。归档所列修复提交 88841af9 不在当前 HEAD 祖先链。
-    check_scope: 同步调度清单的集中操作、状态新鲜度和历史修复基线
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-PROD-SYNC
-    attachments: []
-  - id: E-DEV-ORACLE-ALIAS
-    method: test
-    path: frontend/src/components/QueryEditor.external-sql-save.test.tsx
-    result: 定向测试稳定失败：期望 AAA3_NJ AS an，实际为符合 Oracle 方言契约的 AAA3_NJ an；sqlDialect 单元测试确认 bare alias
-    check_scope: Oracle 数据库限定表补全别名语法
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-SQL-EDIT
-    attachments: []
-  - id: E-DEV-AI-DATE
-    method: test
-    path: frontend/src/components/ai/AISettingsAnalysisSection.test.tsx
-    result: 3 个渲染断言失败；fixture 固定 2026-09-09，组件默认 today，在当前日期 2026-09-13 被过滤为空
-    check_scope: AI observability 默认 today 的确定性组件测试
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-AI
-    attachments: []
-  - id: E-DEV-TEST-POLICY
-    method: test
-    path: frontend/src/testPolicy.test.ts
-    result: 质量闸门检出 App.sidebar-resize-hit-area.test.ts 与 ConnectionImportSettingsPanel.test.ts 两个新增源码文本断言文件
-    check_scope: 前端测试策略禁止新增逐文件源码文本断言
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-DELIVERY
-    attachments: []
-  - id: E-DEV-WAILS-PATH
-    method: source
-    path: build-release.sh
-    result: 7 个发布分支调用裸 wails build；README 和 project-tools 要求项目固定的 .tools/bin，当前 shell 无全局 wails
-    check_scope: 只有项目本地 Wails CLI 的文档化发布环境
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-DELIVERY
-    attachments: []
-  - id: E-DEV-NPM-AUDIT
-    method: test
-    path: frontend/package-lock.json
-    result: npm audit --omit=dev 报告 10 个生产依赖包节点（4 moderate、6 high）；直接依赖 mermaid 和 uuid 在报告中出现
-    check_scope: 生产依赖漏洞与实际可达性初筛
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-DELIVERY
-    attachments: []
-  - id: E-DEV-VIRTUAL-LIST-RECHECK
-    method: test
-    path: frontend/src/components/virtualListNativeScroll.test.tsx
-    result: 干净 npm ci 后定向用例通过，随后与其他文件同跑及独立连续运行均通过，无法复现初次失败
-    check_scope: 虚拟列表 compositor 水平偏移稳定性
-    executed_at: 2026-09-13T14:10:00+08:00
-    covered_assessment_ids:
-      - A-TASK-DEV-TABLE
+      - A-DEVELOPER-WEB-SQL-AUDIT-TIMEOUT
     attachments: []
 indexes:
   - id: IDX-A-TASK-PROD-CONNECTIONS
     kind: capability
     view: product
     label: 创建、测试、保存、组织并安全复用连接
-    capability_ids: *a66
+    capability_ids: *a1
     assessment_refs:
       - A-TASK-PROD-CONNECTIONS
   - id: IDX-A-TASK-PROD-RELATIONAL-SOURCES
     kind: capability
     view: product
     label: 选择关系型及可选数据源并保持产品身份
-    capability_ids: *a67
+    capability_ids: *a2
     assessment_refs:
       - A-TASK-PROD-RELATIONAL-SOURCES
   - id: IDX-A-TASK-PROD-OBJECTS
     kind: capability
     view: product
     label: 浏览对象并从对象继续查询、设计和交换任务
-    capability_ids: *a68
+    capability_ids: *a3
     assessment_refs:
       - A-TASK-PROD-OBJECTS
   - id: IDX-A-TASK-PROD-QUERY
     kind: capability
     view: product
     label: 编写、执行、保存和治理 SQL
-    capability_ids: *a69
+    capability_ids: *a4
     assessment_refs:
       - A-TASK-PROD-QUERY
   - id: IDX-A-TASK-PROD-DATA
     kind: capability
     view: product
     label: 编辑数据、导入导出并设计结构
-    capability_ids: *a70
+    capability_ids: *a5
     assessment_refs:
       - A-TASK-PROD-DATA
   - id: IDX-A-TASK-PROD-SYNC
     kind: capability
     view: product
     label: 创建、运行和恢复同步、比较及调度任务
-    capability_ids: *a71
+    capability_ids: *a6
     assessment_refs:
       - A-TASK-PROD-SYNC
   - id: IDX-A-TASK-PROD-REDIS
     kind: capability
     view: product
     label: 浏览 Redis 键并执行命令和监控
-    capability_ids: *a72
+    capability_ids: *a7
     assessment_refs:
       - A-TASK-PROD-REDIS
   - id: IDX-A-TASK-PROD-VECTOR
     kind: capability
     view: product
     label: 浏览并检索向量数据源
-    capability_ids: *a73
+    capability_ids: *a8
     assessment_refs:
       - A-TASK-PROD-VECTOR
   - id: IDX-A-TASK-PROD-SEARCH
     kind: capability
     view: product
     label: 使用 Elasticsearch 和 Sphinx 搜索工作台
-    capability_ids: *a74
+    capability_ids: *a9
     assessment_refs:
       - A-TASK-PROD-SEARCH
   - id: IDX-A-TASK-PROD-MESSAGING
     kind: capability
     view: product
     label: 浏览、生产和预览消息队列数据
-    capability_ids: *a75
+    capability_ids: *a10
     assessment_refs:
       - A-TASK-PROD-MESSAGING
   - id: IDX-A-TASK-PROD-NACOS
     kind: capability
     view: product
     label: 管理 Nacos 配置、命名空间、服务和实例
-    capability_ids: *a76
+    capability_ids: *a11
     assessment_refs:
       - A-TASK-PROD-NACOS
   - id: IDX-A-TASK-PROD-JVM
     kind: capability
     view: product
     label: 浏览 JVM 资源并执行、取消和审计诊断
-    capability_ids: *a77
+    capability_ids: *a12
     assessment_refs:
       - A-TASK-PROD-JVM
   - id: IDX-A-TASK-PROD-AI
     kind: capability
     view: product
     label: 配置并使用 AI 完成数据库任务
-    capability_ids: *a78
+    capability_ids: *a13
     assessment_refs:
       - A-TASK-PROD-AI
   - id: IDX-A-TASK-PROD-MCP
     kind: capability
     view: product
     label: 配置、安装并运行 MCP 服务和客户端
-    capability_ids: *a79
+    capability_ids: *a14
     assessment_refs:
       - A-TASK-PROD-MCP
   - id: IDX-A-TASK-PROD-WEB-CLI
     kind: capability
     view: product
     label: 通过 Web 和 CLI 使用 GoNavi
-    capability_ids: *a80
+    capability_ids: *a15
     assessment_refs:
       - A-TASK-PROD-WEB-CLI
   - id: IDX-A-TASK-PROD-OPS
     kind: capability
     view: product
     label: 配置、诊断、备份、更新并管理桌面工作区
-    capability_ids: *a81
+    capability_ids: *a16
     assessment_refs:
       - A-TASK-PROD-OPS
   - id: IDX-A-TASK-DB-CONNECTIONS
     kind: capability
     view: db
     label: 在各独立驱动上建立、复用并释放连接
-    capability_ids: *a82
+    capability_ids: *a17
     assessment_refs:
       - A-TASK-DB-CONNECTIONS
   - id: IDX-A-TASK-DB-QUERY
     kind: capability
     view: db
     label: 在各驱动执行、取消查询并正确返回部分结果和错误
-    capability_ids: *a83
+    capability_ids: *a18
     assessment_refs:
       - A-TASK-DB-QUERY
   - id: IDX-A-TASK-DB-METADATA
     kind: capability
     view: db
     label: 用受限账号浏览跨方言对象和特殊标识符
-    capability_ids: *a84
+    capability_ids: *a19
     assessment_refs:
       - A-TASK-DB-METADATA
   - id: IDX-A-TASK-DB-WRITES
     kind: capability
     view: db
     label: 从数据网格预览并安全提交跨驱动批量变更
-    capability_ids: *a85
+    capability_ids: *a20
     assessment_refs:
       - A-TASK-DB-WRITES
   - id: IDX-A-TASK-DB-LOGGING
     kind: capability
     view: db
     label: 执行 Redis 命令并在日志和诊断链中保持敏感参数脱敏
-    capability_ids: *a86
+    capability_ids: *a21
     assessment_refs:
       - A-TASK-DB-LOGGING
   - id: IDX-A-TASK-DB-TRANSFER
     kind: capability
     view: db
     label: 导入、导出、同步并从安全检查点恢复
-    capability_ids: *a87
+    capability_ids: *a22
     assessment_refs:
       - A-TASK-DB-TRANSFER
   - id: IDX-A-TASK-DEV-LAUNCH
     kind: capability
     view: developer
     label: 启动桌面、Web、MCP 或分离窗口模式并安全退出
-    capability_ids: *a88
+    capability_ids: *a23
     assessment_refs:
       - A-TASK-DEV-LAUNCH
   - id: IDX-A-TASK-DEV-CONNECTIONS
     kind: capability
     view: developer
     label: 创建、导入、测试和保存连接并管理可选驱动生命周期
-    capability_ids: *a89
+    capability_ids: *a24
     assessment_refs:
       - A-TASK-DEV-CONNECTIONS
   - id: IDX-A-TASK-DEV-METADATA
     kind: capability
     view: developer
     label: 浏览跨驱动数据库对象和元数据
-    capability_ids: *a90
+    capability_ids: *a25
     assessment_refs:
       - A-TASK-DEV-METADATA
   - id: IDX-A-TASK-DEV-SQL-EDIT
     kind: capability
     view: developer
     label: 编辑、补全、定位并保存 SQL
-    capability_ids: *a91
+    capability_ids: *a26
     assessment_refs:
       - A-TASK-DEV-SQL-EDIT
   - id: IDX-A-TASK-DEV-QUERY-RUNTIME
     kind: capability
     view: developer
     label: 执行、取消和导出查询并维护事务状态
-    capability_ids: *a92
+    capability_ids: *a27
     assessment_refs:
       - A-TASK-DEV-QUERY-RUNTIME
   - id: IDX-A-TASK-DEV-TABLE
     kind: capability
     view: developer
     label: 分页浏览、预览并提交表数据变更
-    capability_ids: *a93
+    capability_ids: *a28
     assessment_refs:
       - A-TASK-DEV-TABLE
   - id: IDX-A-TASK-DEV-IMPORT
     kind: capability
     view: developer
     label: 导入 CSV、XLSX 和 SQL 并恢复失败任务
-    capability_ids: *a94
+    capability_ids: *a29
     assessment_refs:
       - A-TASK-DEV-IMPORT
   - id: IDX-A-TASK-DEV-SYNC
     kind: capability
     view: developer
     label: 预检、批准、运行、停止和恢复同步、CDC 与调度
-    capability_ids: *a95
+    capability_ids: *a30
     assessment_refs:
       - A-TASK-DEV-SYNC
   - id: IDX-A-TASK-DEV-SPECIALIZED
     kind: capability
     view: developer
     label: 运行 Redis、消息、向量、Elasticsearch、Nacos 和 JVM 工作台
-    capability_ids: *a96
+    capability_ids: *a31
     assessment_refs:
       - A-TASK-DEV-SPECIALIZED
   - id: IDX-A-TASK-DEV-AI
     kind: capability
     view: developer
     label: 配置 AI、运行 agent 并管理 MCP 调用和可观测性
-    capability_ids: *a97
+    capability_ids: *a32
     assessment_refs:
       - A-TASK-DEV-AI
   - id: IDX-A-TASK-DEV-WEB
     kind: capability
     view: developer
     label: 在 Web 会话中调用 RPC、传输文件并接收事件
-    capability_ids: *a98
+    capability_ids: *a33
     assessment_refs:
       - A-TASK-DEV-WEB
   - id: IDX-A-TASK-DEV-CLI
     kind: capability
     view: developer
     label: 用 CLI 管理连接、查询、导出、审计、MCP 和 agent
-    capability_ids: *a99
+    capability_ids: *a34
     assessment_refs:
       - A-TASK-DEV-CLI
   - id: IDX-A-TASK-DEV-DESKTOP
     kind: capability
     view: developer
     label: 管理分离窗口、退出保护、备份和跨平台更新
-    capability_ids: *a100
+    capability_ids: *a35
     assessment_refs:
       - A-TASK-DEV-DESKTOP
   - id: IDX-A-TASK-DEV-DELIVERY
     kind: capability
     view: developer
     label: 安装固定工具并构建和发布各平台产物
-    capability_ids: *a101
+    capability_ids: *a36
     assessment_refs:
       - A-TASK-DEV-DELIVERY
   - id: IDX-A-TASK-DEV-BINDINGS
     kind: capability
     view: developer
     label: 刷新并校验 Go 与 Wails 生成绑定
-    capability_ids: *a102
+    capability_ids: *a37
     assessment_refs:
       - A-TASK-DEV-BINDINGS
   - id: IDX-DB-TRANSACTION
@@ -3153,191 +3228,86 @@ indexes:
       - release
     assessment_refs:
       - A-TASK-DEV-DELIVERY
+  - id: IDX-A-PRODUCT-MCP-CONFIG-ATOMIC
+    kind: capability
+    view: product
+    label: 安装或更新 MCP 客户端配置且任何失败都不破坏已有配置
+    capability_ids: *a38
+    assessment_refs:
+      - A-PRODUCT-MCP-CONFIG-ATOMIC
+  - id: IDX-A-PRODUCT-DESKTOP-EXPORT-ATOMIC
+    kind: capability
+    view: product
+    label: 覆盖桌面导出文件时在失败或取消后保留旧文件
+    capability_ids: *a39
+    assessment_refs:
+      - A-PRODUCT-DESKTOP-EXPORT-ATOMIC
+  - id: IDX-A-DB-DRIVER-AGENT-STREAM-SYNC
+    kind: capability
+    view: db
+    label: 流式查询失败后继续使用 Driver Agent 时仍读取正确请求的响应
+    capability_ids: *a40
+    assessment_refs:
+      - A-DB-DRIVER-AGENT-STREAM-SYNC
+  - id: IDX-A-DB-SQLSERVER-SSH-TLS-IDENTITY
+    kind: capability
+    view: db
+    label: 经 SSH 连接 SQL Server 时仍按远端主机验证 TLS 身份
+    capability_ids: *a41
+    assessment_refs:
+      - A-DB-SQLSERVER-SSH-TLS-IDENTITY
+  - id: IDX-A-PRODUCT-DESKTOP-EXPORT-CANCEL
+    kind: capability
+    view: product
+    label: 从桌面导出进度界面取消长任务并确认安全结束
+    capability_ids: *a42
+    assessment_refs:
+      - A-PRODUCT-DESKTOP-EXPORT-CANCEL
+  - id: IDX-A-DEVELOPER-WEB-SQL-AUDIT-TIMEOUT
+    kind: capability
+    view: developer
+    label: 通过 Web 校验大型 SQL 审计库时让超时、取消和并发槽生命周期一致
+    capability_ids: *a43
+    assessment_refs:
+      - A-DEVELOPER-WEB-SQL-AUDIT-TIMEOUT
 adjudication:
   accepted:
-    - candidate_id: product-diagnostics-i18n
-      id: FIND-PM-REQUEST-DIAGNOSTICS-I18N-001
+    - id: FIND-PM-MCP-CLIENT-CONFIG-ATOMIC-WRITE-001
+      candidate_id: product-mcp-config-atomic-001
       evidence_refs:
-        - E-PROD-DIAGNOSTICS-I18N
+        - E-MCP-CONFIG-ATOMIC-SOURCE
       unproven_assumptions: []
       acceptance_blockers: []
-    - candidate_id: product-sync-schedule-controls
-      id: FIND-PM-SYNC-SCHEDULE-CONTROL-002
+    - id: FIND-PM-DESKTOP-EXPORT-ATOMIC-WRITE-001
+      candidate_id: product-desktop-export-atomic-001
       evidence_refs:
-        - E-PROD-SCHEDULE-CONTROL
+        - E-DESKTOP-EXPORT-ATOMIC-SOURCE
       unproven_assumptions: []
       acceptance_blockers: []
-    - candidate_id: db-apply-outcome-unknown
-      id: FIND-DB-APPLY-CHANGES-OUTCOME-UNKNOWN-001
+    - id: FIND-DB-DRIVER-AGENT-STREAM-DESYNC-001
+      candidate_id: db-driver-agent-stream-desync-001
       evidence_refs:
-        - E-DB-OUTCOME-UNKNOWN
+        - E-DRIVER-AGENT-STREAM-SOURCE
       unproven_assumptions: []
       acceptance_blockers: []
-    - candidate_id: db-mysql-backtick-ident
-      id: FIND-DB-MYSQL-BACKTICK-IDENT-001
+    - id: FIND-DB-SQLSERVER-SSH-TLS-IDENTITY-001
+      candidate_id: db-sqlserver-ssh-tls-identity-001
       evidence_refs:
-        - E-DB-MYSQL-IDENT
+        - E-SQLSERVER-SSH-TLS-SOURCE
       unproven_assumptions: []
       acceptance_blockers: []
-    - candidate_id: db-mariadb-backtick-ident
-      id: FIND-DB-MARIADB-BACKTICK-IDENT-001
+    - id: FIND-PM-DESKTOP-EXPORT-CANCEL-001
+      candidate_id: product-desktop-export-cancel-001
       evidence_refs:
-        - E-DB-MARIADB-IDENT
+        - E-DESKTOP-EXPORT-CANCEL-SOURCE
       unproven_assumptions: []
       acceptance_blockers: []
-    - candidate_id: db-redis-command-log
-      id: FIND-DB-REDIS-COMMAND-LOG-001
+    - id: FIND-DEV-WEB-SQL-AUDIT-TIMEOUT-001
+      candidate_id: developer-web-sql-audit-timeout-001
       evidence_refs:
-        - E-DB-REDIS-LOG
-      unproven_assumptions: []
-      acceptance_blockers: []
-    - candidate_id: dev-oracle-alias-test
-      id: FIND-DEV-ORACLE-ALIAS-TEST-CONTRACT-001
-      evidence_refs:
-        - E-DEV-ORACLE-ALIAS
-      unproven_assumptions: []
-      acceptance_blockers: []
-    - candidate_id: dev-ai-observability-date
-      id: FIND-DEV-AI-OBSERVABILITY-TIME-TEST-001
-      evidence_refs:
-        - E-DEV-AI-DATE
-      unproven_assumptions: []
-      acceptance_blockers: []
-    - candidate_id: dev-source-text-policy
-      id: FIND-DEV-SOURCE-TEXT-TEST-GATE-001
-      evidence_refs:
-        - E-DEV-TEST-POLICY
-      unproven_assumptions: []
-      acceptance_blockers: []
-    - candidate_id: dev-release-wails-path
-      id: FIND-DEV-RELEASE-WAILS-PATH-001
-      evidence_refs:
-        - E-DEV-WAILS-PATH
+        - E-WEB-SQL-AUDIT-TIMEOUT-SOURCE
       unproven_assumptions: []
       acceptance_blockers: []
   duplicates: []
-  rejected:
-    - candidate_id: dev-virtual-list-offset
-      reason: 初次失败来自旧依赖状态；干净 npm ci 后定向用例、与其他文件同跑及连续复跑均通过，无法复现稳定产品或代码缺陷。
-    - candidate_id: product-web-logout-accessibility
-      reason: 本轮明确排除 UI；代码线索不能替代页面和辅助技术实测，因此不登记 UI finding。
-    - candidate_id: previous-dev-proxy-refcount
-      reason: 本轮定向 SSH proxy refCount/Release 测试通过，既有疑似前提被当前实现和测试否定。
-  pending_verification:
-    - reason: 源码表明 Kafka 在取消后可能返回已有 records,nil，但桌面手工取消会丢弃迟到结果，仍需隔离 broker 确认 API/CLI/Web/MCP 的可见状态与时序。
-      next_verification: Kafka group 与 direct 各投递一条后取消 LIMIT 2，记录退出时间、QueryResult.Success、cancelled 和审计状态。
-      candidate:
-        candidate_id: db-kafka-partial-cancel
-        view: db
-        task_target_id: TASK-DB-QUERY
-        candidate_kind: defect
-        temporary_title: Kafka 部分读取后取消可能被报告为成功
-        observed_behavior_or_goal: 读取到部分消息后取消应返回取消或显式 partial，而不是普通成功。
-        impact: 自动超时和非桌面调用方可能把截断消息当完整成功结果。
-        verification_path: 隔离 Kafka broker 对 group/direct 路径执行一条消息后取消。
-        confidence: 中
-        evidence_refs:
-          - E-DB-KAFKA-CANCEL
-        proven_facts:
-          - group 路径把 context 取消与短读超时合并为 break
-          - direct 路径进入读取时只设置一次 deadline
-          - nil error 会被应用层映射为成功
-        unproven_assumptions:
-          - 隔离 broker 上取消发生在至少一条消息之后时确实返回 records,nil
-          - API/CLI/Web/MCP 会向用户暴露该成功状态
-        negative_checks:
-          - 桌面 QueryEditor 手工取消通常丢弃迟到结果
-          - RabbitMQ 和 RocketMQ 未发现同一错误映射
-        verification_performed:
-          - 静态追踪 Kafka 两条读取路径和 App 消费者
-          - 运行 internal/db 本地及 full-driver 标签测试
-        acceptance_blockers:
-          - 缺少隔离 Kafka broker 的部分消息后取消运行证据
-        view_details: {}
-    - reason: MQTT 源码明确已有消息后 ctx.Done 返回 result,nil，但需隔离 broker 记录实际订阅回调、取消和上层状态。
-      next_verification: MQTT 缓存一条消息后取消 LIMIT 2，断言返回取消或显式 partial，并检查所有入口。
-      candidate:
-        candidate_id: db-mqtt-partial-cancel
-        view: db
-        task_target_id: TASK-DB-QUERY
-        candidate_kind: defect
-        temporary_title: MQTT 部分读取后取消可能被报告为成功
-        observed_behavior_or_goal: 已有一条消息时取消订阅预览应返回取消或显式 partial。
-        impact: 调用方可能把被取消的截断预览当作完整成功。
-        verification_path: 隔离 MQTT broker 在一条消息后取消 LIMIT 2。
-        confidence: 中
-        evidence_refs:
-          - E-DB-MQTT-CANCEL
-        proven_facts:
-          - ctx.Done 在已有消息时返回 result,nil
-          - 现有取消测试只覆盖取消前没有消息
-        unproven_assumptions:
-          - 真实 broker 回调顺序可稳定进入已有消息后的取消分支
-          - 上层会把该结果呈现为普通成功
-        negative_checks:
-          - 无消息时现有测试能得到 context canceled
-          - 手工 UI 取消可能丢弃迟到结果
-        verification_performed:
-          - 静态追踪 MQTT FetchMessages、QueryContext 与 App 结果映射
-          - 运行现有 MQTT 测试
-        acceptance_blockers:
-          - 缺少隔离 MQTT broker 的部分消息取消运行证据
-        view_details: {}
-    - reason: 固定中文模板是源码事实，但 side-by-side HTML 是否承诺跟随当前界面语言尚无产品契约。
-      next_verification: 核对导出产品说明并让维护者裁决固定双语模板或跟随 locale；若跟随，再登记精确产品缺口。
-      candidate:
-        candidate_id: product-diff-export-language
-        view: product
-        task_target_id: TASK-PROD-SYNC
-        candidate_kind: product_need
-        temporary_title: 并排差异 HTML 导出语言与当前界面脱节
-        observed_behavior_or_goal: 非中文界面导出的 HTML 仍声明 zh-CN 并显示中文图例。
-        impact: 分享给非中文协作者时需要额外解释状态图例。
-        verification_path: 明确导出语言契约，再在 en-US 生成 HTML 检查 lang、标题和图例。
-        confidence: 低
-        evidence_refs:
-          - E-PROD-DIFF-EXPORT-LANGUAGE
-        proven_facts:
-          - ResultDiffExportMeta 没有 locale 参数
-          - 模板固定 zh-CN 和中文状态标签
-        unproven_assumptions:
-          - 可分享导出物应跟随导出时的界面语言
-        negative_checks:
-          - 标题包含中英文字样
-          - CSV/JSON 等机器格式无需翻译
-          - 固定双语模板可能是有意设计
-        verification_performed:
-          - 追踪 ResultDiffPanel 到 exportDiff 模板并运行现有导出测试
-        acceptance_blockers:
-          - 产品语言契约未定义
-        view_details: {}
-    - reason: 审计报告给出受影响依赖版本，但尚未证明漏洞代码在 GoNavi 打包后的生产路径可达，也未完成升级兼容性核对。
-      next_verification: 逐条映射 advisory 到生产 import 和构建产物，确认可达版本与触发面，再决定 finding 或依赖更新。
-      candidate:
-        candidate_id: dev-production-dependency-audit
-        view: developer
-        task_target_id: TASK-DEV-DELIVERY
-        candidate_kind: defect
-        temporary_title: 生产依赖审计报告包含高危和中危条目
-        observed_behavior_or_goal: npm audit --omit=dev 返回非零并报告 10 个生产依赖包节点。
-        impact: 若漏洞路径可由用户输入触达，可能影响渲染或标识符处理；当前不能仅凭审计数量定性。
-        verification_path: 对每个 advisory 检查直接/传递依赖、生产 import、打包可达性和安全版本。
-        confidence: 中
-        evidence_refs:
-          - E-DEV-NPM-AUDIT
-        proven_facts:
-          - npm audit --omit=dev 返回 exit 1
-          - 报告包含 4 moderate 和 6 high 包节点
-          - mermaid 与 uuid 作为直接依赖出现
-        unproven_assumptions:
-          - 至少一个 advisory 的漏洞函数在当前生产路径可达
-          - 升级不会破坏现有图表或标识符契约
-        negative_checks:
-          - 依赖存在不等于漏洞路径可达
-          - 开发依赖已由 omit=dev 排除
-        verification_performed:
-          - 运行 npm audit --omit=dev --json
-          - 确认 Mermaid 用于 AI 消息代码块渲染
-        acceptance_blockers:
-          - 尚未完成 advisory 到生产调用路径的逐条可达性验证
-        view_details: {}
+  rejected: []
+  pending_verification: []

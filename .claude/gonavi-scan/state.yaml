@@ -1,9 +1,9 @@
 artifact_schema: 4
 manifest_path: scan-manifest.yaml
 coverage_path: coverage.yaml
-campaign_id: full-new-campaign-20260913
-scan_id: full-new-20260913-46cb0628-v4
-head_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+campaign_id: full-independent-campaign-20260918
+scan_id: full-independent-20260918-71c17ef9
+head_commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
 baseline_status: ok
 scan_mode: 全量新问题扫描
 review_views:
@@ -16,29 +16,29 @@ scan_scope: full_repository
 history_recheck: not_applicable
 history_recheck_status: not_applicable
 full_scan_status: partial
-coverage_units_total: 37
-coverage_units_completed: 27
+coverage_units_total: 43
+coverage_units_completed: 3
 coverage_status_counts:
-  queued: 0
-  in_progress: 5
-  completed: 27
-  blocked: 5
+  queued: 37
+  in_progress: 3
+  completed: 3
+  blocked: 0
   not_applicable: 0
 adjudication_counts:
-  accepted: 10
+  accepted: 6
   duplicates: 0
-  rejected: 3
-  pending_verification: 4
+  rejected: 0
+  pending_verification: 0
 ui_execution: null
-started_at: 2026-09-13T13:12:00+08:00
-completed_at: 2026-09-13T14:12:00+08:00
-start_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
-workspace_status: 干净
+started_at: 2026-09-17T19:18:53.475Z
+completed_at: 2026-09-17T19:18:53.475Z
+start_commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
+workspace_status: 有未提交改动
 included_scope:
-  - 当前 HEAD 的 240 个稳定能力 ID
-  - product 16 条用户任务链、db 6 条风险任务链、developer 15 条工程任务链
-  - 源码追链、反例、Go/前端定向测试、全套测试、TypeScript 构建和生产依赖审计
+  - product、db、developer 三视角独立源码扫描的六条 accepted finding
+  - 现有七条 active finding 的逐对象原样保留
+  - 全仓任务队列恢复并记录本轮 partial 进度
 excluded_scope:
-  - UI 页面和原生交互审查（用户本轮明确排除）
-  - 真实外部服务写操作与 34 类服务兼容认证
-  - Windows/Linux 原生安装和更新产物实测
+  - UI 扫描（用户明确排除）
+  - 真实外部数据库、SSH、TLS 和超过 60 秒 Web 运行复现
+  - 产品代码修改、提交、推送和远程 Issue 操作

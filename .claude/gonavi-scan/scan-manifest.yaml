@@ -1,13 +1,13 @@
 version: 2
-scan_id: full-new-20260913-46cb0628-v4
-head_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+scan_id: full-independent-20260918-71c17ef9
+head_commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
 source:
   ref: current_worktree
-  commit: 46cb0628a1c0537c48515f1afec2186dc938459c
-started_at: 2026-09-13T13:12:00+08:00
+  commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
+started_at: 2026-09-17T19:18:53.475Z
 workspace_snapshot:
-  status: 干净
-  fingerprint: sha256:cf123195e02216ace4bbe7310ccb85d3e2eee7a1c8a67dd8578ab89f2d30285a
+  status: 有未提交改动
+  fingerprint: sha256:adcae1b41484aae354f00b9ba3cde650ce52e643a52cc61f5e35682624ebc5c5
   staged_fingerprint: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-  unstaged_fingerprint: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  unstaged_fingerprint: sha256:1a66f30db7997d37e0c4714b9603ca614d44ca24d6e3cb4000c83ecdaf8b3990
   untracked_fingerprint: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855

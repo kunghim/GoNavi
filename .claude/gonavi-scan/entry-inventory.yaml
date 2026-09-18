@@ -1,103 +1,64 @@
 version: 1
-scan_id: full-new-20260913-46cb0628-v4
-head_commit: 46cb0628a1c0537c48515f1afec2186dc938459c
+scan_id: full-independent-20260918-71c17ef9
+head_commit: 71c17ef959c17cbeb7078004e2a531c8618ff940
 summary:
-  entry_groups: 13
-  workbench_tab_types: 30
-  builtin_data_sources: 12
-  optional_go_data_sources: 22
-  custom_data_sources: 1
-  special_connection_types: 2
+  entry_groups: 18
+  review_views: 3
+  newly_mapped_groups: 5
 entries:
   - id: ENTRY-WORKBENCH-TABS
-    category: 工作台与标签类型
+    category: 查询编辑器与查询标签入口
     code_locations:
-      - frontend/src/types.ts
-      - frontend/src/components/WorkbenchTabContent.tsx
+      - frontend/src/components/QueryEditor.tsx
       - frontend/src/components/TabManager.tsx
+      - frontend/src/utils/shortcuts.ts
     capability_ids:
-      - CAP-QUERY-001
-      - CAP-DATA-001
-      - CAP-DESIGN-001
-      - CAP-SYNC-001
-      - CAP-OPS-001
-      - CAP-MSG-A01
+      - CAP-QUERY-A04
+      - CAP-QUERY-A07
+      - CAP-QUERY-A10
+      - CAP-AI-A05
+      - CAP-OPS-A08
     enumerated_items:
-      - query
-      - table
-      - design
-      - data-sync
-      - sql-file-execution
-      - sql-analysis
-      - sql-audit
-      - driver-manager
-      - settings-center
-      - request-diagnostics
-      - message-queue
-      - redis-keys
-      - redis-command
-      - redis-monitor
-      - nacos-config
-      - nacos-services
-      - trigger
-      - view-def
-      - event-def
-      - routine-def
-      - sequence-def
-      - package-def
-      - table-overview
-      - table-export
-      - data-import
-      - jvm-overview
-      - jvm-resource
-      - jvm-audit
-      - jvm-diagnostic
-      - jvm-monitoring
+      - 查询文本编辑与执行范围
+      - AI 诊断动作与 SQL 应用事件
+      - 可配置快捷键
     coverage_status: 已映射
     uncovered_reason: ""
-    next_validation: 入口变化时复核调用及多入口门控；未执行桌面、Web 和跨平台端到端验证。
+    next_validation: 本轮未执行 UI，后续按五条 finding 的验收路径验证真实交互。
     scan_evidence:
-      - frontend/src/types.ts:TabData
-      - frontend/src/components/WorkbenchTabContent.tsx:109-204
+      - frontend/src/components/QueryEditor.tsx:4213-4451
+      - frontend/src/components/QueryEditor.tsx:12379-12416
+      - frontend/src/utils/shortcuts.ts:262-421
     negative_checks:
-      - 逐项对照 TabData 与 WorkbenchTabContent，30 类标签均有渲染分支；settings-center/driver-manager/message-queue 已计入。
+      - 已区分 Explain 分析入口与失败查询 AI 诊断快捷键。
+      - 已区分文本转 SQL 的单次 replaceAll 与 AI 消息按钮的持久应用偏好。
     coverage_gaps:
-      - 未执行桌面、Web 和跨平台端到端验证。
+      - 未运行桌面应用和快捷键、拖放、AI 插入交互。
   - id: ENTRY-MENUS-ACTIONS
-    category: 标题栏、侧栏、对象菜单和快捷动作
+    category: 外部 SQL 文件与 AI 消息动作
     code_locations:
-      - frontend/src/components/TitleBarPrimaryActions.tsx
-      - frontend/src/components/TitleBarQuickActions.tsx
-      - frontend/src/components/Sidebar.tsx
-      - frontend/src/components/sidebar/useSidebarV2ContextMenu.tsx
-      - frontend/src/components/sidebar/sidebarLegacyNodeMenu.tsx
+      - frontend/src/components/sidebar/SidebarExternalSqlWorkflow.tsx
+      - frontend/src/components/ai/messageBubble/AIMessageCodeBlock.tsx
+      - internal/app/methods_file.go
     capability_ids:
-      - CAP-CONN-A01
-      - CAP-CONN-A03
-      - CAP-EXP-001
-      - CAP-QUERY-A01
-      - CAP-DATA-002
-      - CAP-QUERY-A19
+      - CAP-QUERY-A04
+      - CAP-QUERY-A09
+      - CAP-AI-A05
     enumerated_items:
-      - 新建查询
-      - 新建连接
-      - 分组管理
-      - Legacy/V2 对象菜单
-      - 全库搜索
-      - SQL 文件与已保存查询
-      - 表设计、导入、导出
-      - 专用工作台
+      - 文件选择器打开 SQL
+      - 外部 SQL 目录读写
+      - AI 代码块插入 SQL
     coverage_status: 已映射
     uncovered_reason: ""
-    next_validation: 入口变化时复核调用及多入口门控；未执行桌面、Web 和跨平台端到端验证。
+    next_validation: 用桌面文件拖放和 AI 消息到活动标签的可逆交互验证。
     scan_evidence:
-      - frontend/src/components/TitleBarPrimaryActions.tsx:44-86
-      - frontend/src/components/Sidebar.tsx:5165
-      - frontend/src/components/sidebar/useSidebarV2ContextMenu.tsx:423-441
+      - frontend/src/components/sidebar/SidebarExternalSqlWorkflow.tsx:518-568
+      - frontend/src/components/ai/messageBubble/AIMessageCodeBlock.tsx:160-223
+      - internal/app/methods_file.go:1243-1385
     negative_checks:
-      - 标题栏除新建外已有分组管理；对象菜单通过方言分支生成，不从旧入口账本推断缺失。
+      - 已确认存在文件选择器和外部 SQL 目录，finding 仅指操作系统文件拖入缺口。
     coverage_gaps:
-      - 未执行桌面、Web 和跨平台端到端验证。
+      - 未验证 Windows DataTransfer.files 和原生文件路径行为。
   - id: ENTRY-SETTINGS-TOOLS
     category: 设置中心和工具入口
     code_locations:
@@ -143,394 +104,31 @@ entries:
     coverage_gaps:
       - 未执行桌面、Web 和跨平台端到端验证。
   - id: ENTRY-WAILS-METHODS
-    category: App 对外方法和 AI 服务绑定
+    category: 查询执行、保存连接与密钥解析契约
     code_locations:
       - internal/app/methods_db.go
-      - internal/app/methods_file.go
-      - internal/app/methods_sync_jobs.go
-      - internal/ai/service/service_agent_harness.go
-      - frontend/wailsjs/go/app/App.js
-      - frontend/wailsjs/go/aiservice/Service.js
+      - internal/app/connection_secret_resolution.go
+      - internal/app/headless.go
+      - internal/connection/saved_query.go
     capability_ids:
-      - CAP-CONN-001
       - CAP-QUERY-002
-      - CAP-DATA-001
-      - CAP-SYNC-001
-      - CAP-AI-001
+      - CAP-QUERY-A07
+      - CAP-CONN-001
     enumerated_items:
-      - SetLanguage
-      - SetWindowTranslucency
-      - SetMacNativeWindowControls
-      - ResetWebViewZoom
-      - RefreshWebViewBounds
-      - LogWindowDiagnostic
-      - Shutdown
-      - CancelQuery
-      - GenerateQueryID
-      - CancelApplicationQuit
-      - ForceQuitApplication
-      - CloudBackupGetConfig
-      - SaveCloudBackupConfig
-      - CloudBackupSyncNow
-      - CloudBackupGetStatus
-      - CloudBackupListRestorePoints
-      - CloudBackupPreviewRestore
-      - CloudBackupRestore
-      - ImportConnectionsPayload
-      - DataImportCapability
-      - DataSourceCapability
-      - DataSyncCDCAdapterList
-      - DataSyncCDCProbe
-      - GetDatabaseDiagnosticPackagePreview
-      - BuildDatabaseDiagnosticPackage
-      - ExportDatabaseDiagnosticPackage
-      - PreflightDatabaseSQLImport
-      - GetDownloadSourceConfig
-      - SaveDownloadSourceConfig
-      - StartDriverPackageDownload
-      - ListDriverDownloadTasks
-      - ConfigureGlobalProxy
-      - GetGlobalProxyConfig
-      - TestGlobalProxyConnection
-      - AuthorizeMCPConnectionSQL
-      - ResumeImportJob
-      - RetryImportJobFailedRows
-      - GetBrandIconDataURL
-      - SetApplicationBrandIcon
-      - DeleteConnectionGroup
-      - InspectSavedConnectionHealth
-      - InspectSavedConnectionsHealth
-      - StartSavedConnectionsHealthRun
-      - GetSavedConnectionsHealthRun
-      - CancelSavedConnectionsHealthRun
-      - BootstrapConnectionSidebarLayout
-      - LoadConnectionSidebarLayout
-      - SaveConnectionSidebarLayout
-      - GetDataRootDirectoryInfo
-      - SelectDataRootDirectory
-      - ApplyDataRootDirectory
-      - OpenDataRootDirectory
-      - DBConnect
-      - DBReleaseConnection
-      - TestConnection
-      - TestConnectionWithProgress
-      - MongoDiscoverMembers
-      - CreateDatabase
-      - ListDatabaseCharsets
-      - ListDatabaseCollations
-      - CreateSchema
-      - RenameSchema
-      - DropSchema
-      - RenameDatabase
-      - DropDatabase
-      - RenameTable
-      - DropTable
-      - MySQLConnect
-      - MySQLQuery
-      - MySQLGetDatabases
-      - MySQLGetTables
-      - MySQLShowCreateTable
-      - DBQuery
-      - DBQueryWithCancel
-      - DBQueryMulti
-      - DBQueryIsolated
-      - DBGetDatabases
-      - DBGetTables
-      - DBRefreshTableStats
-      - DBTableExists
-      - DBGetViews
-      - DBShowCreateTable
-      - DBGetColumns
-      - DBGetIndexes
-      - DBGetForeignKeys
-      - DBGetDatabaseForeignKeys
-      - DBGetTriggers
-      - DropView
-      - DropFunction
-      - RenameView
-      - DBGetAllColumns
-      - DBQueryAudited
-      - DBQueryAI
-      - DBGetDatabasesContext
-      - DBGetTablesContext
-      - DBGetViewsContext
-      - DBGetObjectsContext
-      - DBGetAllColumnsContext
-      - DBGetColumnsContext
-      - DBGetIndexesContext
-      - DBGetForeignKeysContext
-      - DBGetTriggersContext
-      - DBShowCreateTableContext
-      - DBGetObjects
-      - DBQueryMultiTransactional
-      - DBQueryMultiInTransaction
-      - DBCommitTransaction
-      - DBRollbackTransaction
-      - DBCommitTransactionWithTrigger
-      - DBRollbackTransactionWithTrigger
-      - SelectDriverDownloadDirectory
-      - SelectDriverPackageFile
-      - SelectDriverPackageDirectory
-      - OpenDriverDownloadDirectory
-      - ResolveDriverDownloadDirectory
-      - ConfigureDriverRuntimeDirectory
-      - ResolveDriverRepositoryURL
-      - ResolveDriverPackageDownloadURL
-      - GetDriverVersionList
-      - GetDriverVersionPackageSize
-      - GetDriverStatusList
-      - CheckDriverNetworkStatus
-      - InstallLocalDriverPackage
-      - DownloadDriverPackage
-      - RemoveDriverPackage
-      - InspectElasticsearchConsole
-      - ExecuteElasticsearchConsole
-      - DiagnoseQuery
-      - OpenSQLFile
-      - SelectSQLFileForExecution
-      - SelectSQLDirectory
-      - ListSQLDirectory
-      - ReadSQLFile
-      - ReadAppLogTail
-      - WriteSQLFile
-      - CreateSQLFile
-      - CreateSQLDirectory
-      - DeleteSQLFile
-      - DeleteSQLDirectory
-      - RenameSQLFile
-      - RenameSQLDirectory
-      - ExportSQLFile
-      - ImportDatabaseSQL
-      - ImportDatabaseSQLWithOptions
-      - ExecuteSQLFile
-      - CancelSQLFileExecution
-      - ImportConfigFile
-      - ExportConnectionsPackage
-      - ExportConnectionsPayload
-      - SelectSSHKeyFile
-      - SelectSSHKnownHostsFile
-      - SelectCertificateFile
-      - SelectDatabaseFile
-      - PreviewImportFile
-      - PreviewImportFileWithOptions
-      - ImportData
-      - ImportDataWithProgress
-      - ImportDataWithProgressOptions
-      - ApplyChanges
-      - PreviewChanges
-      - ExportTable
-      - ExportTableWithOptions
-      - ExportTablesSQL
-      - ExportTablesDataSQL
-      - ExportTablesSQLWithOptions
-      - ExportDatabaseSQL
-      - ExportDatabaseSQLWithOptions
-      - ExportDatabasesSQLWithOptions
-      - ExportSchemaSQL
-      - ExportSchemaSQLWithOptions
-      - TruncateTables
-      - ClearTables
-      - ExportData
-      - ExportDataWithOptions
-      - ExportQuery
-      - ExportQueryWithOptions
-      - ListInstalledFontFamilies
-      - ExportImportErrorRows
-      - ListImportJobs
-      - GetImportJob
-      - CancelImportJob
-      - DeleteImportJob
-      - TestJVMConnection
-      - JVMListResources
-      - JVMGetValue
-      - JVMPreviewChange
-      - JVMApplyChange
-      - JVMListAuditRecords
-      - JVMProbeCapabilities
-      - JVMProbeDiagnosticCapabilities
-      - JVMStartDiagnosticSession
-      - JVMExecuteDiagnosticCommand
-      - JVMCancelDiagnosticCommand
-      - JVMListDiagnosticAuditRecords
-      - JVMStartMonitoring
-      - JVMGetMonitoringHistory
-      - JVMStopMonitoring
-      - SelectLogDirectory
-      - ApplyLogDirectory
-      - OpenLogDirectory
-      - NacosConnect
-      - NacosTestConnection
-      - NacosTestConnectionWithProgress
-      - CancelConnectionTest
-      - NacosListNamespaces
-      - NacosListConfigGroups
-      - NacosSearchConfigs
-      - NacosGetConfig
-      - NacosPublishConfig
-      - NacosGetBetaConfig
-      - NacosStopBetaConfig
-      - NacosDeleteConfig
-      - NacosCreateNamespace
-      - NacosUpdateNamespace
-      - NacosDeleteNamespace
-      - NacosListConfigHistory
-      - NacosGetConfigHistory
-      - NacosListServices
-      - NacosGetService
-      - NacosCreateService
-      - NacosUpdateService
-      - NacosDeleteService
-      - NacosListInstances
-      - NacosGetInstance
-      - NacosRegisterInstance
-      - NacosUpdateInstance
-      - NacosDeregisterInstance
-      - NacosUpdateInstanceHealth
-      - NacosStartConfigListen
-      - NacosStopConfigListen
-      - NacosUpdateConfigListenMD5
-      - NacosExportConfigs
-      - NacosPreviewImportConfigs
-      - NacosImportConfigs
-      - GetSlowQueries
-      - ClearSlowQueries
-      - RedisConnect
-      - RedisTestConnection
-      - RedisScanKeys
-      - RedisGetValue
-      - RedisGetListValue
-      - RedisSetString
-      - RedisSetHashField
-      - RedisDeleteKeys
-      - RedisSetTTL
-      - RedisExecuteCommand
-      - RedisGetServerInfo
-      - RedisGetDatabases
-      - RedisSelectDB
-      - RedisRenameKey
-      - RedisKeyExists
-      - RedisDeleteHashField
-      - RedisListPush
-      - RedisListSet
-      - RedisListRemove
-      - RedisSetAdd
-      - RedisSetRemove
-      - RedisZSetAdd
-      - RedisZSetRemove
-      - RedisStreamAdd
-      - RedisStreamDelete
-      - RedisFlushDB
-      - RedisExportKeys
-      - RedisPreviewImportKeys
-      - RedisImportKeys
-      - ResultDiffStart
-      - ResultDiffUploadChunk
-      - ResultDiffCompute
-      - ResultDiffPage
-      - ResultDiffClose
-      - GetSavedConnections
-      - GetEditableSavedConnection
-      - RevealSavedConnectionPrimaryPassword
-      - SaveConnection
-      - UpdateConnectionVisibility
-      - DeleteConnection
-      - DeleteConnections
-      - DuplicateConnection
-      - ImportLegacyConnections
-      - SaveGlobalProxy
-      - ImportLegacyGlobalProxy
-      - GetSavedQueries
-      - GetSavedQueryGroups
-      - SaveQuery
-      - ImportSavedQueries
-      - DeleteQuery
-      - RenameSavedQuery
-      - SaveSavedQueryGroup
-      - DeleteSavedQueryGroup
-      - MoveSavedQueryToGroup
-      - MoveSavedQueryGroup
-      - RebindSavedQuery
-      - GetUnboundSavedQueries
-      - SelectSavedQueryDirectory
-      - ApplySavedQueryDirectory
-      - OpenSavedQueryDirectory
-      - RevealSavedQueryInFolder
-      - GetSQLAuditHealth
-      - GetSQLAuditEvents
-      - GetSQLAuditSettings
-      - UpdateSQLAuditSettings
-      - VerifySQLAuditIntegrity
-      - ClearSQLAuditEvents
-      - BuildSQLAuditExport
-      - ExportSQLAuditFile
-      - DataSyncCapability
-      - DataSync
-      - DataSyncAnalyze
-      - DataSyncPreview
-      - DataSyncJobList
-      - DataSyncJobGet
-      - DataSyncJobPreflight
-      - DataSyncJobApprovalBegin
-      - DataSyncJobApprove
-      - DataSyncJobSave
-      - DataSyncJobDelete
-      - DataSyncSchedulePreview
-      - DataSyncRunStart
-      - DataSyncRunGet
-      - DataSyncRunCancel
-      - DataSyncRunResume
-      - DataSyncRunRetry
-      - DataSyncRunList
-      - DataSyncRunPage
-      - DataSyncRunDelete
-      - DataSyncRunClearTerminal
-      - DataSyncRunEventList
-      - DataSyncErrorRowList
-      - DataSyncErrorRowGet
-      - DataSyncErrorRowRetry
-      - DataSyncErrorRowDiscard
-      - DataSyncCheckpointGet
-      - DataSyncCheckpointReset
-      - DataSyncDatabaseList
-      - DataSyncObjectList
-      - DataSyncFieldList
-      - DataSyncCapabilityResolve
-      - CopyTable
-      - CheckForUpdates
-      - CheckForUpdatesSilently
-      - GetAppInfo
-      - DownloadUpdate
-      - StartUpdateDownload
-      - GetUpdateDownloadTask
-      - InstallUpdateAndRestart
-      - OpenDownloadedUpdateDirectory
-      - ListReproductionBundleSources
-      - BuildReproductionBundle
-      - ExportReproductionBundle
-      - PreviewReproductionBundle
-      - ReplayReproductionBundle
-      - GetRequestDiagnostics
-      - GetRequestDiagnostic
-      - GetSecurityUpdateStatus
-      - StartSecurityUpdate
-      - RetrySecurityUpdateCurrentRound
-      - RestartSecurityUpdate
-      - DismissSecurityUpdateReminder
-      - TrustSSHHostKeyForConnection
-      - TrustSSHHostKey
-      - GetUpdateChannel
-      - SetUpdateChannel
+      - DBQuery 与 DBQueryMulti
+      - 已保存查询模型
+      - 已保存连接解析与密钥恢复
     coverage_status: 已映射
     uncovered_reason: ""
-    next_validation: 入口变化时复核调用及多入口门控；枚举导出方法不等于逐方法运行验证；UI/CLI 调用链由各视角记录。
+    next_validation: 参数绑定和 DuckDB 保存数据源桥接实现后补充契约、脱敏和生命周期测试。
     scan_evidence:
-      - internal/app/methods_db.go:DBQuery
-      - internal/app/methods_sync_jobs.go
-      - internal/ai/service/service_agent_harness.go:70-299
+      - internal/app/methods_db.go:1311-1587
+      - internal/app/connection_secret_resolution.go:13-76
+      - internal/app/headless.go:163-190
     negative_checks:
-      - App 导出函数从全部非测试 Go 文件枚举，AI Service 独立绑定单独纳入，未只枚举 methods_ 前缀。
+      - 保存连接解析优先稳定 ID 并只允许唯一名称；没有把名称直接等同于可公开 DSN。
     coverage_gaps:
-      - 枚举导出方法不等于逐方法运行验证；UI/CLI 调用链由各视角记录。
+      - 未运行外部数据库、密钥轮换或查询取消场景。
   - id: ENTRY-DESKTOP-RUNTIME
     category: 主进程和分离窗口
     code_locations:
@@ -671,69 +269,29 @@ entries:
     coverage_gaps:
       - 未连接真实实例；版本、认证和权限矩阵未验证。
   - id: ENTRY-DATASOURCE-OPTIONAL
-    category: 可选和 Custom 驱动
+    category: DuckDB 可选驱动与跨源查询边界
     code_locations:
-      - internal/db/driver_support.go
+      - internal/db/duckdb_impl.go
       - internal/db/database.go
-      - cmd/optional-driver-agent
+      - internal/app/methods_db.go
     capability_ids:
-      - CAP-DS-MARIADB
-      - CAP-DS-OCEANBASE
-      - CAP-DS-DORIS
-      - CAP-DS-STARROCKS
-      - CAP-DS-SPHINX
-      - CAP-DS-SQLSERVER
-      - CAP-DS-SQLITE
       - CAP-DS-DUCKDB
-      - CAP-DS-DAMENG
-      - CAP-DS-KINGBASE
-      - CAP-DS-HIGHGO
-      - CAP-DS-VASTBASE
-      - CAP-DS-OPENGAUSS
-      - CAP-DS-GAUSSDB
-      - CAP-DS-IRIS
-      - CAP-DS-MONGODB
-      - CAP-DS-TDENGINE
-      - CAP-DS-IOTDB
-      - CAP-DS-CLICKHOUSE
-      - CAP-DS-ELASTICSEARCH
-      - CAP-DS-TRINO
-      - CAP-DS-CUSTOM
+      - CAP-CONN-001
+      - CAP-QUERY-002
     enumerated_items:
-      - mariadb
-      - oceanbase
-      - diros
-      - starrocks
-      - sphinx
-      - sqlserver
-      - sqlite
-      - duckdb
-      - dameng
-      - kingbase
-      - highgo
-      - vastbase
-      - opengauss
-      - gaussdb
-      - iris
-      - mongodb
-      - tdengine
-      - iotdb
-      - clickhouse
-      - elasticsearch
-      - trino
-      - custom
-      - cache
-    coverage_status: 部分映射
-    uncovered_reason: Caché 是独立连接与驱动身份，但能力注册表尚无 CAP-DS-CACHE；暂不能引用不存在的稳定 ID。
-    next_validation: 新增稳定 CAP-DS-CACHE 后补入 capability_ids，并复核 IRIS/Caché 共享 SQL profile 与独立产品身份。
+      - DuckDB 驱动创建与查询
+      - mysql_scan 等原生跨源函数
+      - 保存连接到驱动的配置解析边界
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 在受控 DuckDB 与 MySQL 环境验证扩展、固定物理会话、只读策略、取消、脱敏和清理。
     scan_evidence:
-      - internal/db/driver_support.go:34-56
-      - internal/db/database.go:1105
+      - internal/db/duckdb_impl.go:54-145
+      - internal/app/methods_db.go:1942-1998
     negative_checks:
-      - optionalGoDrivers 共21项，Custom 走独立注册路径，分开说明而非把 Custom 当作 optionalGoDrivers 成员。
+      - 仅确认产品中不存在安全桥接，不声称当前构建一定包含或缺少任一 DuckDB 扩展。
     coverage_gaps:
-      - 未执行各平台 driver-agent 安装及真实数据库矩阵。
-      - 缺少 Caché 独立稳定能力 ID。
+      - DuckDB 扩展可用性和跨源函数的真实运行行为待验证。
   - id: ENTRY-SPECIALIZED-WORKBENCH
     category: 专用数据源工作台
     code_locations:
@@ -860,3 +418,121 @@ entries:
     coverage_gaps:
       - 未执行真实文件导入导出
       - 单表清空右键入口与侧栏注释搜索并入既有工作台/侧栏入口，未单独立组
+  - id: ENTRY-MCP-CLIENT-CONFIG
+    category: MCP 客户端配置安装与替换
+    code_locations:
+      - internal/ai/service/claude_code_mcp.go
+      - internal/ai/service/external_mcp_client_json.go
+      - internal/ai/service/open_code_mcp.go
+    capability_ids:
+      - CAP-MCP-A03
+    enumerated_items:
+      - Claude Code
+      - 外部 JSON 客户端
+      - DeepSeek Harness
+      - Grok Build
+      - OpenCode
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 修复时用故障注入验证所有客户端配置的原子替换。
+    scan_evidence:
+      - internal/ai/service/claude_code_mcp.go:854
+      - internal/ai/service/open_code_mcp.go:528-562
+    negative_checks:
+      - 已用 OpenCode 原子替换路径对照其他直接覆盖路径。
+    coverage_gaps:
+      - 未执行进程中断和磁盘故障注入。
+  - id: ENTRY-DESKTOP-EXPORT-FILES
+    category: 桌面查询与表数据导出生命周期
+    code_locations:
+      - frontend/src/components/TableExportWorkbench.tsx
+      - frontend/src/components/useExportProgressRunner.ts
+      - internal/app/methods_file.go
+      - internal/app/web_file_transfer.go
+    capability_ids:
+      - CAP-DATA-A11
+      - CAP-DATA-A13
+    enumerated_items:
+      - 桌面目标文件创建
+      - 查询与数据编码
+      - 导出进度
+      - 取消与清理
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 修复时验证原子目标替换和桌面取消闭环。
+    scan_evidence:
+      - internal/app/web_file_transfer.go:856-860
+      - frontend/src/components/useExportProgressRunner.ts:94-191
+    negative_checks:
+      - 已区分后端 headless Context 能力与桌面工作台缺少取消入口。
+    coverage_gaps:
+      - 未运行长导出取消和磁盘失败场景。
+  - id: ENTRY-DRIVER-AGENT-STREAM-PROTOCOL
+    category: 可选 Driver Agent 流式 IPC 协议
+    code_locations:
+      - internal/db/optional_driver_agent_impl.go
+      - cmd/optional-driver-agent/main.go
+    capability_ids:
+      - CAP-QUERY-A11
+    enumerated_items:
+      - 请求 ID
+      - columns/rows/done 帧
+      - 消费失败
+      - transport 复用
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 用双请求内存管道验证错误后的帧边界和 transport 回收。
+    scan_evidence:
+      - internal/db/optional_driver_agent_impl.go:499-609
+      - cmd/optional-driver-agent/main.go:587-685
+    negative_checks:
+      - 未把单次返回错误等同于连接已经恢复同步。
+    coverage_gaps:
+      - 尚未运行协议失步复现。
+  - id: ENTRY-SQLSERVER-SSH-TLS
+    category: SQL Server SSH 转发与 TLS 身份
+    code_locations:
+      - internal/db/sqlserver_impl.go
+      - internal/db/ssl_mode.go
+    capability_ids:
+      - CAP-DS-SQLSERVER
+    enumerated_items:
+      - 远端主机身份
+      - 本地转发拨号地址
+      - Azure 加密默认值
+      - 证书主机名
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 用本地转发和测试证书验证拨号地址与 TLS 身份分离。
+    scan_evidence:
+      - internal/db/sqlserver_impl.go:145-213
+      - internal/db/ssl_mode.go:103-224
+    negative_checks:
+      - 未以关闭证书验证作为兼容方案。
+    coverage_gaps:
+      - 未连接真实 Azure SQL 或 SSH 跳板机。
+  - id: ENTRY-WEB-SQL-AUDIT-INTEGRITY
+    category: Web SQL 审计完整性长任务
+    code_locations:
+      - internal/webserver/server.go
+      - internal/webserver/long_running_invoke.go
+      - internal/app/methods_sql_audit.go
+      - internal/sqlaudit/store.go
+    capability_ids:
+      - CAP-AUDIT-A03
+      - CAP-WEB-001
+    enumerated_items:
+      - HTTP 写超时
+      - 长任务识别
+      - 重任务槽
+      - 完整性扫描 Context
+    coverage_status: 已映射
+    uncovered_reason: ""
+    next_validation: 用可阻塞审计夹具运行超过 60 秒并验证取消与槽释放。
+    scan_evidence:
+      - internal/webserver/server.go:1089-1155
+      - internal/sqlaudit/store.go:540-598
+    negative_checks:
+      - 已将结论限定为超过写超时的条件路径，未声称所有校验必然失败。
+    coverage_gaps:
+      - 尚未运行超过 60 秒的 Web 复现。
