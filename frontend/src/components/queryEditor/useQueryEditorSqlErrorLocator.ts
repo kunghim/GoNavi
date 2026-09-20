@@ -4,6 +4,7 @@ import { message } from 'antd';
 import { t } from '../../i18n';
 import {
     createQueryEditorExecutionOrigin,
+    resolveExecutionErrorStatementText,
     revealQueryEditorSqlErrorLocation,
     type QueryEditorExecutionOrigin,
     type QueryEditorExecutionOriginStatement,
@@ -44,5 +45,25 @@ export const useQueryEditorSqlErrorLocator = (
         return located;
     }, [editorRef]);
 
-    return { recordExecutionOrigin, locateExecutionError };
+    // AI 诊断注入用：局部执行保留实际范围；全文执行再解析具体出错语句。
+    const resolveExecutionErrorStatement = useCallback((
+        error: string,
+        currentEditorSql: string,
+        dbType?: string,
+    ): string => {
+        const origin = originRef.current;
+        const executedSql = String(origin?.originalSql || '').trim();
+        if (executedSql && executedSql !== String(origin?.editorSql || '').trim()) {
+            return executedSql;
+        }
+        const resolved = resolveExecutionErrorStatementText({
+            error,
+            origin,
+            currentEditorSql: origin?.editorSql || currentEditorSql,
+            dbType,
+        });
+        return resolved || executedSql;
+    }, []);
+
+    return { recordExecutionOrigin, locateExecutionError, resolveExecutionErrorStatement };
 };
