@@ -2,6 +2,11 @@
 
 本规范依据仓库 `CONTRIBUTING.zh-CN.md` 和共建说明 Issue #671 制定。任务边界比会话边界更重要：新会话不代表新任务，同一会话也可能开始另一个任务。
 
+配套文件：
+
+- `.claude/ISSUE_WORKFLOW.md` → Issue 从分析到提交、子 Agent 审查、修复复审的完整流程
+- `.claude/PR_TEMPLATE.md` → PR 标题与正文模板、创建与回读要求
+
 ## 一、先判断当前状态
 
 开始任何开发前运行：
@@ -33,6 +38,8 @@ git remote -v
 5. 大改动、新架构或需求边界不清时，先开 Issue 或 Draft PR 对齐方案。
 
 Bug 任务必须先在最新 `dev` 上复现。无法复现时记录环境、步骤和证据，不得为了提交 PR 强行改代码。
+
+分析与定位完成后先向用户汇报，再动手修改；分级、分阶段、提交粒度与子 Agent 审查要求见 `ISSUE_WORKFLOW.md`。
 
 ## 三、新任务启动流程
 
@@ -113,9 +120,13 @@ git diff --cached --check
 emoji type(scope): 中文描述
 ```
 
-只有用户明确要求后才执行 `git commit` 和 `git push -u origin <branch>`。
+提交粒度与提交信息要求见 `ISSUE_WORKFLOW.md` 三：用户在本任务中授权后，可按「每个可验证单元一次提交」的粒度对任务分支执行 `git commit`；每次修复独立提交。
+
+`git push -u origin <branch>` 与创建、更新 PR 仍属于外部写操作，必须等待用户明确授权。
 
 ## 七、PR 规范
+
+PR 标题与正文模板、创建方式、提交前检查与回读清单见 `PR_TEMPLATE.md`；以下为硬约束。
 
 - PR base 必须选择上游 `Syngnat/GoNavi:dev`，不能直接提交到 `main`。
 - 除非用户或维护者明确指定其他语言，标题、正文、评论和面向维护者的说明一律使用中文；标题推荐格式为 `emoji type(scope): 中文描述`，且必须与实际改动和关联 Issue 一致。
