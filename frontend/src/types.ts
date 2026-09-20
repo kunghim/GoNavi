@@ -518,6 +518,7 @@ export interface TabData {
     | "sql-file-execution"
     | "sql-analysis"
     | "sql-audit"
+    | "dml-snapshot"
     | "driver-manager"
     | "settings-center"
     | "request-diagnostics"
@@ -648,6 +649,14 @@ export interface SavedQuery {
   fingerprintVersion?: string;
   bindingStatus?: "active" | "rebound" | "orphan" | string;
   originalConnectionId?: string;
+  parameters?: SavedQueryParam[];
+}
+
+export interface SavedQueryParam {
+  name: string;
+  type?: string;
+  label?: string;
+  default?: unknown;
 }
 
 export interface SavedQueryGroup {
