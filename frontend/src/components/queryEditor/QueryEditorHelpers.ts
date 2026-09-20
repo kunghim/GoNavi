@@ -30,13 +30,28 @@ import {
     type MetadataIdentityMode,
 } from '../../utils/metadataIdentity';
 import {
-    splitMetadataQualifiedName,
     splitQualifiedNameSegments,
     splitQualifiedNameSegmentsDetailed,
 } from '../../utils/qualifiedName';
 import { buildQueryEditorNavigationTableMetas } from './queryEditorNavigationTableMetas';
+import {
+    buildQueryEditorNamedObjectMetas,
+    buildQueryEditorRoutineObjectMetas,
+    buildQueryEditorTriggerObjectMetas,
+} from './queryEditorNamedObjectMetas';
+import {
+    QUERY_EDITOR_COMPLETION_SUGGESTION_LIMIT,
+    type QueryEditorCompletionMatchRank,
+} from './queryEditorCompletionMatch';
 import { resolveUniqueKeyGroupsFromIndexes } from '../dataGridCopyInsert';
 import { t as translate } from '../../i18n';
+
+export {
+    QUERY_EDITOR_COMPLETION_SUGGESTION_LIMIT,
+    rankQueryEditorCompletionCandidate,
+    resolveQueryEditorCompletionFilterText,
+} from './queryEditorCompletionMatch';
+export type { QueryEditorCompletionMatchRank } from './queryEditorCompletionMatch';
 
 export type CompletionTableMeta = {dbName: string, tableName: string, comment?: string};
 export type CompletionColumnMeta = {dbName: string, tableName: string, name: string, type: string, comment?: string};
@@ -80,57 +95,6 @@ export const findCompletionTablesByDatabase = (
         indexes.set(identityMode, index);
     }
     return index.get(buildMetadataIdentityKey(metadataDialect, dbName)) || [];
-};
-
-export const QUERY_EDITOR_COMPLETION_SUGGESTION_LIMIT = 200;
-
-export type QueryEditorCompletionMatchRank = 0 | 1 | 2 | null;
-
-export const rankQueryEditorCompletionCandidate = (
-    prefix: string,
-    candidates: readonly string[],
-    includeSubstring = true,
-): QueryEditorCompletionMatchRank => {
-    const normalizedPrefix = String(prefix || '').trim().toLowerCase();
-    if (!normalizedPrefix) return 0;
-
-    let hasPrefixMatch = false;
-    let hasSubstringMatch = false;
-    for (const candidate of candidates) {
-        const normalizedCandidate = String(candidate || '').trim().toLowerCase();
-        if (!normalizedCandidate) continue;
-        if (normalizedCandidate === normalizedPrefix) return 0;
-        if (normalizedCandidate.startsWith(normalizedPrefix)) {
-            hasPrefixMatch = true;
-        } else if (includeSubstring && normalizedCandidate.includes(normalizedPrefix)) {
-            hasSubstringMatch = true;
-        }
-    }
-    if (hasPrefixMatch) return 1;
-    if (hasSubstringMatch) return 2;
-    return null;
-};
-
-/**
- * Monaco applies its own fuzzy filter after the provider returns. When a
- * candidate is matched only by a substring, expose the matching suffix so
- * Monaco can keep the item visible even when the match does not start at a
- * word boundary (for example `title` in `subtitle`).
- */
-export const resolveQueryEditorCompletionFilterText = (
-    prefix: string,
-    candidates: readonly string[],
-): string | undefined => {
-    const normalizedPrefix = String(prefix || '').trim().toLowerCase();
-    if (!normalizedPrefix) return undefined;
-    for (const candidate of candidates) {
-        const value = String(candidate || '').trim();
-        const matchIndex = value.toLowerCase().indexOf(normalizedPrefix);
-        if (matchIndex >= 0) {
-            return value.slice(matchIndex);
-        }
-    }
-    return undefined;
 };
 
 type RankedQueryEditorCompletionCandidate<Candidate> = {
@@ -3439,56 +3403,14 @@ export const resolveQueryEditorNavigationTarget = (
     }
     if (parts.length > 3) return null;
 
-    const buildObjectNameMeta = (
-        dbName: string,
-        rawObjectName: string,
-        explicitSchemaName = '',
-    ) => {
-        const normalizedExplicitSchema = String(explicitSchemaName || '').trim();
-        const parsedMetadata = normalizedExplicitSchema
-            ? splitMetadataQualifiedName(rawObjectName, normalizedExplicitSchema)
-            : null;
-        const parsedLegacy = parsedMetadata ? null : splitSidebarQualifiedName(rawObjectName);
-        const schemaName = String(
-            normalizedExplicitSchema
-            || parsedMetadata?.parentPath
-            || parsedLegacy?.schemaName
-            || '',
-        ).trim();
-        const objectName = String(
-            parsedMetadata?.objectName
-            || parsedLegacy?.objectName
-            || rawObjectName,
-        ).trim();
-        return {
-            dbName: String(dbName || '').trim(),
-            rawObjectName: String(rawObjectName || '').trim(),
-            objectName,
-            schemaName,
-            metadataDbKey: buildMetadataIdentityKey(dialect, dbName),
-            normalizedDbName: String(dbName || '').trim().toLowerCase(),
-            normalizedRawObjectName: String(rawObjectName || '').trim().toLowerCase(),
-            normalizedObjectName: objectName.toLowerCase(),
-            normalizedSchemaName: schemaName.toLowerCase(),
-            identifierSegments: splitQualifiedNameSegmentsDetailed(
-                schemaName ? `${schemaName}.${objectName}` : rawObjectName,
-                dialect,
-            ),
-        };
-    };
-
-    const viewMetas = views.map((view) => buildObjectNameMeta(view.dbName, view.viewName, view.schemaName));
-    const materializedViewMetas = materializedViews.map((view) => buildObjectNameMeta(view.dbName, view.viewName, view.schemaName));
-    const triggerMetas = triggers.map((trigger) => ({
-        ...buildObjectNameMeta(trigger.dbName, trigger.triggerName, trigger.schemaName),
-        tableName: String(trigger.tableName || '').trim(),
-    }));
-    const routineMetas = routines.map((routine) => ({
-        ...buildObjectNameMeta(routine.dbName, routine.routineName, routine.schemaName),
-        routineType: String(routine.routineType || 'FUNCTION').trim().toUpperCase() || 'FUNCTION',
-    }));
-    const sequenceMetas = sequences.map((sequence) => buildObjectNameMeta(sequence.dbName, sequence.sequenceName, sequence.schemaName));
-    const packageMetas = packages.map((pkg) => buildObjectNameMeta(pkg.dbName, pkg.packageName, pkg.schemaName));
+    // Normalized once per catalog snapshot rather than once per identifier candidate:
+    // non-table objects outnumber tables in large schemas and dominated the input path.
+    const viewMetas = buildQueryEditorNamedObjectMetas(views, 'viewName', dialect);
+    const materializedViewMetas = buildQueryEditorNamedObjectMetas(materializedViews, 'viewName', dialect);
+    const triggerMetas = buildQueryEditorTriggerObjectMetas(triggers, dialect);
+    const routineMetas = buildQueryEditorRoutineObjectMetas(routines, dialect);
+    const sequenceMetas = buildQueryEditorNamedObjectMetas(sequences, 'sequenceName', dialect);
+    const packageMetas = buildQueryEditorNamedObjectMetas(packages, 'packageName', dialect);
 
     const findTable = (candidateDbName: string, candidateTableName: string, schemaName = ''): QueryEditorNavigationTarget | null => {
         const normalizedDbName = String(candidateDbName || '').trim().toLowerCase();

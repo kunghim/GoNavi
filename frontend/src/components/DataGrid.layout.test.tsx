@@ -2058,7 +2058,7 @@ describe('DataGrid layout', () => {
     expect(externalScrollSource).toContain("horizontalSyncSourceRef.current === 'table'");
   });
 
-  it('keeps the macOS header on one transform path that follows every native scroll', () => {
+  it('keeps the native header on one transform path that follows every scroll source', () => {
     const source = readDataGridSource();
     const shellSource = readDataGridShellSource();
     const css = buildDataGridCssText({
@@ -2088,9 +2088,8 @@ describe('DataGrid layout', () => {
     expect(css).toContain('translate: var(--gn-datagrid-h-scroll, 0px) 0 !important;');
     expect(css).not.toContain('animation-timeline:');
     expect(source).not.toContain('resolveDataGridHorizontalSyncMode');
-    expect(visualSyncSource).toContain('applyDataGridHeaderPinOffset(headerEl, clampedOffset)');
+    expect(visualSyncSource).toContain('syncDataGridHeaderHorizontalOffset(');
     expect(visualSyncSource).not.toContain("headerEl.style.setProperty('--gn-datagrid-h-scroll'");
-    expect(visualSyncSource).toContain('headerTable.style.translate = nextHeaderTranslate');
     expect(visualSyncSource).not.toContain("cell.style.setProperty('transform'");
     expect(nativeScrollBindingSource.indexOf('syncVirtualHorizontalVisualOffset(tableContainer, source.scrollLeft)'))
       .toBeLessThan(nativeScrollBindingSource.indexOf('scheduleNativeVirtualHorizontalScroll(tableContainer)'));
@@ -2114,7 +2113,7 @@ describe('DataGrid layout', () => {
     expect(css).toContain('body[data-platform="darwin"] .win-scroll-grid .ant-table-tbody-virtual-holder[data-horizontal-scroll-native="true"]::-webkit-scrollbar');
     expect(css).toContain('body[data-platform="windows"] .win-scroll-grid .data-grid-external-horizontal-scroll');
     expect(css).toContain('body:not([data-platform="windows"]) .win-scroll-grid .ant-table-body::-webkit-scrollbar');
-    expect(themeCss).toContain('body[data-ui-version="v2"]:not([data-platform="windows"]) ::-webkit-scrollbar');
+    expect(themeCss).toContain('body[data-ui-version="v2"]:not([data-platform="windows"]) :not(:is(.gn-v2-explorer-tree-shell .ant-tree-list-holder))::-webkit-scrollbar');
     expect(themeCss).not.toMatch(/body\[data-ui-version="v2"\] ::-webkit-scrollbar \{/);
   });
 
