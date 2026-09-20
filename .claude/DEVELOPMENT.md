@@ -1,6 +1,6 @@
 # GoNavi 本地开发与交付规则
 
-任务启动、恢复、切换、提交和 PR 的完整步骤见 `TASK_WORKFLOW.md`；本文件主要记录构建与测试命令。
+任务启动、恢复、切换、提交和 PR 的完整步骤见 `TASK_WORKFLOW.md`；Issue 处理与子 Agent 审查见 `ISSUE_WORKFLOW.md`，PR 模板见 `PR_TEMPLATE.md`；本文件主要记录构建与测试命令。
 
 ## 分支模型
 
