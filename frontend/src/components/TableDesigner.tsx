@@ -1,11 +1,17 @@
 import Modal from './common/ResizableDraggableModal';
 import React, { useEffect, useState, useContext, useMemo, useRef, useCallback } from 'react';
+import { useTableDesignerHeight } from './useTableDesignerHeight';
 import { flushSync } from 'react-dom';
 import { Table, Tabs, Button, message, Input, Checkbox, AutoComplete, Tooltip, Select, Empty, Space, Tag, Radio, Spin, Dropdown } from 'antd';
 import { ReloadOutlined, SaveOutlined, PlusOutlined, DeleteOutlined, MenuOutlined, FileTextOutlined, EyeOutlined, EditOutlined, ExclamationCircleOutlined, CopyOutlined, SnippetsOutlined, TableOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import {
+    findDesignerColumnNameInput,
+    isTableDesignerSortCellKey,
+    tableDesignerRowSelector,
+} from './tableDesignerColumnFocus';
 import Editor from './MonacoEditor';
 import { TabData, ColumnDefinition, IndexDefinition, ForeignKeyDefinition, TriggerDefinition } from '../types';
 import { useStore } from '../store';
@@ -45,8 +51,8 @@ import { dispatchSidebarDatabaseRefresh } from '../utils/sidebarDatabaseRefresh'
 import { getCurrentLanguage, t } from '../i18n';
 import { useOptionalI18n } from '../i18n/provider';
 import {
-    COMMON_COLUMN_DEFAULT_OPTIONS, getColumnDefinitionExtra, isMySQLCharacterColumnType, normalizeColumnDefinition,
-    normalizeMySQLUnsignedColumnType, setMySQLUnsignedColumnType, supportsMySQLUnsignedColumnType, supportsMySQLUnsignedDialect,
+    getColumnDefinitionExtra, isMySQLCharacterColumnType, normalizeColumnDefinition,
+    normalizeMySQLUnsignedColumnType, resolveColumnDefaultOptions, setMySQLUnsignedColumnType, supportsMySQLUnsignedColumnType, supportsMySQLUnsignedDialect,
 } from '../utils/columnDefinition';
 import { resolveDataTableVerticalBorderRule } from '../utils/dataGridDisplay';
 import { buildEditableTriggerSql } from '../utils/triggerEditSql';
@@ -81,6 +87,7 @@ import {
 } from './tableDesignerSchemaContext';
 import { buildTDengineStableOptions, buildTDengineStableQueries } from '../utils/tdengineStableMetadata';
 import TableDesignerCopyColumnsModal from './TableDesignerCopyColumnsModal';
+import { TableDesignerCommentField } from './tableDesignerCommentField';
 import { useTableDesignerColumnClipboard } from './useTableDesignerColumnClipboard';
 
 interface EditableColumn extends ColumnDefinition {
@@ -407,6 +414,7 @@ const SortableRow = ({ children, ...props }: RowProps) => {
     attributes,
     listeners,
     setNodeRef,
+    setActivatorNodeRef,
     transform,
     transition,
     isDragging,
@@ -422,26 +430,38 @@ const SortableRow = ({ children, ...props }: RowProps) => {
   };
 
   return (
-    <tr {...props} ref={setNodeRef} style={style} {...attributes}>
+    <tr {...props} ref={setNodeRef} style={style}>
       {React.Children.map(children, child => {
-        if ((child as React.ReactElement).key === 'sort') {
-          return React.cloneElement(child as React.ReactElement, {
-            children: (
-                <MenuOutlined
-                    style={{ cursor: 'grab', color: '#999' }}
-                    {...listeners}
-                />
-            ),
-          });
+        if (!React.isValidElement(child) || !isTableDesignerSortCellKey(child.key)) {
+          return child;
         }
-        return child;
+        return React.cloneElement(child as React.ReactElement<{ children?: React.ReactNode }>, {
+          children: (
+            <span
+              ref={setActivatorNodeRef}
+              className="table-designer-drag-handle"
+              {...attributes}
+              {...listeners}
+            >
+              <MenuOutlined />
+            </span>
+          ),
+        });
       })}
     </tr>
   );
 };
 
 const renderDesignerCellField = (content: React.ReactNode, className?: string) => (
-  <div className={`table-designer-cell-field${className ? ` ${className}` : ''}`}>
+  <div
+    className={`table-designer-cell-field${className ? ` ${className}` : ''}`}
+    onMouseDown={(event) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, .ant-select, button')) return;
+      const input = event.currentTarget.querySelector('input:not([type="checkbox"]):not([type="radio"])') as HTMLInputElement | null;
+      input?.focus();
+    }}
+  >
     {content}
   </div>
 );
@@ -550,7 +570,6 @@ const TableDesigner: React.FC<{ tab: TabData; embedded?: boolean }> = ({ tab, em
   const [columnDefaultValue, setColumnDefaultValue] = useState('');
   const [columnCharset, setColumnCharset] = useState<string | undefined>();
   const [columnCollation, setColumnCollation] = useState<string | undefined>();
-  const [inlineCommentEditingKey, setInlineCommentEditingKey] = useState('');
 
   const connections = useStore(state => state.connections);
   const addTab = useStore(state => state.addTab);
@@ -586,8 +605,8 @@ const TableDesigner: React.FC<{ tab: TabData; embedded?: boolean }> = ({ tab, em
   const panelBodyBg = 'var(--gn-bg-panel-2)';
   const focusRowBg = 'var(--gn-bg-selected)';
 
-  const [tableHeight, setTableHeight] = useState(500);
   const containerRef = useRef<HTMLDivElement>(null);
+  const tableHeight = useTableDesignerHeight(containerRef, activeKey);
   const shellRef = useRef<HTMLDivElement>(null);
   const pendingFocusColumnKeyRef = useRef<string | null>(null);
   const focusHighlightTimerRef = useRef<number | null>(null);
@@ -603,7 +622,6 @@ const TableDesigner: React.FC<{ tab: TabData; embedded?: boolean }> = ({ tab, em
 
   const openCommentEditor = useCallback((record: EditableColumn) => {
       if (!record?._key) return;
-      setInlineCommentEditingKey('');
       setCommentEditorColumnKey(record._key);
       setCommentEditorColumnName(record.name || '');
       setCommentEditorColumnType(record.type || '');
@@ -629,21 +647,6 @@ const TableDesigner: React.FC<{ tab: TabData; embedded?: boolean }> = ({ tab, em
 
   // 透明 Monaco Editor 主题由 MonacoEditor 包装组件按需注册（含 stickyScroll 不透明背景）
 
-  // 监听字段 Tab 容器高度，为所有 Tab 内表格计算 scroll.y
-  // 当 Tab 切换时，字段 Tab 被 display:none 导致 height=0，跳过该次更新保持有效值
-  useEffect(() => {
-      if (!containerRef.current) return;
-      const resizeObserver = new ResizeObserver(entries => {
-          for (let entry of entries) {
-              const h = entry.contentRect.height;
-              // 跳过零高度观测（Tab 面板被隐藏时）
-              if (h <= 0) return;
-              setTableHeight(Math.max(200, h - 40));
-          }
-      });
-      resizeObserver.observe(containerRef.current);
-      return () => resizeObserver.disconnect();
-  }, []); // 不依赖 activeKey，仅挂载一次，通过零高度守卫避免 Tab 切换异常
 
   // --- Resizable Columns State ---
   const [tableColumns, setTableColumns] = useState<any[]>([]);
@@ -664,7 +667,7 @@ const TableDesigner: React.FC<{ tab: TabData; embedded?: boolean }> = ({ tab, em
   });
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
@@ -681,10 +684,6 @@ const TableDesigner: React.FC<{ tab: TabData; embedded?: boolean }> = ({ tab, em
   }, [columns]);
 
   useEffect(() => {
-      setInlineCommentEditingKey(prev => (prev && columns.some(c => c._key === prev) ? prev : ''));
-  }, [columns]);
-
-  useEffect(() => {
       return () => {
           if (focusHighlightTimerRef.current !== null) {
               window.clearTimeout(focusHighlightTimerRef.current);
@@ -697,8 +696,18 @@ const TableDesigner: React.FC<{ tab: TabData; embedded?: boolean }> = ({ tab, em
       if (activeKey !== 'columns' && activeKey !== 'tdengine') return false;
       const tableBody = containerRef.current?.querySelector('.ant-table-body') as HTMLElement | null;
       if (!tableBody) return false;
-      const row = tableBody.querySelector(`tr[data-row-key="${targetKey}"]`) as HTMLTableRowElement | null;
+      const row = tableBody.querySelector(tableDesignerRowSelector(targetKey)) as HTMLTableRowElement | null;
       if (!row) return false;
+
+      const active = document.activeElement;
+      if (
+          active instanceof HTMLInputElement
+          && active.type !== 'checkbox'
+          && active.type !== 'radio'
+          && row.contains(active)
+      ) {
+          return true;
+      }
 
       row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       setFocusColumnKey(targetKey);
@@ -710,23 +719,14 @@ const TableDesigner: React.FC<{ tab: TabData; embedded?: boolean }> = ({ tab, em
       }, 1600);
 
       if (!readOnly) {
-          const firstInput = row.querySelector('input') as HTMLInputElement | null;
-          if (firstInput) {
-              firstInput.focus();
-              firstInput.select();
+          const nameInput = findDesignerColumnNameInput(row);
+          if (nameInput) {
+              nameInput.focus();
+              nameInput.select();
           }
       }
       return true;
   }, [activeKey, readOnly]);
-
-  const startInlineCommentEdit = useCallback((record: EditableColumn) => {
-      if (readOnly || !record?._key) return;
-      setInlineCommentEditingKey(record._key);
-  }, [readOnly]);
-
-  const finishInlineCommentEdit = useCallback(() => {
-      setInlineCommentEditingKey('');
-  }, []);
 
   useEffect(() => {
       const pendingKey = pendingFocusColumnKeyRef.current;
@@ -840,7 +840,7 @@ const TableDesigner: React.FC<{ tab: TabData; embedded?: boolean }> = ({ tab, em
                   if (readOnly) return value;
                   return renderDesignerCellField(
                       <AutoComplete
-                          options={COMMON_COLUMN_DEFAULT_OPTIONS}
+                          options={resolveColumnDefaultOptions(dbType, record.type)}
                           value={value}
                           onChange={val => {
                               const hasDefault = val.length > 0;
@@ -858,40 +858,12 @@ const TableDesigner: React.FC<{ tab: TabData; embedded?: boolean }> = ({ tab, em
               dataIndex: 'comment',
               key: 'comment',
               width: 200,
-              render: (text: string, record: EditableColumn) => readOnly ? (
-                  <Tooltip title={text || ''}>
-                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{text || ''}</div>
-                  </Tooltip>
-              ) : (
-                  <div className="table-designer-cell-field table-designer-comment-field">
-                      {inlineCommentEditingKey !== record._key ? (
-                          <Tooltip title={text || ''}>
-                              <div
-                                  className={`table-designer-comment-display${text ? '' : ' is-empty'}`}
-                                  onDoubleClick={() => startInlineCommentEdit(record)}
-                              >
-                                  {text || '\u00A0'}
-                              </div>
-                          </Tooltip>
-                      ) : (
-                          <Input
-                              value={text}
-                              onChange={e => handleColumnChange(record._key, 'comment', e.target.value)}
-                              onBlur={finishInlineCommentEdit}
-                              onPressEnter={finishInlineCommentEdit}
-                              autoFocus={inlineCommentEditingKey === record._key}
-                              variant="borderless"
-                          />
-                      )}
-                      <Tooltip title={t('table_designer.tooltip.edit_column_options', undefined, i18nLanguage)}>
-                          <Button
-                              type="text"
-                              size="small"
-                              icon={<EditOutlined />}
-                              onClick={() => openCommentEditor(record)}
-                          />
-                      </Tooltip>
-                  </div>
+              render: (text: string, record: EditableColumn) => (
+                  <TableDesignerCommentField
+                      text={text}
+                      readOnly={readOnly}
+                      onChange={(value) => handleColumnChange(record._key, 'comment', value)}
+                  />
               )
           },
           ...(readOnly ? [] : [{
@@ -913,7 +885,7 @@ const TableDesigner: React.FC<{ tab: TabData; embedded?: boolean }> = ({ tab, em
           }])
       ];
       setTableColumns(initialCols);
-  }, [connections, finishInlineCommentEdit, i18nLanguage, inlineCommentEditingKey, openCommentEditor, readOnly, startInlineCommentEdit, tab.connectionId]); // Re-create when datasource dialect, language, inline comment state, or readonly state changes
+  }, [connections, i18nLanguage, openCommentEditor, readOnly, tab.connectionId]);
 
   const flushResizeGhost = useCallback(() => {
     resizeRafRef.current = null;
@@ -3515,11 +3487,14 @@ const TableDesigner: React.FC<{ tab: TabData; embedded?: boolean }> = ({ tab, em
           }}
       >
         <style>{`
-           .table-designer-wrapper .ant-table-body {
-               max-height: ${tableHeight}px !important;
-            }
             .table-designer-wrapper .table-designer-focus-row > .ant-table-cell {
                 background: ${focusRowBg} !important;
+            }
+            .table-designer-wrapper .table-designer-drag-handle {
+                display: inline-flex;
+                align-items: center;
+                cursor: grab;
+                color: #999;
             }
         `}</style>
         {readOnly ? (
@@ -4354,7 +4329,7 @@ const TableDesigner: React.FC<{ tab: TabData; embedded?: boolean }> = ({ tab, em
                         {t('table_designer.column.enable_default', undefined, i18nLanguage)}
                     </Checkbox>
                     <AutoComplete
-                        options={COMMON_COLUMN_DEFAULT_OPTIONS}
+                        options={resolveColumnDefaultOptions(getDbType(), commentEditorColumnType)}
                         value={columnDefaultValue}
                         onChange={setColumnDefaultValue}
                         disabled={!columnDefaultEnabled}
