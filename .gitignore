@@ -51,3 +51,7 @@ docs/*
 .agents/skills/gonavi-scan/connections.local.yaml
 /.claude/gonavi-scan/scan-runs/full-new-*/
 .gonavi-dev-signing-identity
+
+# 本地开发助手与构建残留（个人 dev 维护，不入上游）
+/.zcodeignore
+frontend/dist.zip
