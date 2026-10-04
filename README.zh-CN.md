@@ -321,8 +321,6 @@ Elasticsearch 连接复用查询工作区，并按服务端版本提供受控 RE
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
 ```
 
-与项目强绑定的 CLI 必须通过 `tools/project-tools.mjs` 安装到 `.tools/bin`，并在该脚本中固定版本；不要写入全局 `GOBIN`，也不要提交二进制文件。用户级 Go 模块和构建缓存仍保留在仓库外；CI 可以在其隔离环境中自行安装工具。
-
 ### 开发
 
 ```bash

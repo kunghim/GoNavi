@@ -322,8 +322,6 @@ Elasticsearch connections reuse the query workspace as a version-aware REST cons
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
 ```
 
-Project-bound CLIs must be installed in `.tools/bin` through `tools/project-tools.mjs`, with their versions pinned in that script. Do not add them to a global `GOBIN` or commit the binaries. User-level Go module and build caches remain outside the repository. CI may install tools in its isolated environment.
-
 ### Develop
 
 ```bash

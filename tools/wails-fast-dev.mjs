@@ -97,7 +97,7 @@ if (dryRun) {
 
 if (!existsSync(wailsCommand)) {
   console.error(`Project Wails CLI is missing: ${wailsCommand}`);
-  console.error('Run: node tools/project-tools.mjs install');
+  console.error('Install the Wails CLI and make sure it is on PATH (see README Quick Start).');
   process.exit(1);
 }
 
