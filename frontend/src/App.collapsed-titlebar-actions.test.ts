@@ -7,15 +7,89 @@ import {
   V2ExplorerToolbarActions,
   type V2ExplorerToolbarActionLabels,
 } from './components/Sidebar';
+import { DockedSidebarActionsHost } from './components/sidebar/SidebarExplorerToolbar';
 import {
   resolveTitleBarLayout,
   shouldDockCollapsedSidebarActionsInTitlebar,
 } from './utils/titlebarLayout';
+import { readCssWithImports } from './test/readCssWithImports';
 
-const appSource = readFileSync(new URL('./App.tsx', import.meta.url), 'utf8');
-const appCss = readFileSync(new URL('./App.css', import.meta.url), 'utf8');
-const v2ThemeCss = readFileSync(new URL('./v2-theme.css', import.meta.url), 'utf8');
-const sidebarSource = readFileSync(new URL('./components/Sidebar.tsx', import.meta.url), 'utf8');
+// App.tsx 已拆成 hook / 子组件 / 辅助模块（src/appShell），源码扫描按原顺序聚合。
+const APP_SOURCE_MODULES = [
+  'App.tsx',
+  'appShell/appSettingsConstants.ts',
+  'appShell/ThemeSettingsSlider.tsx',
+  'appShell/appEnvironment.ts',
+  'appShell/connectionPackageImport.ts',
+  'appShell/settingsCenterPanes.ts',
+  'appShell/globalProxySettings.ts',
+  'appShell/aboutSettingsFormat.ts',
+  'appShell/SidebarMetadataSortableRow.tsx',
+  'appShell/appLayoutParts.ts',
+  'appShell/settingsCenterNavigation.ts',
+  'appShell/hooks/useAppCoreState.ts',
+  'appShell/hooks/useAppShellState.ts',
+  'appShell/hooks/useAppBootstrapEffects.ts',
+  'appShell/hooks/useAppStartupEffects.tsx',
+  'appShell/hooks/useAppWindowEffects.ts',
+  'appShell/hooks/useAppSecurityUpdate.ts',
+  'appShell/hooks/useAppUpdateAndDiagnostics.ts',
+  'appShell/hooks/useAppQuitAndUpdate.tsx',
+  'appShell/hooks/useAppConnectionImportExport.ts',
+  'appShell/hooks/useAppProxySettings.ts',
+  'appShell/hooks/useAppSettingsNavigation.ts',
+  'appShell/hooks/useAppDirectorySettingsRender.tsx',
+  'appShell/hooks/useAppWorkbenchActions.ts',
+  'appShell/hooks/useAppLayoutEffects.ts',
+  'appShell/hooks/useAppAntdTheme.tsx',
+  'appShell/hooks/useAppSettingsPanesRender.tsx',
+  'appShell/hooks/useAppAboutSettingsRender.tsx',
+  'appShell/hooks/useAppThemeSettingsRender.tsx',
+  'appShell/settings/ThemeModeSettingsSection.tsx',
+  'appShell/settings/ThemeAppearanceSettingsSection.tsx',
+  'appShell/settings/TabDisplaySettingsSection.tsx',
+  'appShell/settings/DataTableSettingsFields.tsx',
+  'appShell/hooks/useAppSettingsCenterRender.tsx',
+  'appShell/layout/AppTitleBar.tsx',
+  'appShell/layout/AppSider.tsx',
+  'appShell/layout/AppContent.tsx',
+  'appShell/settings/renderAppSettingsCenterModal.tsx',
+  'appShell/settings/toolCenterGroups.tsx',
+  'appShell/settings/toolCenterPaneRenderer.tsx',
+  'appShell/layout/AppGlobalDialogs.tsx',
+];
+const appSource = APP_SOURCE_MODULES
+  .map((file) => readFileSync(new URL(`./${file}`, import.meta.url), 'utf8'))
+  .join('\n');
+const appCss = readCssWithImports(new URL('./App.css', import.meta.url));
+const v2ThemeCss = readCssWithImports(new URL('./v2-theme.css', import.meta.url));
+// Sidebar.tsx 已拆成 components/sidebar/ 下的 hook 与子组件，源码扫描需一并聚合。
+const SIDEBAR_COMPONENT_PARTS = [
+  'sidebarProps.ts',
+  'sidebarRootHelpers.ts',
+  'sidebarSavedQueriesTreeNode.tsx',
+  'V2ExplorerContextSummary.tsx',
+  'useSidebarStoreState.tsx',
+  'useSidebarSearchState.ts',
+  'useSidebarTreeViewState.ts',
+  'useSidebarTitlebarSync.tsx',
+  'useSidebarTreeData.tsx',
+  'useSidebarLocate.ts',
+  'useSidebarTreeEvents.tsx',
+  'useSidebarJvmAndSavedQueries.tsx',
+  'useSidebarConnectionRefresh.ts',
+  'useSidebarVisibility.ts',
+  'useSidebarObjectMenuActions.tsx',
+  'useSidebarContextMenus.tsx',
+  'useSidebarTreeDnd.ts',
+  'useSidebarToolbarModel.tsx',
+  'SidebarObjectExplorer.tsx',
+];
+const sidebarSource = [
+  readFileSync(new URL('./components/Sidebar.tsx', import.meta.url), 'utf8'),
+  ...SIDEBAR_COMPONENT_PARTS.map((file) => readFileSync(new URL(`./components/sidebar/${file}`, import.meta.url), 'utf8')),
+].join('\n');
+const toolbarSource = readFileSync(new URL('./components/sidebar/SidebarExplorerToolbar.tsx', import.meta.url), 'utf8');
 const sidebarCollapseSource = readFileSync(new URL('./hooks/useAppSidebarCollapse.ts', import.meta.url), 'utf8');
 
 const readRule = (css: string, selector: string): string => {
@@ -78,7 +152,7 @@ const createToolbar = (overrides: Partial<React.ComponentProps<typeof V2Explorer
       toggleAction: {
         label: 'Expand sidebar',
         onClick: handlers.onToggleSidebar,
-        placement: 'collapsed-titlebar',
+        placement: 'docked-titlebar',
         expanded: false,
       },
       ...overrides,
@@ -88,16 +162,14 @@ const createToolbar = (overrides: Partial<React.ComponentProps<typeof V2Explorer
 };
 
 describe('collapsed V2 sidebar actions', () => {
-  it('mounts the shared sidebar toolbar in the collapsed titlebar host', () => {
-    const hostStart = appSource.indexOf('data-collapsed-sidebar-actions="true"');
-    const hostEnd = appSource.indexOf('{/* Collapsed sidebar titlebar actions end */}', hostStart);
-    const actionsSource = appSource.slice(hostStart, hostEnd);
-    const sharedActionsStart = sidebarSource.indexOf('export const V2ExplorerToolbarActions');
-    const sharedActionsEnd = sidebarSource.indexOf('\nconst Sidebar:', sharedActionsStart);
-    const sharedActionsSource = sidebarSource.slice(sharedActionsStart, sharedActionsEnd);
+  it('mounts the shared sidebar toolbar in the docked titlebar host', () => {
+    const hostStart = toolbarSource.indexOf('export const DockedSidebarActionsHost');
+    const actionsSource = toolbarSource.slice(hostStart);
+    const sharedActionsStart = toolbarSource.indexOf('export const V2ExplorerToolbarActions');
+    const sharedActionsEnd = toolbarSource.indexOf('\nexport const DockedSidebarActionsHost', sharedActionsStart);
+    const sharedActionsSource = toolbarSource.slice(sharedActionsStart, sharedActionsEnd);
 
     expect(hostStart).toBeGreaterThanOrEqual(0);
-    expect(hostEnd).toBeGreaterThan(hostStart);
     expect(sharedActionsStart).toBeGreaterThanOrEqual(0);
     expect(sharedActionsEnd).toBeGreaterThan(sharedActionsStart);
     expect(appSource).toContain('isCollapsedSidebarActionsDocked');
@@ -105,24 +177,28 @@ describe('collapsed V2 sidebar actions', () => {
     expect(appSource).toContain('runtimePlatform,');
     expect(appSource).toContain('navigatorPlatform,');
     expect(appSource).toContain('isWebRuntime,');
-    expect(appSource).toMatch(
-      /resolveTitleBarLayout\(\s*effectiveUiScale,\s*isCollapsedSidebarActionsDocked,\s*effectiveSidebarRailScale,\s*\)/s,
+    expect(appSource).toContain(
+      'const dockActionsInTitlebarBand = shouldDockCollapsedSidebarActionsInTitlebar && titleBarActionsInline;',
     );
-    expect(appSource).toContain("isCollapsedSidebarActionsDocked ? 'gn-v2-titlebar-collapsed-docked' : ''");
+    expect(appSource).toMatch(
+      /resolveTitleBarLayout\(\s*effectiveUiScale,\s*dockActionsInTitlebarBand,\s*effectiveSidebarRailScale,\s*\)/s,
+    );
+    expect(appSource).toContain("dockActionsInTitlebarBand ? 'gn-v2-titlebar-collapsed-docked' : ''");
     expect(actionsSource).toContain('role="toolbar"');
     expect(actionsSource).toContain('data-no-titlebar-toggle="true"');
-    expect(appSource).toContain('ref={setCollapsedSidebarActionsTarget}');
+    expect(actionsSource).toContain('data-collapsed-sidebar-actions="true"');
+    expect(appSource).toContain('slotRef={setCollapsedSidebarActionsTarget}');
     expect(appSource).toContain('collapsedSidebarActionsTarget={collapsedSidebarActionsTarget}');
     expect(appSource).toContain('onExpandSidebar={handleExpandSidebarPanel}');
     expect(appSource).toContain('onEnsureSidebarExpanded={handleEnsureSidebarExpanded}');
     expect(sidebarSource).toContain('collapsedSidebarActionsTarget && createPortal(');
-    expect(sidebarSource).toContain("placement: 'collapsed-titlebar'");
+    expect(toolbarSource).toContain("placement: 'docked-titlebar'");
 
     const actionMarkers = [
       'data-sidebar-locate-current-tab-action="true"',
       'data-sidebar-scroll-to-top-action="true"',
       'data-sidebar-active-connection-actions="true"',
-      'data-sidebar-toggle-placement={toggleAction.placement}',
+      '<SidebarToggleButton action={toggleAction}',
     ];
     const markerIndexes = actionMarkers.map((marker) => sharedActionsSource.indexOf(marker));
     expect(markerIndexes.every((index) => index >= 0)).toBe(true);
@@ -132,6 +208,46 @@ describe('collapsed V2 sidebar actions', () => {
     expect(sharedActionsSource).toContain('aria-haspopup="menu"');
   });
 
+  it('keeps the search, locate, scroll and menu actions out of the explorer header while docked', () => {
+    const headerStart = sidebarSource.indexOf('className="gn-v2-explorer-actions"');
+    const headerEnd = sidebarSource.indexOf('{usePersistentSidebarFilter && (', headerStart);
+    const headerSource = sidebarSource.slice(headerStart, headerEnd);
+    const portalStart = sidebarSource.indexOf('collapsedSidebarActionsTarget && createPortal(');
+    const portalSource = sidebarSource.slice(portalStart, sidebarSource.indexOf('<TitleBarQuickActionsHost', portalStart));
+
+    expect(headerSource).toContain('<V2ExplorerContextSummary');
+    expect(headerSource).toMatch(
+      /\{!collapsedSidebarActionsTarget && !sidebarActionsInRail && \(\s*<>\s*\{!usePersistentSidebarFilter/s,
+    );
+    expect(headerSource).toContain('<V2ExplorerSearchAction');
+    expect(portalSource).toContain('<V2ExplorerSearchAction');
+    expect(portalSource).toContain('<V2ExplorerToolbarActions');
+    expect(portalSource).not.toContain('toggleAction');
+    expect(portalSource).toContain('onScrollToTop={scrollV2ExplorerToTopExpanded}');
+    expect(portalSource).not.toContain('onExpandSidebar');
+    expect(sidebarSource).toMatch(
+      /const scrollV2ExplorerToTopExpanded = \(\) => \{\s*onEnsureSidebarExpanded\?\.\(\);\s*scrollV2ExplorerToTop\(\);/s,
+    );
+  });
+
+  it('places the docked actions below the standalone toolbar and inside the titlebar for inline actions', () => {
+    expect(appSource).toContain("placement={titleBarActionsInline ? 'titlebar' : 'below-toolbar'}");
+    expect(appSource).toContain('{titleBarActionsInline && dockedSidebarActionsHost}');
+    expect(appSource).toMatch(
+      /\{!titleBarActionsInline && titleBarActionRow\}[^\n]*\n\s*\{!titleBarActionsInline && dockedSidebarActionsHost\}/,
+    );
+    expect(toolbarSource).toContain("'gn-v2-collapsed-sidebar-actions is-below-toolbar'");
+
+    const rowRule = readRule(
+      v2ThemeCss,
+      'body[data-ui-version="v2"] .gn-v2-collapsed-sidebar-actions.is-below-toolbar {',
+    );
+    expect(rowRule).not.toContain('position: absolute;');
+    expect(rowRule).toContain('flex: 0 0 auto;');
+    expect(rowRule).toContain('height: calc(34px * var(--gn-v2-explorer-scale));');
+    expect(rowRule).toContain('-webkit-app-region: no-drag;');
+  });
+
   it('hides the fixed rail only when the docked titlebar host is active', () => {
     expect(appSource).toContain(
       "data-sidebar-actions-placement={isCollapsedSidebarActionsDocked ? 'titlebar' : 'fixed-rail'}",
@@ -139,7 +255,6 @@ describe('collapsed V2 sidebar actions', () => {
     expect(appSource).toContain('const sidebarCollapsedWidth = !shouldDockCollapsedSidebarActionsInTitlebar');
     expect(appSource).toContain('onExpandSidebar={handleExpandSidebarPanel}');
     expect(appSource).toContain('onEnsureSidebarExpanded={handleEnsureSidebarExpanded}');
-    expect(appSource).toContain('data-collapsed-sidebar-actions-docked');
     expect(v2ThemeCss).toMatch(
       /\.ant-layout-sider\[data-sidebar-actions-placement='titlebar'\]\s+\.gn-v2-connection-rail\s*\{[^}]*display:\s*none;/s,
     );
@@ -156,12 +271,49 @@ describe('collapsed V2 sidebar actions', () => {
     expect(sidebarCollapseSource).toContain('activeElement?.closest?.(\'[data-sidebar-content="true"]\')');
   });
 
-  it('keeps the docked host mounted so toggling does not re-render the explorer', () => {
+  it('keeps the docked host and its toggle mounted so collapsing neither moves them nor re-renders the explorer', () => {
     expect(appSource).toMatch(
-      /\{shouldDockCollapsedSidebarActionsInTitlebar && \(\s*<div\s+ref=\{setCollapsedSidebarActionsTarget\}\s+hidden=\{!isCollapsedSidebarActionsDocked\}/s,
+      /dockedSidebarActionsHost = shouldDockCollapsedSidebarActionsInTitlebar \? \(\s*<DockedSidebarActionsHost/s,
     );
-    expect(appSource).toContain('resolveDockedTitleBarBandOffset(effectiveUiScale, effectiveSidebarRailScale)');
-    expect(appSource).not.toContain('`${titleBarLayout.emptyWorkbenchTopOffset}px`');
+    expect(appSource).toContain('collapsed={isSidebarCollapsed}');
+    expect(appSource).toContain('onToggle={isSidebarCollapsed ? handleExpandSidebarPanel : handleCollapseSidebarPanel}');
+    expect(appSource).toContain('toggleButtonRef={sidebarCollapsedToggleRef}');
+    expect(appSource).not.toContain('hidden={!isCollapsedSidebarActionsDocked}');
+    expect(appSource).not.toContain('resolveDockedTitleBarBandOffset');
+    expect(appSource).not.toContain('--gn-v2-empty-workbench-titlebar-overlap');
+  });
+
+  it('renders the same toggle in the docked host for both collapsed states', () => {
+    const render = (collapsed: boolean) => {
+      const onToggle = vi.fn();
+      const renderer = create(
+        React.createElement(DockedSidebarActionsHost, {
+          label: 'System actions',
+          slotRef: () => undefined,
+          placement: 'titlebar',
+          collapsed,
+          toggleLabel: collapsed ? 'Expand sidebar' : 'Collapse sidebar',
+          onToggle,
+        }),
+      );
+      return { renderer, onToggle };
+    };
+
+    const expanded = render(false);
+    const collapsed = render(true);
+    const expandedToggle = expanded.renderer.root.findByProps({ 'data-sidebar-collapse-trigger': 'true' });
+    const collapsedToggle = collapsed.renderer.root.findByProps({ 'data-sidebar-collapse-trigger': 'true' });
+
+    expect(expandedToggle.props['aria-label']).toBe('Collapse sidebar');
+    expect(expandedToggle.props['aria-expanded']).toBe(true);
+    expect(collapsedToggle.props['aria-label']).toBe('Expand sidebar');
+    expect(collapsedToggle.props['aria-expanded']).toBe(false);
+    expandedToggle.props.onClick();
+    collapsedToggle.props.onClick();
+    expect(expanded.onToggle).toHaveBeenCalledTimes(1);
+    expect(collapsed.onToggle).toHaveBeenCalledTimes(1);
+    expect(expanded.renderer.root.findByProps({ role: 'toolbar' }).props.className)
+      .toBe('gn-v2-collapsed-sidebar-actions');
   });
 
   it('uses the shared scaled geometry and keeps titlebar actions reachable on narrow windows', () => {
@@ -213,7 +365,7 @@ describe('collapsed V2 sidebar actions', () => {
       undefined,
       undefined,
       undefined,
-      'collapsed-titlebar',
+      'docked-titlebar',
     ]);
     expect(buttons[3].props['aria-expanded']).toBe(false);
     expect(buttons[3].props['aria-controls']).toBe('gonavi-sidebar-tree-panel');
@@ -249,30 +401,18 @@ describe('collapsed V2 sidebar actions', () => {
     expect(shouldDockCollapsedSidebarActionsInTitlebar('windows', '', true)).toBe(false);
   });
 
-  it('reserves a separate titlebar band while keeping the workbench origin stable', () => {
-    const expanded = resolveTitleBarLayout(1, false);
-    const collapsed = resolveTitleBarLayout(1, true);
+  it('reserves a separate titlebar band only when the actions are docked in the titlebar', () => {
+    const compact = resolveTitleBarLayout(1, false);
+    const docked = resolveTitleBarLayout(1, true);
 
-    expect(collapsed.height).toBeGreaterThan(expanded.height);
-    expect(collapsed.upperBandHeight).toBeLessThan(collapsed.height);
-    expect(collapsed.height - collapsed.emptyWorkbenchTopOffset).toBe(expanded.height);
+    expect(docked.height).toBeGreaterThan(compact.height);
+    expect(docked.upperBandHeight).toBeLessThan(docked.height);
   });
 
-  it('grows the collapsed titlebar action band with the sidebar button scale', () => {
+  it('grows the docked titlebar action band with the sidebar button scale', () => {
     const normal = resolveTitleBarLayout(1, true, 1);
     const enlarged = resolveTitleBarLayout(1, true, 1.8);
 
     expect(enlarged.height).toBeGreaterThan(normal.height);
-    expect(enlarged.height - enlarged.emptyWorkbenchTopOffset).toBe(36);
   });
-
-  it.each([0.8, 0.9, 0.95, 1, 1.1, 1.25])(
-    'keeps the expanded workbench origin stable at UI scale %s',
-    (scale) => {
-      const expanded = resolveTitleBarLayout(scale, false);
-      const collapsed = resolveTitleBarLayout(scale, true);
-
-      expect(collapsed.height - collapsed.emptyWorkbenchTopOffset).toBe(expanded.height);
-    },
-  );
 });

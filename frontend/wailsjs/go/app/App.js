@@ -162,6 +162,10 @@ export function DBConnect(arg1) {
   return window['go']['app']['App']['DBConnect'](arg1);
 }
 
+export function DBExecuteSessionAction(arg1, arg2, arg3) {
+  return window['go']['app']['App']['DBExecuteSessionAction'](arg1, arg2, arg3);
+}
+
 export function DBGetAllColumns(arg1, arg2) {
   return window['go']['app']['App']['DBGetAllColumns'](arg1, arg2);
 }
@@ -260,6 +264,14 @@ export function DBGetViews(arg1, arg2) {
 
 export function DBGetViewsContext(arg1, arg2, arg3) {
   return window['go']['app']['App']['DBGetViewsContext'](arg1, arg2, arg3);
+}
+
+export function DBListSessionDatabases(arg1, arg2) {
+  return window['go']['app']['App']['DBListSessionDatabases'](arg1, arg2);
+}
+
+export function DBListSessions(arg1, arg2) {
+  return window['go']['app']['App']['DBListSessions'](arg1, arg2);
 }
 
 export function DBQuery(arg1, arg2, arg3) {
@@ -622,6 +634,14 @@ export function ExportDatabasesSQLWithOptions(arg1, arg2, arg3, arg4) {
   return window['go']['app']['App']['ExportDatabasesSQLWithOptions'](arg1, arg2, arg3, arg4);
 }
 
+export function ExportDriverPackage(arg1, arg2) {
+  return window['go']['app']['App']['ExportDriverPackage'](arg1, arg2);
+}
+
+export function ExportDriverPackageSelection(arg1, arg2, arg3) {
+  return window['go']['app']['App']['ExportDriverPackageSelection'](arg1, arg2, arg3);
+}
+
 export function ExportImportErrorRows(arg1) {
   return window['go']['app']['App']['ExportImportErrorRows'](arg1);
 }
@@ -832,6 +852,10 @@ export function ImportLegacyGlobalProxy(arg1) {
 
 export function ImportSavedQueries(arg1) {
   return window['go']['app']['App']['ImportSavedQueries'](arg1);
+}
+
+export function InspectDriverPackage(arg1, arg2) {
+  return window['go']['app']['App']['InspectDriverPackage'](arg1, arg2);
 }
 
 export function InspectElasticsearchConsole(arg1, arg2, arg3) {
@@ -1118,6 +1142,26 @@ export function NacosUpdateService(arg1, arg2) {
   return window['go']['app']['App']['NacosUpdateService'](arg1, arg2);
 }
 
+export function OCRCancelInstall() {
+  return window['go']['app']['App']['OCRCancelInstall']();
+}
+
+export function OCRGetStatus() {
+  return window['go']['app']['App']['OCRGetStatus']();
+}
+
+export function OCRInstall() {
+  return window['go']['app']['App']['OCRInstall']();
+}
+
+export function OCRRemove() {
+  return window['go']['app']['App']['OCRRemove']();
+}
+
+export function OCRServe() {
+  return window['go']['app']['App']['OCRServe']();
+}
+
 export function OpenDataRootDirectory() {
   return window['go']['app']['App']['OpenDataRootDirectory']();
 }
@@ -1144,6 +1188,10 @@ export function OpenSavedQueryDirectory() {
 
 export function PreflightDatabaseSQLImport(arg1, arg2, arg3) {
   return window['go']['app']['App']['PreflightDatabaseSQLImport'](arg1, arg2, arg3);
+}
+
+export function PrepareWindowsBrandIconRestart(arg1) {
+  return window['go']['app']['App']['PrepareWindowsBrandIconRestart'](arg1);
 }
 
 export function PreviewChanges(arg1, arg2, arg3, arg4) {
@@ -1450,6 +1498,10 @@ export function SelectDriverPackageFile(arg1) {
   return window['go']['app']['App']['SelectDriverPackageFile'](arg1);
 }
 
+export function SelectDriverPackageZipFile(arg1) {
+  return window['go']['app']['App']['SelectDriverPackageZipFile'](arg1);
+}
+
 export function SelectLogDirectory(arg1) {
   return window['go']['app']['App']['SelectLogDirectory'](arg1);
 }
@@ -1472,6 +1524,10 @@ export function SelectSSHKnownHostsFile(arg1) {
 
 export function SelectSavedQueryDirectory(arg1) {
   return window['go']['app']['App']['SelectSavedQueryDirectory'](arg1);
+}
+
+export function SetApplicationBrandIcon(arg1) {
+  return window['go']['app']['App']['SetApplicationBrandIcon'](arg1);
 }
 
 export function SetLanguage(arg1) {
@@ -1544,6 +1600,34 @@ export function UpdateConnectionVisibility(arg1) {
 
 export function UpdateSQLAuditSettings(arg1) {
   return window['go']['app']['App']['UpdateSQLAuditSettings'](arg1);
+}
+
+export function UserMgmtApply(arg1, arg2, arg3) {
+  return window['go']['app']['App']['UserMgmtApply'](arg1, arg2, arg3);
+}
+
+export function UserMgmtDescribePrincipal(arg1, arg2) {
+  return window['go']['app']['App']['UserMgmtDescribePrincipal'](arg1, arg2);
+}
+
+export function UserMgmtDropImpact(arg1, arg2) {
+  return window['go']['app']['App']['UserMgmtDropImpact'](arg1, arg2);
+}
+
+export function UserMgmtExportDDL(arg1, arg2) {
+  return window['go']['app']['App']['UserMgmtExportDDL'](arg1, arg2);
+}
+
+export function UserMgmtOverview(arg1, arg2) {
+  return window['go']['app']['App']['UserMgmtOverview'](arg1, arg2);
+}
+
+export function UserMgmtPreview(arg1, arg2) {
+  return window['go']['app']['App']['UserMgmtPreview'](arg1, arg2);
+}
+
+export function UserMgmtSyncConnectionPassword(arg1, arg2) {
+  return window['go']['app']['App']['UserMgmtSyncConnectionPassword'](arg1, arg2);
 }
 
 export function VerifySQLAuditIntegrity() {

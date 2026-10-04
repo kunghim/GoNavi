@@ -239,11 +239,14 @@ describe('QueryEditorToolbar layout', () => {
     expect(css).toContain('gap: 6px;');
   });
 
-  it('formats live query execution time with stable tenths-of-a-second precision', () => {
-    expect(formatQueryExecutionElapsed(0)).toBe('00:00.0');
-    expect(formatQueryExecutionElapsed(61_299)).toBe('01:01.2');
-    expect(formatQueryExecutionElapsed(3_661_999)).toBe('01:01:01.9');
-    expect(formatQueryExecutionElapsed(Number.NaN)).toBe('00:00.0');
+  it('formats query duration with one shared unit for status bar and log rows', () => {
+    expect(formatQueryExecutionElapsed(0)).toBe('0ms');
+    expect(formatQueryExecutionElapsed(219)).toBe('219ms');
+    expect(formatQueryExecutionElapsed(1_000)).toBe('1s');
+    expect(formatQueryExecutionElapsed(1_230)).toBe('1.23s');
+    expect(formatQueryExecutionElapsed(61_299)).toBe('1m 01s');
+    expect(formatQueryExecutionElapsed(3_661_999)).toBe('1h 01m 01s');
+    expect(formatQueryExecutionElapsed(Number.NaN)).toBe('0ms');
   });
 
   it('prefers backend SQL duration over frontend wall-clock fallback', () => {
@@ -333,7 +336,10 @@ describe('QueryEditorToolbar layout', () => {
   it('keeps live and completed execution time at the editor bottom-left', () => {
     const toolbarSource = readFileSync(new URL('./QueryEditorToolbar.tsx', import.meta.url), 'utf8');
     const timerSource = readFileSync(new URL('./queryEditor/queryEditorExecutionTimer.ts', import.meta.url), 'utf8');
-    const editorSource = readFileSync(new URL('./QueryEditor.tsx', import.meta.url), 'utf8');
+    // 计时状态在 useQueryEditorCoreState，状态栏在 QueryEditorEditorPane，结果区在 QueryEditorResultsArea
+    const editorSource = ['QueryEditor.tsx', 'queryEditor/hooks/useQueryEditorCoreState.ts', 'queryEditor/QueryEditorEditorPane.tsx', 'queryEditor/QueryEditorResultsArea.tsx']
+      .map((file) => readFileSync(new URL(`./${file}`, import.meta.url), 'utf8'))
+      .join('\n');
     const css = readV2ThemeCss();
     const statusbarCss = css.slice(
       css.indexOf('.gn-query-execution-statusbar {'),
@@ -373,8 +379,9 @@ describe('QueryEditorToolbar layout', () => {
     );
     expect(wordWrapCss).toContain('align-items: center;');
     expect(wordWrapCss).toContain('justify-content: center;');
-    expect(wordWrapCss).toContain('width: 16px;');
-    expect(wordWrapCss).toContain('height: 16px;');
+    // The icon is the shared line-icon family now: it sizes with the font, like every other toolbar icon.
+    expect(wordWrapCss).toContain('font-size: var(--gn-toolbar-icon-size, 17px);');
+    expect(toolbarSource).toContain('GnWrapIcon');
     expect(wordWrapCss).not.toContain('translateY');
   });
 
@@ -469,7 +476,8 @@ describe('QueryEditorToolbar layout', () => {
 
   it('uses the table context-menu visual grammar for every v2 action popup', () => {
     const toolbarSource = readFileSync(new URL('./QueryEditorToolbar.tsx', import.meta.url), 'utf8');
-    const queryEditorSource = readFileSync(new URL('./QueryEditor.tsx', import.meta.url), 'utf8');
+    // Monaco 右键菜单装饰在挂载 hook 中注册
+    const queryEditorSource = readFileSync(new URL('./queryEditor/hooks/useQueryEditorMonacoMount.ts', import.meta.url), 'utf8');
     const sharedPopupSource = readFileSync(new URL('./common/V2ActionMenuPopup.tsx', import.meta.url), 'utf8');
     const css = readV2ThemeCss();
 
@@ -504,7 +512,8 @@ describe('QueryEditorToolbar layout', () => {
   });
 
   it('uses distinct case icons for keyword case actions', () => {
-    const queryEditorSource = readFileSync(new URL('./QueryEditor.tsx', import.meta.url), 'utf8');
+    // 格式化菜单在 useQueryEditorFormatting 中构建
+    const queryEditorSource = readFileSync(new URL('./queryEditor/hooks/useQueryEditorFormatting.tsx', import.meta.url), 'utf8');
     const css = readV2ThemeCss();
     const caseIconCss = css.match(/\.gn-query-format-case-icon \{[\s\S]*?\}/)?.[0] || '';
     expect(queryEditorSource).toContain('gn-query-format-case-icon-upper');

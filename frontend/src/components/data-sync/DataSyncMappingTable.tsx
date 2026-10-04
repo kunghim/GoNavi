@@ -1,13 +1,4 @@
-import React, {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import { createPortal } from 'react-dom';
-
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   DataSyncCompareMode,
   DataSyncObjectMetadata,
@@ -16,299 +7,17 @@ import type {
 } from './model';
 import type { DataSyncWorkbenchTranslate } from './text';
 import type { DataSyncMetadataResult } from './useDataSyncMetadata';
-
-const normalizeName = (value: string): string => value.trim().toLowerCase();
+import {
+  normalizeName,
+  ObjectMetadataStatus,
+  targetStatus,
+  mappingReady,
+} from './mappingTable/dataSyncMappingStatus';
+import { DataSyncObjectCombobox } from './mappingTable/DataSyncObjectCombobox';
 
 const MAPPING_BATCH_SIZE = 100;
-const OBJECT_COMBOBOX_MENU_GAP = 3;
-const OBJECT_COMBOBOX_MENU_MAX_HEIGHT = 260;
-const OBJECT_COMBOBOX_MENU_MIN_HEIGHT = 120;
-
-type MappingTargetStatus = 'exists' | 'create' | 'missing' | 'pending';
-
-const mappingReady = (
-  mapping: DataSyncTableMapping,
-  taskKind: DataSyncTaskKind,
-  targetState: MappingTargetStatus,
-): boolean =>
-  Boolean(
-    (taskKind === 'querySink' || mapping.sourceObject.trim()) &&
-      mapping.targetObject.trim() &&
-      targetState !== 'pending' &&
-      (mapping.targetMode !== 'existing_only' || targetState === 'exists') &&
-      (!['reconcile', 'cdc'].includes(taskKind) || mapping.keyColumns.length > 0) &&
-      (taskKind !== 'cdc' || mapping.fields.length > 0),
-  );
-
-const ObjectMetadataStatus: React.FC<{
-  side: 'source' | 'target';
-  state: DataSyncMetadataResult<DataSyncObjectMetadata>;
-  t: DataSyncWorkbenchTranslate;
-  showRetry?: boolean;
-}> = ({ side, state, t, showRetry = true }) => (
-  <div
-    className="gn-data-sync-object-status"
-    data-metadata-scope={`${side}-objects`}
-    data-status={state.status}
-  >
-    <span>{t(`mapping.${side}`)}</span>
-    <strong>
-      {state.status === 'loading'
-        ? t('metadata.loading_objects')
-        : state.status === 'error'
-          ? t('metadata.load_failed')
-          : state.status === 'idle'
-            ? t('metadata.endpoint_required')
-            : t('metadata.objects_count', { count: state.items.length })}
-    </strong>
-    {showRetry && state.status === 'error' ? (
-      <button
-        type="button"
-        className="gn-data-sync-link-button"
-        onClick={state.reload}
-      >
-        {t('metadata.retry')}
-      </button>
-    ) : null}
-  </div>
-);
-
-const DataSyncObjectCombobox: React.FC<{
-  id: string;
-  side: 'source' | 'target';
-  value: string;
-  options: DataSyncObjectMetadata[];
-  disabled: boolean;
-  allowCustom: boolean;
-  labelledBy?: string;
-  t: DataSyncWorkbenchTranslate;
-  onChange: (value: string) => void;
-}> = ({ id, side, value, options, disabled, allowCustom, labelledBy, t, onChange }) => {
-  const [open, setOpen] = useState(false);
-  const [showAll, setShowAll] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(-1);
-  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const listId = `gn-data-sync-object-list-${id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
-  const canPortal = typeof document !== 'undefined';
-  const filtered = useMemo(() => {
-    const needle = showAll ? '' : normalizeName(value);
-    return options
-      .filter((object) => side === 'source' || object.kind !== 'view')
-      .filter((object) => !needle || normalizeName(object.name).includes(needle))
-      .slice(0, 100);
-  }, [options, showAll, side, value]);
-  const exactMatch = options.some(
-    (object) => normalizeName(object.name) === normalizeName(value),
-  );
-  const updateMenuPosition = useCallback(() => {
-    const root = rootRef.current;
-    if (!root || typeof root.getBoundingClientRect !== 'function') return;
-    const rect = root.getBoundingClientRect();
-    const viewportHeight = Math.max(globalThis.innerHeight || 0, 1);
-    const viewportWidth = Math.max(globalThis.innerWidth || 0, rect.width);
-    const spaceBelow = viewportHeight - rect.bottom - 8;
-    const spaceAbove = rect.top - 8;
-    const openUpward =
-      spaceBelow < OBJECT_COMBOBOX_MENU_MIN_HEIGHT && spaceAbove > spaceBelow;
-    const available = openUpward ? spaceAbove : spaceBelow;
-    const maxHeight = Math.max(
-      80,
-      Math.min(
-        OBJECT_COMBOBOX_MENU_MAX_HEIGHT,
-        Number.isFinite(available) && available > 0
-          ? available
-          : OBJECT_COMBOBOX_MENU_MAX_HEIGHT,
-      ),
-    );
-    const width = Math.max(rect.width, 0);
-    const left = Math.max(
-      8,
-      Math.min(rect.left, Math.max(8, viewportWidth - width - 8)),
-    );
-    setMenuStyle({
-      position: 'fixed',
-      top: openUpward ? undefined : rect.bottom + OBJECT_COMBOBOX_MENU_GAP,
-      bottom: openUpward
-        ? viewportHeight - rect.top + OBJECT_COMBOBOX_MENU_GAP
-        : undefined,
-      left,
-      width: width || undefined,
-      maxHeight,
-      zIndex: 2100,
-    });
-  }, []);
-
-  useEffect(() => {
-    setActiveIndex(-1);
-  }, [filtered.length, open, showAll, value]);
-
-  useLayoutEffect(() => {
-    if (!open || !canPortal) return undefined;
-    updateMenuPosition();
-    const onReposition = () => updateMenuPosition();
-    globalThis.addEventListener?.('resize', onReposition);
-    document.addEventListener('scroll', onReposition, true);
-    return () => {
-      globalThis.removeEventListener?.('resize', onReposition);
-      document.removeEventListener('scroll', onReposition, true);
-    };
-  }, [canPortal, filtered.length, open, updateMenuPosition, value]);
-
-  useEffect(() => {
-    if (!open || !canPortal) return undefined;
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target;
-      if (typeof Node === 'undefined' || !(target instanceof Node)) return;
-      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) {
-        return;
-      }
-      setOpen(false);
-    };
-    document.addEventListener('mousedown', onPointerDown);
-    return () => document.removeEventListener('mousedown', onPointerDown);
-  }, [canPortal, open]);
-
-  const menu = open ? (
-    <div
-      ref={menuRef}
-      id={listId}
-      className="gn-data-sync-object-combobox__menu"
-      role="listbox"
-      data-object-combobox-menu="true"
-      data-portaled={canPortal ? 'true' : 'false'}
-      style={canPortal ? menuStyle : undefined}
-    >
-      {filtered.map((object, optionIndex) => (
-        <button
-          id={`${listId}-option-${optionIndex}`}
-          type="button"
-          role="option"
-          aria-selected={normalizeName(object.name) === normalizeName(value)}
-          data-active={activeIndex === optionIndex ? 'true' : 'false'}
-          key={`${object.kind}:${object.name}`}
-          onMouseDown={(event) => {
-            event.preventDefault();
-            onChange(object.name);
-            setOpen(false);
-            setShowAll(false);
-          }}
-        >
-          <span>{object.name}</span>
-          <small>{t(`mapping.object_kind.${object.kind}`)}</small>
-        </button>
-      ))}
-      {filtered.length === 0 ? (
-        allowCustom && value.trim() ? (
-          <div className="gn-data-sync-object-combobox__custom">
-            {t('mapping.will_create_named', { name: value.trim() })}
-          </div>
-        ) : (
-          <div className="gn-data-sync-object-combobox__empty">
-            {t('mapping.no_matching_objects')}
-          </div>
-        )
-      ) : null}
-      {allowCustom && value.trim() && !exactMatch && filtered.length > 0 ? (
-        <div className="gn-data-sync-object-combobox__custom">
-          {t('mapping.will_create_named', { name: value.trim() })}
-        </div>
-      ) : null}
-    </div>
-  ) : null;
-
-  return (
-    <div
-      ref={rootRef}
-      className="gn-data-sync-object-combobox"
-      data-open={open ? 'true' : 'false'}
-    >
-      <input
-        ref={inputRef}
-        className="gn-data-sync-table-input gn-data-sync-mono"
-        data-object-side={side}
-        role="combobox"
-        aria-autocomplete="list"
-        aria-expanded={open}
-        aria-labelledby={labelledBy}
-        aria-controls={listId}
-        aria-activedescendant={
-          open && activeIndex >= 0 ? `${listId}-option-${activeIndex}` : undefined
-        }
-        value={value}
-        placeholder={t(`mapping.${side}_placeholder`)}
-        disabled={disabled}
-        autoComplete="off"
-        onFocus={() => {
-          setOpen(true);
-          setShowAll(true);
-        }}
-        onBlur={() => globalThis.setTimeout(() => setOpen(false), 0)}
-        onChange={(event) => {
-          setShowAll(false);
-          setOpen(true);
-          onChange(event.target.value);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') setOpen(false);
-          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-            event.preventDefault();
-            setOpen(true);
-            setActiveIndex((current) => {
-              if (filtered.length === 0) return -1;
-              const direction = event.key === 'ArrowDown' ? 1 : -1;
-              if (current < 0) return direction > 0 ? 0 : filtered.length - 1;
-              return (current + direction + filtered.length) % filtered.length;
-            });
-          }
-          if (event.key === 'Enter' && activeIndex >= 0 && filtered[activeIndex]) {
-            event.preventDefault();
-            onChange(filtered[activeIndex].name);
-            setOpen(false);
-          }
-        }}
-      />
-      <button
-        type="button"
-        className="gn-data-sync-object-combobox__toggle"
-        aria-label={t('mapping.open_object_list')}
-        disabled={disabled}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => {
-          if (open && showAll) {
-            setOpen(false);
-            return;
-          }
-          setShowAll(true);
-          setOpen(true);
-          inputRef.current?.focus();
-        }}
-      >
-        ▾
-      </button>
-      {canPortal && menu ? createPortal(menu, document.body) : menu}
-    </div>
-  );
-};
-
-const targetStatus = (
-  mapping: DataSyncTableMapping,
-  targetObjects: DataSyncMetadataResult<DataSyncObjectMetadata>,
-): MappingTargetStatus => {
-  if (targetObjects.status !== 'ready') return 'pending';
-  const exists = targetObjects.items.some(
-    (object) =>
-      object.kind !== 'view' &&
-      normalizeName(object.name) === normalizeName(mapping.targetObject),
-  );
-  if (exists) return 'exists';
-  if (mapping.targetObject.trim() && mapping.targetMode === 'create_or_reuse') {
-    return 'create';
-  }
-  return 'missing';
-};
+/** 定位高亮的保留时长：够看清跳到了哪一行，又不至于长时间干扰阅读。 */
+const LOCATED_HIGHLIGHT_MS = 2400;
 
 export const DataSyncMappingTable: React.FC<{
   mappings: DataSyncTableMapping[];
@@ -326,6 +35,12 @@ export const DataSyncMappingTable: React.FC<{
   onRemove: (mappingId: string) => void;
   onRemoveMany?: (mappingIds: string[]) => void;
   onInspectFields?: (mappingId: string) => void;
+  /**
+   * 需要滚动到并高亮的映射行 id。预检问题点「定位」时由外层传入；
+   * 行被找到后由 `onLocated` 通知外层清空，避免再次渲染时重复跳动。
+   */
+  focusMappingId?: string;
+  onLocated?: () => void;
 }> = ({
   mappings,
   taskKind,
@@ -342,12 +57,17 @@ export const DataSyncMappingTable: React.FC<{
   onRemove,
   onRemoveMany,
   onInspectFields,
+  focusMappingId,
+  onLocated,
 }) => {
   const [catalogSearch, setCatalogSearch] = useState('');
   const [expandedMappingIds, setExpandedMappingIds] = useState<Set<string>>(
     new Set(),
   );
   const [visibleLimit, setVisibleLimit] = useState(MAPPING_BATCH_SIZE);
+  // 定位后短暂高亮的行。定时清除，避免用户下一次进来看见一个「不知道哪来的」高亮。
+  const [locatedMappingId, setLocatedMappingId] = useState('');
+  const locateTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
   const mappingListRef = useRef<HTMLDivElement | null>(null);
   const previousMappingIdsRef = useRef(
     new Set(mappings.map((mapping) => mapping.id)),
@@ -542,6 +262,69 @@ export const DataSyncMappingTable: React.FC<{
     );
   }, [mappings, orderedMappings]);
 
+  useEffect(() => {
+    const target = (focusMappingId || '').trim();
+    if (!target) return undefined;
+    const index = orderedMappings.findIndex((mapping) => mapping.id === target);
+    if (index < 0) {
+      // 行可能对不上（后端稳定键与本地行 id 分属两套标识）。交给外层决定
+      // 如何处理，这里保持沉默，避免弹出与用户操作无关的错误。
+      onLocated?.();
+      return undefined;
+    }
+    // 目标行可能落在「显示更多」之外：先展开到它，再滚动定位。
+    setVisibleLimit((current) => (index < current ? current : index + 1));
+    const schedule =
+      typeof globalThis.requestAnimationFrame === 'function'
+        ? globalThis.requestAnimationFrame.bind(globalThis)
+        : (callback: FrameRequestCallback) => {
+            callback(0);
+            return 0;
+          };
+    const handle = schedule(() => {
+      // 逐行比对而不是拼选择器：映射 id 含冒号，直接拼进 querySelector 会
+      // 被当成伪类，且 CSS.escape 在测试环境里不一定可用。
+      const rows = Array.from(
+        mappingListRef.current?.querySelectorAll<HTMLElement>('[data-mapping-id]') || [],
+      );
+      const row = rows.find((candidate) => candidate.dataset.mappingId === target);
+      if (!row) {
+        onLocated?.();
+        return;
+      }
+      row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      row
+        .querySelector<HTMLElement>(
+          'button:not(:disabled), input:not(:disabled), select:not(:disabled)',
+        )
+        ?.focus();
+      setLocatedMappingId(target);
+      if (locateTimerRef.current !== null) {
+        globalThis.clearTimeout(locateTimerRef.current);
+      }
+      locateTimerRef.current = globalThis.setTimeout(() => {
+        locateTimerRef.current = null;
+        setLocatedMappingId('');
+      }, LOCATED_HIGHLIGHT_MS);
+      onLocated?.();
+    });
+    return () => {
+      if (typeof globalThis.cancelAnimationFrame === 'function') {
+        globalThis.cancelAnimationFrame(handle);
+      }
+    };
+  }, [focusMappingId, orderedMappings, onLocated]);
+
+  useEffect(
+    () => () => {
+      if (locateTimerRef.current !== null) {
+        globalThis.clearTimeout(locateTimerRef.current);
+        locateTimerRef.current = null;
+      }
+    },
+    [],
+  );
+
   return (
     <section
       className={`gn-data-sync-section${showCatalog ? ' gn-data-sync-section--mappings' : ''}`}
@@ -680,6 +463,7 @@ export const DataSyncMappingTable: React.FC<{
                 key={mapping.id}
                 className="gn-data-sync-mapping-row"
                 data-mapping-id={mapping.id}
+                data-located={locatedMappingId === mapping.id ? 'true' : 'false'}
                 data-ready={ready ? 'true' : 'false'}
                 data-source-locked={showCatalog ? 'true' : 'false'}
                 data-expanded={detailsOpen ? 'true' : 'false'}

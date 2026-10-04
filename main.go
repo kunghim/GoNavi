@@ -22,6 +22,7 @@ import (
 	"GoNavi-Wails/internal/mcpserver"
 	"GoNavi-Wails/internal/nativewindow"
 	"GoNavi-Wails/internal/webserver"
+	"GoNavi-Wails/shared/i18n"
 
 	"github.com/wailsapp/wails/v2"
 	wailslogger "github.com/wailsapp/wails/v2/pkg/logger"
@@ -112,6 +113,10 @@ func main() {
 			return
 		}
 	}
+	// Started by a "Return to GoNavi" link while GoNavi is already open: wake it and leave.
+	if handOffDeepLink(os.Args[1:], executablePath) {
+		return
+	}
 	handled, err := runSpecialMode(os.Args[1:])
 	if handled {
 		if err != nil && !isNormalSpecialModeExit(err) {
@@ -150,6 +155,8 @@ func main() {
 			defer releaseSingleInstance()
 		}
 	}
+	deepLinks := &deepLinkWaker{activator: primaryActivator}
+	defer startDeepLinks(executablePath, deepLinks)()
 	// Clear WebView2 processes left behind by an earlier exit before this
 	// process creates its own browser, then arm a reaper for the next exit.
 	app.ReapOrphanedWindowsWebViewProcesses()
@@ -157,6 +164,7 @@ func main() {
 	// Create an instance of the app structure
 	application := app.NewApp()
 	aiService := aiservice.NewServiceWithConfigChangeHandler(app.NewCloudBackupChangeHandler(application))
+	aiservice.SetBuiltinAIClientVersion(app.CurrentVersion())
 	agentTools, agentToolsErr := newDesktopAgentToolCatalog(application, aiService)
 	if agentToolsErr != nil {
 		logger.Warnf("初始化 AI Agent 工具目录失败：%v", agentToolsErr)
@@ -176,13 +184,21 @@ func main() {
 	windowChrome := resolveMainWindowChrome(runtime.GOOS)
 	var runtimeCtx context.Context
 	var appMenu *menu.Menu
+	var preferencesMenu *macPreferencesMenu
 	if strings.EqualFold(strings.TrimSpace(runtime.GOOS), "darwin") {
-		appMenu = buildMacApplicationMenu(func() {
-			if runtimeCtx == nil {
-				return
+		emitNative := func(event string) {
+			if runtimeCtx != nil {
+				wailsRuntime.EventsEmit(runtimeCtx, event)
 			}
-			wailsRuntime.EventsEmit(runtimeCtx, nativeSelectCurrentLineEvent)
-		}, windowChrome.Frameless)
+		}
+		menuLocalizer, localizerErr := i18n.NewLocalizer(resolveStartupMenuLanguage())
+		if localizerErr != nil {
+			logger.Warnf("加载菜单栏多语言目录失败：%v", localizerErr)
+		}
+		preferencesMenu = newMacPreferencesMenu(menuLocalizer, emitNative)
+		appMenu = buildMacApplicationMenu(func() {
+			emitNative(nativeSelectCurrentLineEvent)
+		}, windowChrome.Frameless, preferencesMenu.topLevelItems()...)
 	}
 
 	// Keep the native startup barrier before showing the packaged application icon.
@@ -221,6 +237,24 @@ func main() {
 		OnStartup: func(ctx context.Context) {
 			defer signalStartupNativeIconReady()
 			runtimeCtx = ctx
+			if preferencesMenu != nil {
+				wailsRuntime.EventsOn(ctx, nativeMenuLanguageEvent, func(data ...interface{}) {
+					if len(data) == 0 {
+						return
+					}
+					if language, ok := data[0].(string); ok && preferencesMenu.setLanguage(language) {
+						wailsRuntime.MenuUpdateApplicationMenu(ctx)
+					}
+				})
+				wailsRuntime.EventsOn(ctx, nativeMenuThemeEvent, func(data ...interface{}) {
+					if len(data) == 0 {
+						return
+					}
+					if mode, ok := data[0].(string); ok && preferencesMenu.setTheme(mode) {
+						wailsRuntime.MenuUpdateApplicationMenu(ctx)
+					}
+				})
+			}
 			if hideWindowUntilFrontendReady {
 				// Subscribe before startup continues so a fast first paint cannot
 				// emit gonavi:frontend-ready into an empty event bus.
@@ -248,8 +282,8 @@ func main() {
 				})
 			}
 			if isWindowsDesktop {
-				if err := app.MigrateLegacyApplicationShortcuts(application); err != nil {
-					logger.Warnf("迁移 Windows 应用快捷方式失败：%v", err)
+				if err := app.InitializePersistedNativeBrandIcon(application, ctx); err != nil {
+					logger.Warnf("启动时应用已保存的 Windows 品牌图标失败：%v", err)
 				}
 			}
 			// The icon is now ready; the remaining lifecycle services may continue
@@ -261,6 +295,7 @@ func main() {
 				startupGate.markIconReady()
 			}
 			primaryActivator.bindRuntimeContext(ctx)
+			deepLinks.bind(ctx)
 			lifecycleCtx := ctx
 			if nativeWindowManager != nil {
 				if err := nativewindow.InitializeLifecycle(nativeWindowManager, ctx); err != nil {
@@ -295,6 +330,7 @@ func main() {
 			TitleBar:             windowChrome.TitleBar,
 			WebviewIsTransparent: true,
 			WindowIsTranslucent:  true,
+			OnUrlOpen:            deepLinks.openURL,
 		},
 	})
 
@@ -335,7 +371,8 @@ func newDesktopAgentToolCatalog(application *app.App, aiService *aiservice.Servi
 	), nil
 }
 
-func buildMacApplicationMenu(onNativeSelectCurrentLine func(), frameless bool) *menu.Menu {
+// buildMacApplicationMenu 组装 macOS 菜单栏；extraMenus 按顺序追加在 SQL 之后。
+func buildMacApplicationMenu(onNativeSelectCurrentLine func(), frameless bool, extraMenus ...*menu.MenuItem) *menu.Menu {
 	result := menu.NewMenuFromItems(
 		menu.AppMenu(),
 		menu.EditMenu(),
@@ -349,6 +386,11 @@ func buildMacApplicationMenu(onNativeSelectCurrentLine func(), frameless bool) *
 			onNativeSelectCurrentLine()
 		}
 	})
+	for _, extra := range extraMenus {
+		if extra != nil {
+			result.Append(extra)
+		}
+	}
 	return result
 }
 

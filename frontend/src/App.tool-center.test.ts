@@ -1,19 +1,81 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { readCssWithImports } from './test/readCssWithImports';
 
-const appSource = readFileSync(
-  fileURLToPath(new globalThis.URL('./App.tsx', import.meta.url)),
-  'utf8',
-);
-const appCss = readFileSync(
-  fileURLToPath(new globalThis.URL('./App.css', import.meta.url)),
-  'utf8',
-);
-const sidebarSource = readFileSync(
-  fileURLToPath(new globalThis.URL('./components/Sidebar.tsx', import.meta.url)),
-  'utf8',
-);
+// App.tsx 已拆成 hook / 子组件 / 辅助模块（src/appShell），源码扫描按原顺序聚合。
+const APP_SOURCE_MODULES = [
+  'App.tsx',
+  'appShell/appSettingsConstants.ts',
+  'appShell/ThemeSettingsSlider.tsx',
+  'appShell/appEnvironment.ts',
+  'appShell/connectionPackageImport.ts',
+  'appShell/settingsCenterPanes.ts',
+  'appShell/globalProxySettings.ts',
+  'appShell/aboutSettingsFormat.ts',
+  'appShell/SidebarMetadataSortableRow.tsx',
+  'appShell/appLayoutParts.ts',
+  'appShell/settingsCenterNavigation.ts',
+  'appShell/hooks/useAppCoreState.ts',
+  'appShell/hooks/useAppShellState.ts',
+  'appShell/hooks/useAppBootstrapEffects.ts',
+  'appShell/hooks/useAppStartupEffects.tsx',
+  'appShell/hooks/useAppWindowEffects.ts',
+  'appShell/hooks/useAppSecurityUpdate.ts',
+  'appShell/hooks/useAppUpdateAndDiagnostics.ts',
+  'appShell/hooks/useAppQuitAndUpdate.tsx',
+  'appShell/hooks/useAppConnectionImportExport.ts',
+  'appShell/hooks/useAppProxySettings.ts',
+  'appShell/hooks/useAppSettingsNavigation.ts',
+  'appShell/hooks/useAppDirectorySettingsRender.tsx',
+  'appShell/hooks/useAppWorkbenchActions.ts',
+  'appShell/hooks/useAppLayoutEffects.ts',
+  'appShell/hooks/useAppAntdTheme.tsx',
+  'appShell/hooks/useAppSettingsPanesRender.tsx',
+  'appShell/hooks/useAppAboutSettingsRender.tsx',
+  'appShell/hooks/useAppThemeSettingsRender.tsx',
+  'appShell/settings/ThemeModeSettingsSection.tsx',
+  'appShell/settings/ThemeAppearanceSettingsSection.tsx',
+  'appShell/settings/TabDisplaySettingsSection.tsx',
+  'appShell/settings/DataTableSettingsFields.tsx',
+  'appShell/hooks/useAppSettingsCenterRender.tsx',
+  'appShell/layout/AppTitleBar.tsx',
+  'appShell/layout/AppSider.tsx',
+  'appShell/layout/AppContent.tsx',
+  'appShell/settings/renderAppSettingsCenterModal.tsx',
+  'appShell/settings/toolCenterGroups.tsx',
+  'appShell/settings/toolCenterPaneRenderer.tsx',
+  'appShell/layout/AppGlobalDialogs.tsx',
+];
+const appSource = APP_SOURCE_MODULES
+  .map((file) => readFileSync(fileURLToPath(new globalThis.URL(`./${file}`, import.meta.url)), 'utf8'))
+  .join('\n');
+const appCss = readCssWithImports(fileURLToPath(new globalThis.URL('./App.css', import.meta.url)));
+// Sidebar.tsx 已拆成 components/sidebar/ 下的 hook 与子组件，源码扫描需一并聚合。
+const SIDEBAR_COMPONENT_PARTS = [
+  'sidebarProps.ts',
+  'sidebarRootHelpers.ts',
+  'sidebarSavedQueriesTreeNode.tsx',
+  'V2ExplorerContextSummary.tsx',
+  'useSidebarStoreState.tsx',
+  'useSidebarSearchState.ts',
+  'useSidebarTreeViewState.ts',
+  'useSidebarTitlebarSync.tsx',
+  'useSidebarTreeData.tsx',
+  'useSidebarLocate.ts',
+  'useSidebarTreeEvents.tsx',
+  'useSidebarJvmAndSavedQueries.tsx',
+  'useSidebarConnectionRefresh.ts',
+  'useSidebarVisibility.ts',
+  'useSidebarObjectMenuActions.tsx',
+  'useSidebarContextMenus.tsx',
+  'useSidebarTreeDnd.ts',
+  'useSidebarToolbarModel.tsx',
+  'SidebarObjectExplorer.tsx',
+];
+const sidebarSource = ['./components/Sidebar.tsx', ...SIDEBAR_COMPONENT_PARTS.map((file) => `./components/sidebar/${file}`)]
+  .map((file) => readFileSync(fileURLToPath(new globalThis.URL(file, import.meta.url)), 'utf8'))
+  .join('\n');
 const driverWorkbenchSource = readFileSync(
   fileURLToPath(new globalThis.URL('./components/DriverManagerWorkbench.tsx', import.meta.url)),
   'utf8',
@@ -67,15 +129,13 @@ describe('settings center tool entries', () => {
   it('exposes toolbar button overrides from the theme settings pane', () => {
     expect(appSource.match(/<ToolbarButtonAppearanceSettings \/>/g)).toHaveLength(1);
 
-    const settingsStart = appSource.indexOf('const renderThemeSettingsContentV2 =');
-    const settingsEnd = appSource.indexOf(
-      'const renderThemeSettingsContent =',
-      settingsStart,
-    );
-    const settingsSource = appSource.slice(settingsStart, settingsEnd);
+    // 主题设置面板已拆为 useAppThemeSettingsRender 与各分区组件
+    const settingsSource = APP_SOURCE_MODULES
+      .filter((file) => /useAppThemeSettingsRender|ThemeModeSettingsSection|ThemeAppearanceSettingsSection|TabDisplaySettingsSection|DataTableSettingsFields/.test(file))
+      .map((file) => readFileSync(fileURLToPath(new globalThis.URL(`./${file}`, import.meta.url)), 'utf8'))
+      .join('\n');
 
-    expect(settingsStart).toBeGreaterThanOrEqual(0);
-    expect(settingsEnd).toBeGreaterThan(settingsStart);
+    expect(settingsSource).toContain('const renderThemeSettingsContentV2 =');
     expect(settingsSource).toContain('<ToolbarButtonAppearanceSettings />');
   });
 
@@ -237,7 +297,7 @@ describe('settings center tool entries', () => {
     );
   });
 
-  it('switches mirrors in place from About and Driver Manager without navigating settings', () => {
+  it('lets users pick the mirror from an in-place dropdown in About and Driver Manager instead of cycling to the next source', () => {
     const aboutStart = appSource.indexOf('className="gonavi-about-download-source"');
     const aboutEnd = appSource.indexOf('</section>', aboutStart);
     const aboutSource = appSource.slice(aboutStart, aboutEnd);
@@ -245,14 +305,20 @@ describe('settings center tool entries', () => {
     const driverPaneEnd = appSource.indexOf("activeSettingsCenterPane.key === 'snippet-settings'", driverPaneStart);
     const driverPaneSource = appSource.slice(driverPaneStart, driverPaneEnd);
 
-    expect(aboutSource).toContain('getNextDownloadSource(downloadSource)');
+    // 直接在原地下拉选择目标源，不再「切换」到循环里的下一项，也不跳去设置页。
+    expect(aboutSource).toContain('<DownloadSourceSelect');
     expect(aboutSource).toContain('handleDownloadSourceChange');
+    expect(aboutSource).not.toContain('getNextDownloadSource');
     expect(aboutSource).not.toContain('handleOpenDownloadSourceSettings');
-    expect(driverPaneSource).toContain('onSwitchDownloadSource');
+    expect(driverPaneSource).toContain('onChangeDownloadSource');
+    expect(driverPaneSource).not.toContain('onSwitchDownloadSource');
     expect(driverPaneSource).not.toContain("handleOpenSettingsCenterPane('services', 'download-source')");
-    expect(driverWorkbenchSource).toContain('handleSwitchDownloadSource');
+    expect(driverWorkbenchSource).toContain('<DownloadSourceSelect');
+    expect(driverWorkbenchSource).toContain('handleSelectDownloadSource');
+    expect(driverWorkbenchSource).not.toContain('getNextDownloadSource');
     expect(driverWorkbenchSource).not.toContain('requestDownloadSourceSettings');
-    expect(driverModalSource).toContain('onSwitchDownloadSource');
+    expect(driverModalSource).toContain('onChangeDownloadSource');
+    expect(driverModalSource).not.toContain('onSwitchDownloadSource');
     expect(driverModalSource).not.toContain('onOpenDownloadSourceSettings');
   });
 
