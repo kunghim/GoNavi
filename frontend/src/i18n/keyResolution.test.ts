@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { DATA_SYNC_WORKBENCH_TEXT_KEYS } from '../components/data-sync/text';
+import { messages as legacyMessages } from '../../../shared/i18n/messages';
 
 /**
  * 全局不变式：源码中 t('字面量') 引用的每个 key，都必须能经所属翻译器得到译文。
@@ -33,8 +34,15 @@ const LOCAL_CATALOGS: readonly LocalCatalog[] = [
   },
 ];
 
+// 位于局部词典目录、但实际使用全局翻译器（shared/i18n）的文件，按全局链解析。
+const GLOBAL_TRANSLATOR_FILES: ReadonlySet<string> = new Set([
+  `${frontendSrc}/components/data-sync/DataSyncBackgroundNotice.tsx`,
+]);
+
 const localCatalogFor = (file: string): LocalCatalog | undefined =>
-  LOCAL_CATALOGS.find((catalog) => file.startsWith(catalog.sourceDirectory));
+  GLOBAL_TRANSLATOR_FILES.has(file)
+    ? undefined
+    : LOCAL_CATALOGS.find((catalog) => file.startsWith(catalog.sourceDirectory));
 
 // 与 src/i18n/index.ts 的 toCatalogKey 保持一致
 const ACTION_ALIASES: Record<string, string> = {
@@ -74,10 +82,7 @@ describe('i18n key resolution', () => {
     const catalogKeys = new Set(Object.keys(
       JSON.parse(readFileSync(`${repoRoot}shared/i18n/zh-CN.json`, 'utf8')) as Record<string, string>,
     ));
-    const legacySource = readFileSync(`${repoRoot}shared/i18n/messages.ts`, 'utf8');
-    const legacyKeys = new Set(
-      Array.from(legacySource.matchAll(/^\s{4}["']([a-zA-Z0-9_.-]+)["']\s*:/gm), (match) => match[1]),
-    );
+    const legacyKeys = new Set(Object.values(legacyMessages).flatMap((catalog) => Object.keys(catalog)));
 
     const unresolved: string[] = [];
     let scanned = 0;

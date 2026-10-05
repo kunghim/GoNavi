@@ -69,11 +69,25 @@ func deterministicSnapshotTransform(transform string) bool {
 }
 
 func (s *SyncEngine) applySnapshotChanges(config SyncConfig, res *SyncResult, sourceTable, targetTable string, applier db.BatchApplier, changes connection.ChangeSet, indexBase int) (appliedChangeCounts, error) {
+	applied, err := s.applySnapshotChangesByPolicy(config, res, sourceTable, targetTable, applier, changes, indexBase)
+	if err != nil {
+		// 所有落库路径（差异同步、直接导入、SQL 结果集）都经过这里，统一给「字节计长目标 + 值太长」补提示。
+		if hint := valueTooLongHint(resolveMigrationDBType(config.TargetConfig), targetTable, applier, changes, err); hint != "" {
+			err = syncLocalizedError{message: err.Error() + " —— " + hint, cause: err}
+		}
+	}
+	return applied, err
+}
+
+func (s *SyncEngine) applySnapshotChangesByPolicy(config SyncConfig, res *SyncResult, sourceTable, targetTable string, applier db.BatchApplier, changes connection.ChangeSet, indexBase int) (appliedChangeCounts, error) {
 	policy, err := normalizeRowErrorPolicy(config.RowErrorPolicy)
 	if err != nil {
 		return appliedChangeCounts{}, err
 	}
 	if policy == RowErrorPolicyStop {
+		if targetNeedsSingleKindBatches(config.TargetConfig) {
+			return s.applyChangesByKind(config, res, targetTable, applier, changes)
+		}
 		return s.applyChangesInBatches(config.JobID, res, targetTable, applier, changes, config.BatchSize)
 	}
 	return s.applySnapshotChangesOneByOne(config, res, sourceTable, targetTable, applier, changes, indexBase)

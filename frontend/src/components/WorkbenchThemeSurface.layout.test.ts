@@ -1,15 +1,9 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readCssWithImports } from '../test/readCssWithImports';
 
-const readWorkbenchCss = (): string => readFileSync(
-  new URL('../styles/v2-theme-workbench.css', import.meta.url),
-  'utf8',
-);
+const readWorkbenchCss = (): string => readCssWithImports(new URL('../styles/v2-theme-workbench.css', import.meta.url));
 
-const readV2ThemeCss = (): string => readFileSync(
-  new URL('../v2-theme.css', import.meta.url),
-  'utf8',
-);
+const readV2ThemeCss = (): string => readCssWithImports(new URL('../v2-theme.css', import.meta.url));
 
 const readSection = (css: string, startMarker: string, endMarker: string): string => {
   const start = css.indexOf(startMarker);
@@ -107,6 +101,37 @@ describe('V2 workbench theme surfaces', () => {
     expect(valueTopRule).toContain('height: auto;');
     expect(valueTopRule).not.toContain('grid-column:');
     expect(valueTopRule).not.toContain('grid-row:');
+    expect(dividerRule).toContain('grid-row: 1;');
+    expect(dividerRule).not.toContain('grid-row: 1 / 3;');
+  });
+
+  it('keeps Nacos config-list and detail vertical tracks independent', () => {
+    const css = readWorkbenchCss();
+    const nacosCss = readSection(
+      css,
+      '/* ─── V2 Nacos workbench',
+      '/* ─── Nacos service discovery:',
+    );
+    const rootRule = readRule(nacosCss, 'body[data-ui-version="v2"] .gn-v2-nacos-split');
+    const listPaneRule = readRule(nacosCss, 'body[data-ui-version="v2"] .gn-v2-nacos-list-pane');
+    const detailPaneRule = readRule(nacosCss, 'body[data-ui-version="v2"] .gn-v2-nacos-detail-pane');
+    const headerRule = readRule(nacosCss, 'body[data-ui-version="v2"] .gn-v2-nacos-pane-header');
+    const dividerRule = readRule(
+      nacosCss,
+      'body[data-ui-version="v2"] .gn-v2-nacos-split > .redis-resizable-divider',
+    );
+
+    // A shared subgrid row let the config toolbar's wrapping drive the detail
+    // header's height, so dragging the divider moved the other pane's header.
+    expect(rootRule).toContain('grid-template-rows: minmax(0, 1fr);');
+    expect(rootRule).not.toContain('grid-template-rows: max-content minmax(0, 1fr);');
+    expect(listPaneRule).toContain('grid-row: 1;');
+    expect(listPaneRule).toContain('grid-template-rows: max-content minmax(0, 1fr);');
+    expect(listPaneRule).not.toContain('grid-template-rows: subgrid;');
+    expect(detailPaneRule).toContain('grid-row: 1;');
+    expect(detailPaneRule).toContain('grid-template-rows: max-content minmax(0, 1fr);');
+    expect(detailPaneRule).not.toContain('grid-template-rows: subgrid;');
+    expect(headerRule).not.toContain('height: 100%;');
     expect(dividerRule).toContain('grid-row: 1;');
     expect(dividerRule).not.toContain('grid-row: 1 / 3;');
   });

@@ -6,6 +6,7 @@ import {
   isConnectionStructureEditRestricted,
 } from './connectionReadOnly';
 import { normalizeOceanBaseProtocol } from './oceanBaseProtocol';
+import { isElasticsearchFamilyType } from './elasticsearchFamily';
 
 type ConnectionLike = Pick<
   ConnectionConfig,
@@ -84,6 +85,10 @@ const normalizeDataSourceToken = (raw: string): string => {
     case 'rabbit-mq':
     case 'rabbit_mq':
       return 'rabbitmq';
+    case 'pulsar':
+    case 'apache-pulsar':
+    case 'apache_pulsar':
+      return 'pulsar';
     case 'intersystems':
     case 'intersystemsiris':
     case 'inter-systems':
@@ -128,6 +133,7 @@ const MESSAGE_QUEUE_DATA_SOURCE_TYPES = new Set([
   'kafka',
   'rocketmq',
   'rabbitmq',
+  'pulsar',
 ]);
 
 /**
@@ -218,6 +224,7 @@ export type DataSourceUICapabilityFlags = {
   preferManualTotalCount?: boolean;
   supportsApproximateTableCount?: boolean;
   supportsApproximateTotalPages?: boolean;
+  userManagement?: boolean;
 };
 
 export type DataSourceCapabilityContract = {
@@ -314,6 +321,8 @@ export type DataSourceCapabilities = {
   supportsApproximateTableCount: boolean;
   supportsApproximateTotalPages: boolean;
   supportsRelationalObjectKindFilter: boolean;
+  // 用户管理入口：自定义连接一律关闭（方言由用户驱动决定）；结构修改受限时仍可只读查看。
+  supportsUserManagement: boolean;
 };
 
 export const getDataSourceCapabilities = (config: ConnectionLike): DataSourceCapabilities => {
@@ -348,7 +357,7 @@ export const getDataSourceCapabilities = (config: ConnectionLike): DataSourceCap
       && !dataImportRestricted
       && !structureEditRestricted
       && ui.copyTable === true,
-    supportsCreateIndex: contract.type === 'elasticsearch' && !structureEditRestricted,
+    supportsCreateIndex: isElasticsearchFamilyType(contract.type) && !structureEditRestricted,
     supportsCreateDatabase: !structureEditRestricted && ui.createDatabase === true,
     supportsCreateDatabaseCharset:
       !structureEditRestricted && ui.createDatabaseCharset === true,
@@ -363,5 +372,6 @@ export const getDataSourceCapabilities = (config: ConnectionLike): DataSourceCap
     supportsApproximateTotalPages: ui.supportsApproximateTotalPages === true,
     supportsRelationalObjectKindFilter:
       contract.schema.supported && !isMessageQueueDataSource(config),
+    supportsUserManagement: !customConnection && ui.userManagement === true,
   };
 };

@@ -50,6 +50,9 @@ func normalizeRunConfig(config connection.ConnectionConfig, dbName string) conne
 	default:
 		// sqlite: 无需设置 Database
 		// 其他 custom: 语义不明确，避免污染缓存 key
+		if registryDBNameSelectsDatabase(config.Type) {
+			runConfig.Database = name
+		}
 	}
 
 	return runConfig
@@ -126,11 +129,11 @@ func normalizeSchemaAndTable(config connection.ConnectionConfig, dbName string, 
 		return rawDB, rawTable
 	}
 
-	dbType := resolveDDLDBType(config)
+	dbType := normalizeDriverType(resolveDDLDBType(config))
 
 	// Elasticsearch：索引名可能含多个点（如 iot_pro_biz_operate_log.index.20240626），
-	// 不能按点分割，直接返回原始数据库名和完整表名。
-	if dbType == "elasticsearch" || dbType == "iotdb" || dbType == "rocketmq" || dbType == "mqtt" || dbType == "kafka" || dbType == "rabbitmq" || dbType == "trino" {
+	// 不能按点分割，直接返回原始数据库名和完整表名；描述表里声明 flatObjectNames 的类型（etcd 键路径）同理。
+	if registryUsesFlatObjectNames(dbType) || dbType == "elasticsearch" || dbType == "iotdb" || dbType == "rocketmq" || dbType == "mqtt" || dbType == "kafka" || dbType == "rabbitmq" || dbType == "pulsar" || dbType == "trino" {
 		return rawDB, rawTable
 	}
 
@@ -228,8 +231,8 @@ func normalizeSQLiteSchemaAndTable(dbName, tableName string) (string, string) {
 
 func normalizeMetadataSchemaAndTable(config connection.ConnectionConfig, dbName string, tableName string) (string, string) {
 	schema, table := normalizeSchemaAndTable(config, dbName, tableName)
-	switch resolveDDLDBType(config) {
-	case "rocketmq", "mqtt", "kafka", "rabbitmq", "trino":
+	switch normalizeDriverType(resolveDDLDBType(config)) {
+	case "rocketmq", "mqtt", "kafka", "rabbitmq", "pulsar", "trino":
 		return schema, table
 	case "postgres", "kingbase", "highgo", "vastbase", "opengauss", "gaussdb":
 		rawTable := strings.TrimSpace(tableName)

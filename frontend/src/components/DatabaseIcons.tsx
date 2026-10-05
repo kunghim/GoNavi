@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { getRegistryIconConfig, getRegistryIconLabel, listRegistryIconTypes } from './databaseIconsRegistry';
+
 // ─── 公共接口 ───────────────────────────────────────────────
 
 export interface DbIconProps {
@@ -57,6 +59,7 @@ const DB_DEFAULT_COLORS: Record<string, string> = {
     mqtt:       '#0EA5A4',
     kafka:      '#F97316',
     rabbitmq:   '#FF6B35',
+    pulsar:     '#188FFF',
     nacos:      '#2E6BE6',
     chroma:     '#7C3AED',
     qdrant:     '#DC244C',
@@ -68,13 +71,13 @@ const DB_DEFAULT_COLORS: Record<string, string> = {
 };
 
 export const getDbDefaultColor = (type: string): string =>
-    DB_DEFAULT_COLORS[type?.toLowerCase()] || DB_DEFAULT_COLORS.custom;
+    DB_DEFAULT_COLORS[type?.toLowerCase()] || getRegistryIconConfig(type)?.color || DB_DEFAULT_COLORS.custom;
 
 /**
  * 获取数据库图标的静态资源路径（用于直接渲染 img 元素）
  */
 export const getDbIconAssetSrc = (type: string): string => {
-    const config = BRAND_ASSET_CONFIGS[type?.toLowerCase()];
+    const config = resolveBrandAssetConfig(type);
     return config?.src || `/db-icons/${type?.toLowerCase()}.svg`;
 };
 
@@ -140,6 +143,7 @@ const BRAND_ASSET_CONFIGS: Record<string, BrandAssetConfig> = {
         iconScale: 0.84,
     },
     kafka: { src: '/db-icons/kafka.png', iconScale: 0.8 },
+    pulsar: { src: '/db-icons/pulsar.svg', iconScale: 0.8 },
     rabbitmq: { src: '/db-icons/rabbitmq.svg', iconScale: 0.74 },
     nacos: { src: '/db-icons/nacos.svg' },
     chroma: { src: '/db-icons/chroma.svg', iconScale: 0.9 },
@@ -157,16 +161,20 @@ const BRAND_ASSET_CONFIGS: Record<string, BrandAssetConfig> = {
 
 const BRAND_ASSET_TYPES = new Set(Object.keys(BRAND_ASSET_CONFIGS));
 
+/** 品牌资源配置：历史类型查内置表，描述表类型回落到 /db-icons/<type>.svg。 */
+const resolveBrandAssetConfig = (type: string): BrandAssetConfig | undefined =>
+    BRAND_ASSET_CONFIGS[type?.toLowerCase()] ?? getRegistryIconConfig(type);
+
 /**
  * 检查指定数据库类型是否有官方品牌资源配置
  */
 export const hasDbIconAsset = (type: string): boolean => {
-    return BRAND_ASSET_TYPES.has(type?.toLowerCase());
+    return BRAND_ASSET_TYPES.has(type?.toLowerCase()) || Boolean(getRegistryIconConfig(type));
 };
 
 /** 品牌图标：用 <img> 加载官方 svg/png/ico 资源 */
 const BrandAssetIcon: React.FC<{ type: string; size: number; color?: string }> = ({ type, size, color }) => {
-    const config = BRAND_ASSET_CONFIGS[type.toLowerCase()];
+    const config = resolveBrandAssetConfig(type);
     const bgColor = color || config?.borderColor || getDbDefaultColor(type);
     const iconScale = config?.iconScale ?? 0.64;
     return (
@@ -280,6 +288,9 @@ const KafkaIcon: React.FC<DbIconProps> = ({ size = 16, color }) => (
 const RabbitMQIcon: React.FC<DbIconProps> = ({ size = 16, color }) => (
     <BrandAssetIcon type="rabbitmq" size={size} color={color} />
 );
+const PulsarIcon: React.FC<DbIconProps> = ({ size = 16, color }) => (
+    <BrandAssetIcon type="pulsar" size={size} color={color} />
+);
 const NacosIcon: React.FC<DbIconProps> = ({ size = 16, color }) => (
     <BrandAssetIcon type="nacos" size={size} color={color} />
 );
@@ -346,6 +357,7 @@ const DB_ICON_MAP: Record<string, React.FC<DbIconProps>> = {
     mqtt: MQTTIcon,
     kafka: KafkaIcon,
     rabbitmq: RabbitMQIcon,
+    pulsar: PulsarIcon,
     nacos: NacosIcon,
     chroma: ChromaIcon,
     qdrant: QdrantIcon,
@@ -358,17 +370,20 @@ const DB_ICON_MAP: Record<string, React.FC<DbIconProps>> = {
 export const DB_ICON_TYPES: string[] = [
     'mysql', 'mariadb', 'oceanbase', 'postgres', 'redis', 'mongodb', 'jvm',
     'oracle', 'sqlserver', 'sqlite', 'duckdb', 'clickhouse', 'starrocks',
-    'kingbase', 'dameng', 'vastbase', 'opengauss', 'gaussdb', 'goldendb', 'highgo', 'iris', 'cache', 'tdengine', 'iotdb', 'rocketmq', 'mqtt', 'kafka', 'rabbitmq', 'nacos', 'chroma', 'qdrant', 'milvus', 'elasticsearch', 'custom',
+    'kingbase', 'dameng', 'vastbase', 'opengauss', 'gaussdb', 'goldendb', 'highgo', 'iris', 'cache', 'tdengine', 'iotdb', 'rocketmq', 'mqtt', 'kafka', 'rabbitmq', 'pulsar', 'nacos', 'chroma', 'qdrant', 'milvus', 'elasticsearch', ...listRegistryIconTypes(), 'custom',
 ];
 
 /** 该类型是否有品牌图标资源 */
-export const hasBrandSvg = (type: string): boolean => BRAND_ASSET_TYPES.has(type?.toLowerCase());
+export const hasBrandSvg = (type: string): boolean =>
+    BRAND_ASSET_TYPES.has(type?.toLowerCase()) || Boolean(getRegistryIconConfig(type));
 
 /** 获取数据库图标 React 节点 */
 export const getDbIcon = (type: string, color?: string, size?: number): React.ReactNode => {
     const key = (type || 'custom').toLowerCase();
-    const Component = DB_ICON_MAP[key] || CustomIcon;
-    return <Component size={size} color={color} />;
+    const Component = DB_ICON_MAP[key];
+    if (Component) return <Component size={size} color={color} />;
+    if (getRegistryIconConfig(key)) return <BrandAssetIcon type={key} size={size ?? 16} color={color} />;
+    return <CustomIcon size={size} color={color} />;
 };
 
 type DbIconLabelTranslator = (key: string) => string;
@@ -392,14 +407,14 @@ export const getDbIconLabel = (type: string, translate?: DbIconLabelTranslator):
         sqlserver: 'SQL Server', clickhouse: 'ClickHouse', sqlite: 'SQLite',
         starrocks: 'StarRocks',
         duckdb: 'DuckDB', kingbase: 'Kingbase', dameng: 'Dameng',
-        vastbase: 'VastBase', opengauss: 'OpenGauss', gaussdb: 'GaussDB', goldendb: 'GoldenDB', highgo: 'HighGo', iris: 'InterSystems IRIS', cache: 'InterSystems Caché', tdengine: 'TDengine', iotdb: 'Apache IoTDB', rocketmq: 'RocketMQ', mqtt: 'MQTT', kafka: 'Kafka', rabbitmq: 'RabbitMQ', nacos: 'Nacos',
+        vastbase: 'VastBase', opengauss: 'OpenGauss', gaussdb: 'GaussDB', goldendb: 'GoldenDB', highgo: 'HighGo', iris: 'InterSystems IRIS', cache: 'InterSystems Caché', tdengine: 'TDengine', iotdb: 'Apache IoTDB', rocketmq: 'RocketMQ', mqtt: 'MQTT', kafka: 'Kafka', rabbitmq: 'RabbitMQ', pulsar: 'Apache Pulsar', nacos: 'Nacos',
         chroma: 'Chroma',
         qdrant: 'Qdrant',
         milvus: 'Milvus',
         elasticsearch: 'Elasticsearch',
         custom: translateDbIconLabel(translate, 'connection_modal.db_icon_label.custom', 'Custom'),
     };
-    return labels[type?.toLowerCase()] || type;
+    return labels[type?.toLowerCase()] || getRegistryIconLabel(type) || type;
 };
 
 /** 预设颜色列表 */

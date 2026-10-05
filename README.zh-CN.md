@@ -100,19 +100,52 @@
 
 ### 产品截图
 
-每张均为 **完整 GoNavi 应用窗口**，再通过 README 宽度控件等比例缩小展示。
+每张均为 **完整 GoNavi 应用窗口**（1440×900），取自最新 dev 构建，再通过 README 宽度控件等比例缩小展示。
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/01-home-workbench.png" alt="GoNavi 全窗口 — 连接、查询与工作台" width="560" />
-  &nbsp;
-  <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/04-ai-assistant.png" alt="GoNavi 全窗口 — 带表结构上下文的 AI 助手" width="560" />
-</p>
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/01-home-workbench.png" alt="GoNavi 全窗口 — 连接、已存查询与快捷操作的工作台" width="100%" />
+      <br /><sub><b>工作台</b> — 连接、已存查询、快捷操作</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/02-query-editor.png" alt="GoNavi 全窗口 — SQL 编辑器、结果表格与对象树" width="100%" />
+      <br /><sub><b>SQL 编辑器</b> — 语法高亮、结果表格、对象树</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/04-ai-assistant.png" alt="GoNavi 全窗口 — 带表结构上下文并生成 SQL 的 AI 助手" width="100%" />
+      <br /><sub><b>AI 助手</b> — 感知表结构的对话，生成 SQL 可插入 / 执行 / 预览</sub>
+    </td>
+    <td align="center">
+      <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/05-ai-settings.png" alt="GoNavi 全窗口 — AI 设置中的内置工具与推荐流程" width="100%" />
+      <br /><sub><b>AI 设置</b> — 内置工具与推荐排查流程</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/06-new-connection.png" alt="GoNavi 全窗口 — 新建连接的数据源选择器" width="100%" />
+      <br /><sub><b>新建连接</b> — 可搜索、分类的数据源选择器</sub>
+    </td>
+    <td align="center">
+      <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/08-sql-execution-history.png" alt="GoNavi 全窗口 — 带筛选与详情面板的 SQL 执行历史" width="100%" />
+      <br /><sub><b>SQL 执行历史</b> — 筛选、查看详情、一键填回编辑器</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/09-sql-audit.png" alt="GoNavi 全窗口 — SQL 审计中心" width="100%" />
+      <br /><sub><b>SQL 审计中心</b> — 跨连接的脱敏 SQL 审计证据</sub>
+    </td>
+    <td align="center">
+      <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/07-settings-themes.png" alt="GoNavi 全窗口 — 含内置主题的设置中心" width="100%" />
+      <br /><sub><b>设置中心</b> — 内置主题、字体、工作区等</sub>
+    </td>
+  </tr>
+</table>
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/06-new-connection.png" alt="GoNavi 全窗口 — 新建连接的数据源选择器" width="560" />
-</p>
-
-<p align="center"><sub>真实桌面全窗口截图</sub></p>
+<p align="center"><sub>演示数据来自本地实验库 · 连接地址、密钥与供应商配置均未展示</sub></p>
 
 ---
 
@@ -130,24 +163,24 @@
       <sub>统一 AI 模型 API · OpenAI 兼容</sub>
     </td>
     <td align="center" valign="top" width="50%">
-      <a href="https://api.hualong.online/">
+      <a href="https://gonavi.hualong.online/">
         <img src="assets/sponsors/hualong-mark.png" height="120" alt="華龍算力" />
       </a><br/>
-      <b><a href="https://api.hualong.online/">華龍算力</a></b><br/>
+      <b><a href="https://gonavi.hualong.online/">華龍算力</a></b><br/>
       <sub>AI API Gateway · 多模型统一接入 · 国内直连高速端点</sub>
     </td>
   </tr>
 </table>
 
-特别感谢 **[APISmart](https://www.apismart.ai/)** 与 **[華龍算力](https://api.hualong.online/)** 赞助 GoNavi 开源开发。
+特别感谢 **[APISmart](https://www.apismart.ai/)** 与 **[華龍算力](https://gonavi.hualong.online/)** 赞助 GoNavi 开源开发。
 
 | 赞助商 | 提供什么 | 为什么适合 GoNavi |
 |---|---|---|
 | **[APISmart](https://www.apismart.ai/)** | APISmart 通过一个 API 提供对主流 AI 模型的统一访问。开发者只需一个 API Key，即可通过兼容 OpenAI 的接口接入大语言模型、图像和视频模型，无需分别管理多个服务商。智能路由与自动故障切换有助于提升可靠性，集中式账单使使用管理更加轻松。借助 APISmart，开发者能以更精简的平台更快构建并扩展 AI 应用。 | 开发者和 Agent 工作流无需分别接入各家服务商，也能使用多种 AI 能力。 |
-| **[華龍算力](https://api.hualong.online/)** | 華龍算力是一家面向重度 AI 开发者、专注官方直连的高品质模型 API 中转服务商。主要营业 Codex 系列模型，100% 官方源直供，不掺假不注水，欢迎检验。计费透明，Token 级账单可逐笔核验。同时支持企业级高并发，并为企业客户提供专业的管理平台；企业客户可签订正式合同并开具发票，更多详情请进入官网获取联系方式。GPT 系列最低至 0.08 倍率，更有 0.15 倍率的 Pro 稳定分组；邀请好友双向赠送，邀请奖励无上限。 | 稳定的模型通道是 GoNavi 的 AI 助手、MCP 与日常开发工作流的基础设施。 |
+| **[華龍算力](https://gonavi.hualong.online/)** | 華龍算力是一家面向重度 AI 开发者、专注官方直连的高品质模型 API 中转服务商。主要营业 Codex 系列模型，100% 官方源直供，不掺假不注水，欢迎检验。计费透明，Token 级账单可逐笔核验。同时支持企业级高并发，并为企业客户提供专业的管理平台；企业客户可签订正式合同并开具发票，更多详情请进入官网获取联系方式。GPT 系列最低至 0.08 倍率，更有 0.15 倍率的 Pro 稳定分组；邀请好友双向赠送，邀请奖励无上限。 | 稳定的模型通道是 GoNavi 的 AI 助手、MCP 与日常开发工作流的基础设施。 |
 
 - APISmart：[https://www.apismart.ai/](https://www.apismart.ai/) — 统一 AI 模型 API，兼容 OpenAI 接口。
-- 華龍算力：[https://api.hualong.online/](https://api.hualong.online/) — 控制台、文档与国内高速端点。
+- 華龍算力：[https://gonavi.hualong.online/](https://gonavi.hualong.online/) — 控制台、文档与国内高速端点。
 
 > 華龍算力另向本仓库赞助了 **共享 500 亿（50B）token** 额度，供 GoNavi **共建者** 以 **API Key** 方式协作开发使用（非整库人均 50B）。申请与规则见共建入口：[Issue #671](https://github.com/Syngnat/GoNavi/issues/671)。
 
@@ -215,7 +248,7 @@
 | | |
 |---|---|
 | **内置** | MySQL · GoldenDB · PostgreSQL · Oracle · Redis · Chroma · Qdrant · Milvus · RocketMQ · MQTT · Kafka · RabbitMQ |
-| **可选** | MariaDB · Doris · StarRocks · Sphinx · SQL Server · SQLite · DuckDB · OceanBase · 达梦 · 人大金仓 · 瀚高 · 海量 · openGauss · GaussDB · IRIS · Caché · MongoDB · TDengine · IoTDB · ClickHouse · Trino · Elasticsearch · Custom Driver/DSN |
+| **可选** | MariaDB · Doris · StarRocks · Sphinx · SQL Server · SQLite · DuckDB · OceanBase · 达梦 · 人大金仓 · 瀚高 · 海量 · openGauss · GaussDB · IRIS · Caché · MongoDB · TDengine · IoTDB · ClickHouse · Trino · Elasticsearch · TiDB · CockroachDB · KWDB · TimescaleDB · GBase 8a · GBase 8c · GBase 8s · 崖山 · Firebird · QuestDB · GreptimeDB · InfluxDB · Presto · OpenSearch · Weaviate · Meilisearch · Typesense · etcd · ZooKeeper · Custom Driver/DSN |
 
 <details>
 <summary><b>完整能力矩阵</b></summary>
@@ -256,6 +289,25 @@
 | 列式分析 | ClickHouse | 可选驱动代理 | 分析查询、对象浏览、SQL 执行 |
 | 联邦查询 | Trino | 可选驱动代理 | 跨多数据源联邦 SQL、`catalog.schema` 浏览、SQL 执行 |
 | 搜索 | Elasticsearch | 可选驱动代理 | 索引浏览、Mapping 检查、受控 REST 控制台、JSON DSL / query_string 查询 |
+| 关系型 | TiDB | 可选驱动代理 | 兼容 MySQL 的查询、TiDB 执行计划、数据编辑、同步与迁移 |
+| 关系型 | CockroachDB | 可选驱动代理 | PostgreSQL 协议查询、SHOW CREATE 建表语句、数据编辑、同步与迁移 |
+| 时序 | KWDB | 可选驱动代理 | PostgreSQL 协议下的关系库与时序库、数据编辑、同步与迁移 |
+| 时序 | TimescaleDB | 可选驱动代理 | 超表与连续聚合、分块统计、PostgreSQL 工作流、同步与迁移 |
+| 国产数据库 | GBase 8a | 可选驱动代理 | MySQL 协议的 MPP 查询、HASH 索引、按类分批提交、同步与迁移 |
+| 国产数据库 | GBase 8c | 可选驱动代理 | openGauss 内核（A / B / PG 兼容模式）、sha256 认证、对象管理、同步与迁移 |
+| 国产数据库 | GBase 8s | 可选驱动代理 | 经用户自备的 GBase 8s CSDK 接入（Informix SQLI）、对象浏览、数据编辑、SQL 备份恢复 |
+| 国产数据库 | 崖山 YashanDB | 可选驱动代理 | 经用户自备的崖山客户端接入、兼容 Oracle 的查询与 PL/SQL 对象、执行计划、同步与迁移 |
+| 关系型 | Firebird | 可选驱动代理 | Firebird 2.5 / 3.0 / 4–5、存储过程 / 触发器 / 包、数据编辑、SQL 备份恢复 |
+| 时序 | QuestDB | 可选驱动代理 | 分区时序表、SQL 查询、执行计划、追加导入 |
+| 时序 | GreptimeDB | 可选驱动代理 | MySQL 协议查询、TIME INDEX / Tag 元数据、追加导入 |
+| 时序 | InfluxDB | 可选驱动代理 | InfluxDB 1.x（InfluxQL）/ 2.x（Flux）/ 3.x（SQL）、行协议写入、网格编辑 |
+| 联邦查询 | Presto | 可选驱动代理 | PrestoDB / PrestoSQL 多目录、SQL 执行与取消、作为迁移源 |
+| 搜索 | OpenSearch | 可选驱动代理 | OpenSearch 1.x / 2.x / 3.x 索引、受控 REST 控制台、SQL / PPL |
+| 向量数据库 | Weaviate | 可选驱动代理 | Class 与租户、基于 GraphQL 的网格浏览与编辑、向量列 |
+| 搜索 | Meilisearch | 可选驱动代理 | 索引即表、过滤 / 排序下推、文档编辑、REST 控制台 |
+| 搜索 | Typesense | 可选驱动代理 | 集合即表、filter_by 下推、文档编辑、REST 控制台 |
+| 键值 | etcd | 可选驱动代理 | 前缀树浏览、键与租约编辑、etcdctl 风格控制台（v2 / v3 API） |
+| 协调服务 | ZooKeeper | 可选驱动代理 | Znode 树浏览、数据与 ACL 查看、节点编辑、zkCli 风格控制台 |
 | 扩展接入 | Custom Driver/DSN | 自定义 | 通过 Driver + DSN 接入更多数据源 |
 
 </details>
@@ -279,9 +331,10 @@ Elasticsearch 连接复用查询工作区，并按服务端版本提供受控 RE
 
 ### 前置要求
 
-- [Go](https://go.dev/dl/) 1.21+
+- [Go](https://go.dev/dl/) 1.25+
 - [Node.js](https://nodejs.org/) 18+
 - [Wails CLI](https://wails.io/docs/gettingstarted/installation)
+- 仅 Linux：C 编译器、pkg-config，以及 GTK3 / WebKitGTK 开发包
 
 ```bash
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
@@ -308,6 +361,21 @@ wails build -clean   # 发布前推荐
 ```
 
 产物位于 `build/bin`。
+
+Linux 上请先安装构建依赖（按发行版任选其一）：
+
+```bash
+# Debian 12+ / Ubuntu 22.04+
+sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+# Fedora / OpenCloudOS 9
+sudo dnf install -y gcc pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel
+# RHEL / Rocky / AlmaLinux 9（仅提供 WebKitGTK 4.0）
+sudo dnf install -y gcc pkgconf-pkg-config gtk3-devel webkit2gtk3-devel
+# Arch Linux
+sudo pacman -S --needed base-devel gtk3 webkit2gtk-4.1
+```
+
+构建会自动识别本机装的是 WebKitGTK 4.1 还是 4.0。前端编译峰值约需 3 GB 内存。
 
 ### 只想直接用？
 
@@ -606,7 +674,7 @@ fc-cache -fv
 ## 友情链接
 
 - [APISmart](https://www.apismart.ai/) — 统一 AI 模型 API（GoNavi 赞助商）
-- [華龍算力](https://api.hualong.online/) — AI API Gateway（GoNavi 赞助商）
+- [華龍算力](https://gonavi.hualong.online/) — AI API Gateway（GoNavi 赞助商）
 - [linux.do](https://linux.do/)
 - [AI全书](https://aibook.ren/)
 

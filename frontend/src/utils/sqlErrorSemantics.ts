@@ -38,6 +38,8 @@ const SQL_ERROR_RULES: SqlErrorSemanticRule[] = [
       /ora-00933/i,
       /ora-00936/i,
       /you have an error in your sql syntax/i,
+      // Presto / Trino：line 1:8: mismatched input 'FORM'
+      /mismatched input/i,
     ],
   },
   {
@@ -52,6 +54,19 @@ const SQL_ERROR_RULES: SqlErrorSemanticRule[] = [
       /invalid object name/i,
       /ora-00942/i,
       /object\s+.+does not exist/i,
+      // Presto / Trino：Table 'hive.sales.orders' does not exist、Schema / Catalog … does not exist
+      /\b(?:table|view|schema|catalog)\s+.+does not exist/i,
+    ],
+  },
+  {
+    key: 'database_not_selected',
+    fallbackLabel: 'No database selected',
+    fallbackExplanation: 'The connection is running without a default database, and this statement needs one to resolve the unqualified object it references.',
+    fallbackSuggestion: 'Select a database in the query editor toolbar, qualify the object with its database name (db.table), or run USE db first.',
+    patterns: [
+      /no database selected/i,
+      /error\s+1046\b/i,
+      /no schema has been selected to search in/i,
     ],
   },
   {
@@ -65,6 +80,8 @@ const SQL_ERROR_RULES: SqlErrorSemanticRule[] = [
       /invalid column name/i,
       /ora-00904/i,
       /no such column/i,
+      // Presto / Trino：Column 'amount' cannot be resolved
+      /column\s+.+cannot be resolved/i,
     ],
   },
   {

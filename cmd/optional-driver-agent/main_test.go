@@ -383,7 +383,7 @@ func (f *fakeAgentSessionStreamDB) OpenSessionExecer(ctx context.Context) (db.St
 
 func TestQueryWithOptionalTimeout_UsesQueryContext(t *testing.T) {
 	fake := &fakeAgentTimeoutDB{}
-	data, fields, err := queryWithOptionalTimeout(fake, "SELECT 1", int64((2 * time.Second).Milliseconds()))
+	data, fields, err := queryWithOptionalTimeout(context.Background(), fake, "SELECT 1", int64((2 * time.Second).Milliseconds()))
 	if err != nil {
 		t.Fatalf("queryWithOptionalTimeout 返回错误: %v", err)
 	}
@@ -400,7 +400,7 @@ func TestQueryWithOptionalTimeout_UsesQueryContext(t *testing.T) {
 
 func TestExecWithOptionalTimeout_UsesExecContext(t *testing.T) {
 	fake := &fakeAgentTimeoutDB{}
-	affected, err := execWithOptionalTimeout(fake, "DELETE FROM t", int64((2 * time.Second).Milliseconds()))
+	affected, err := execWithOptionalTimeout(context.Background(), fake, "DELETE FROM t", int64((2 * time.Second).Milliseconds()))
 	if err != nil {
 		t.Fatalf("execWithOptionalTimeout 返回错误: %v", err)
 	}
@@ -421,7 +421,7 @@ func TestQueryWithOptionalTimeout_ClickHouseLegacyModeUsesQueryContext(t *testin
 	defer func() { agentDriverType = old }()
 
 	fake := &fakeAgentTimeoutDB{}
-	_, _, err := queryWithOptionalTimeout(fake, "SELECT 1", 0)
+	_, _, err := queryWithOptionalTimeout(context.Background(), fake, "SELECT 1", 0)
 	if err != nil {
 		t.Fatalf("queryWithOptionalTimeout 返回错误: %v", err)
 	}
@@ -1018,12 +1018,12 @@ func TestHandleStreamRequest_UsesSessionStreamerAndWritesChunks(t *testing.T) {
 
 	var out bytes.Buffer
 	writer := bufio.NewWriter(&out)
-	if err := handleStreamRequest(runtimeState, agentRequest{
+	if err := handleStreamRequest(context.Background(), runtimeState, agentRequest{
 		ID:        9,
 		Method:    agentMethodStreamQuery,
 		Query:     "SELECT * FROM person_info",
 		TimeoutMs: int64((2 * time.Second).Milliseconds()),
-	}, writer); err != nil {
+	}, newAgentResponseWriter(writer)); err != nil {
 		t.Fatalf("handleStreamRequest 返回错误: %v", err)
 	}
 
@@ -1115,5 +1115,41 @@ func TestMaybeReleaseAgentMemory_TriggersTrimForLargeJobs(t *testing.T) {
 
 	if triggered != 1 {
 		t.Fatalf("大查询完成后应触发一次内存回收，got=%d", triggered)
+	}
+}
+
+type fakeAgentPartialTableListDB struct {
+	fakeAgentTimeoutDB
+	tables []string
+	err    error
+}
+
+func (f *fakeAgentPartialTableListDB) GetTables(string) ([]string, error) {
+	return append([]string(nil), f.tables...), f.err
+}
+
+func TestHandleRequestGetTablesKeepsPartialResultWithError(t *testing.T) {
+	fake := &fakeAgentPartialTableListDB{
+		tables: []string{"persistent://public/default/orders"},
+		err:    errors.New("admin topic listing denied"),
+	}
+	runtimeState := &agentRuntime{inst: fake, sessions: make(map[string]db.StatementExecer)}
+
+	response := handleRequest(runtimeState, agentRequest{ID: 31, Method: agentMethodGetTables, DBName: "topics"})
+	if response.Success || response.Error != "admin topic listing denied" {
+		t.Fatalf("partial getTables must still fail with the driver error: %#v", response)
+	}
+	if !response.PartialData {
+		t.Fatal("partial getTables must flag PartialData")
+	}
+	tables, ok := response.Data.([]string)
+	if !ok || len(tables) != 1 || tables[0] != fake.tables[0] {
+		t.Fatalf("partial getTables lost the known topics: %#v", response.Data)
+	}
+
+	fake.tables = nil
+	response = handleRequest(runtimeState, agentRequest{ID: 32, Method: agentMethodGetTables, DBName: "topics"})
+	if response.Success || response.PartialData || response.Data != nil {
+		t.Fatalf("an error without data must not claim a partial result: %#v", response)
 	}
 }

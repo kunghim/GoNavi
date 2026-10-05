@@ -101,19 +101,52 @@ Most database GUIs are Electron shells with megabytes of tax. GoNavi takes a dif
 
 ### Product screenshots
 
-Each image is a **full GoNavi application window**, scaled proportionally for README display.
+Each image is a **full GoNavi application window** (1440×900) captured from the latest dev build, scaled proportionally for README display.
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/01-home-workbench.png" alt="GoNavi full window — connections, queries, and workbench" width="560" />
-  &nbsp;
-  <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/04-ai-assistant.png" alt="GoNavi full window — AI assistant with schema context" width="560" />
-</p>
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/01-home-workbench.png" alt="GoNavi full window — workbench with connections, saved queries, and quick actions" width="100%" />
+      <br /><sub><b>Workbench</b> — connections, saved queries, quick actions</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/02-query-editor.png" alt="GoNavi full window — SQL editor with result grid and object tree" width="100%" />
+      <br /><sub><b>SQL editor</b> — highlighting, result grid, object tree</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/04-ai-assistant.png" alt="GoNavi full window — AI assistant with schema context and generated SQL" width="100%" />
+      <br /><sub><b>AI assistant</b> — schema-aware chat, insert / run / preview generated SQL</sub>
+    </td>
+    <td align="center">
+      <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/05-ai-settings.png" alt="GoNavi full window — AI settings, built-in tools and recommended flows" width="100%" />
+      <br /><sub><b>AI settings</b> — built-in tools and recommended inspection flows</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/06-new-connection.png" alt="GoNavi full window — new connection data-source selector" width="100%" />
+      <br /><sub><b>New connection</b> — searchable, categorized data-source picker</sub>
+    </td>
+    <td align="center">
+      <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/08-sql-execution-history.png" alt="GoNavi full window — SQL execution history with filters and detail panel" width="100%" />
+      <br /><sub><b>SQL execution history</b> — filter, inspect, refill into the editor</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/09-sql-audit.png" alt="GoNavi full window — SQL audit center" width="100%" />
+      <br /><sub><b>SQL audit center</b> — desensitized SQL evidence across connections</sub>
+    </td>
+    <td align="center">
+      <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/07-settings-themes.png" alt="GoNavi full window — settings center with built-in themes" width="100%" />
+      <br /><sub><b>Settings</b> — built-in themes, fonts, workspace, and more</sub>
+    </td>
+  </tr>
+</table>
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/Syngnat/GoNavi/dev/assets/screenshots/06-new-connection.png" alt="GoNavi full window — new connection data-source selector" width="560" />
-</p>
-
-<p align="center"><sub>Real desktop captures · full window</sub></p>
+<p align="center"><sub>Sample data from a local lab database · connection addresses, keys, and provider configuration are not shown</sub></p>
 
 ---
 
@@ -131,24 +164,24 @@ Each image is a **full GoNavi application window**, scaled proportionally for RE
       <sub>Unified AI model API · OpenAI-compatible</sub>
     </td>
     <td align="center" valign="top" width="50%">
-      <a href="https://api.hualong.online/">
+      <a href="https://gonavi.hualong.online/">
         <img src="assets/sponsors/hualong-mark.png" height="120" alt="HuaLongAI" />
       </a><br/>
-      <b><a href="https://api.hualong.online/">HuaLongAI</a></b><br/>
+      <b><a href="https://gonavi.hualong.online/">HuaLongAI</a></b><br/>
       <sub>AI API Gateway · multi-model routing · domestic high-speed endpoint</sub>
     </td>
   </tr>
 </table>
 
-Special thanks to **[APISmart](https://www.apismart.ai/)** and **[HuaLongAI](https://api.hualong.online/)** for sponsoring GoNavi open-source development.
+Special thanks to **[APISmart](https://www.apismart.ai/)** and **[HuaLongAI](https://gonavi.hualong.online/)** for sponsoring GoNavi open-source development.
 
 | Sponsor | What they offer | Why it fits GoNavi |
 |---|---|---|
 | **[APISmart](https://www.apismart.ai/)** | APISmart provides unified access to leading AI models through a single API. Developers can connect to LLM, image, and video models using one API key and an OpenAI-compatible interface. This eliminates the need to manage multiple providers separately. Intelligent routing and automatic failover help improve reliability, while centralized billing makes usage easier to manage. With APISmart, developers can build and scale AI applications faster through one streamlined platform. | Lets developers and agent workflows use multiple AI capabilities without separately integrating each provider. |
-| **[HuaLongAI](https://api.hualong.online/)** | HuaLongAI is a premium model API relay provider for power AI developers, focused on official direct connectivity. It primarily offers Codex-series models supplied directly from official sources, with no substitutions or dilution, and invites verification. Billing is transparent, with token-level itemized records available for review. It supports enterprise-grade high concurrency and provides enterprise customers with a professional management platform, formal contracts, and invoices; visit the website for contact details. GPT-series models start at a 0.08 rate, with a stable Pro group at 0.15, two-way referral gifts, and uncapped referral rewards. | Stable model access is core infrastructure for GoNavi's schema-aware assistants, MCP, and day-to-day development. |
+| **[HuaLongAI](https://gonavi.hualong.online/)** | HuaLongAI is a premium model API relay provider for power AI developers, focused on official direct connectivity. It primarily offers Codex-series models supplied directly from official sources, with no substitutions or dilution, and invites verification. Billing is transparent, with token-level itemized records available for review. It supports enterprise-grade high concurrency and provides enterprise customers with a professional management platform, formal contracts, and invoices; visit the website for contact details. GPT-series models start at a 0.08 rate, with a stable Pro group at 0.15, two-way referral gifts, and uncapped referral rewards. | Stable model access is core infrastructure for GoNavi's schema-aware assistants, MCP, and day-to-day development. |
 
 - APISmart: [https://www.apismart.ai/](https://www.apismart.ai/) — unified AI model API with an OpenAI-compatible interface.
-- HuaLongAI: [https://api.hualong.online/](https://api.hualong.online/) — console, docs, and the domestic high-speed endpoint.
+- HuaLongAI: [https://gonavi.hualong.online/](https://gonavi.hualong.online/) — console, docs, and the domestic high-speed endpoint.
 
 > HuaLongAI also sponsored a **shared 50B token pool** for GoNavi **co-maintainers**, used via **API Key** (not 50B per person). Rules and how to apply: [Issue #671](https://github.com/Syngnat/GoNavi/issues/671).
 
@@ -216,7 +249,7 @@ Special thanks to **[APISmart](https://www.apismart.ai/)** and **[HuaLongAI](htt
 | | |
 |---|---|
 | **Built-in** | MySQL · GoldenDB · PostgreSQL · Oracle · Redis · Chroma · Qdrant · Milvus · RocketMQ · MQTT · Kafka · RabbitMQ |
-| **Optional** | MariaDB · Doris · StarRocks · Sphinx · SQL Server · SQLite · DuckDB · OceanBase · Dameng · Kingbase · HighGo · Vastbase · OpenGauss · GaussDB · IRIS · Caché · MongoDB · TDengine · IoTDB · ClickHouse · Trino · Elasticsearch · Custom Driver/DSN |
+| **Optional** | MariaDB · Doris · StarRocks · Sphinx · SQL Server · SQLite · DuckDB · OceanBase · Dameng · Kingbase · HighGo · Vastbase · OpenGauss · GaussDB · IRIS · Caché · MongoDB · TDengine · IoTDB · ClickHouse · Trino · Elasticsearch · TiDB · CockroachDB · KWDB · TimescaleDB · GBase 8a · GBase 8c · GBase 8s · YashanDB · Firebird · QuestDB · GreptimeDB · InfluxDB · Presto · OpenSearch · Weaviate · Meilisearch · Typesense · etcd · ZooKeeper · Custom Driver/DSN |
 
 <details>
 <summary><b>Full capability matrix</b></summary>
@@ -257,6 +290,25 @@ Special thanks to **[APISmart](https://www.apismart.ai/)** and **[HuaLongAI](htt
 | Columnar Analytics | ClickHouse | Optional driver agent | Analytical query, object browsing, SQL execution |
 | Federated Query | Trino | Optional driver agent | Cross-source SQL via multiple catalogs, `catalog.schema` browsing, SQL execution |
 | Search | Elasticsearch | Optional driver agent | Index browsing, mapping inspection, guarded REST console, JSON DSL / query_string search |
+| Relational | TiDB | Optional driver agent | MySQL-compatible querying, TiDB execution plans, data editing, sync / migration |
+| Relational | CockroachDB | Optional driver agent | PostgreSQL-wire querying, SHOW CREATE DDL, data editing, sync / migration |
+| Time-series | KWDB | Optional driver agent | Relational and time-series databases over the PostgreSQL wire, data editing, sync / migration |
+| Time-series | TimescaleDB | Optional driver agent | Hypertables and continuous aggregates, chunk statistics, PostgreSQL workflow, sync / migration |
+| Domestic DB | GBase 8a | Optional driver agent | MySQL-protocol MPP querying, HASH indexes, single-kind grid commits, sync / migration |
+| Domestic DB | GBase 8c | Optional driver agent | openGauss kernel (A / B / PG modes), sha256 authentication, object management, sync / migration |
+| Domestic DB | GBase 8s | Optional driver agent | Informix SQLI via your GBase 8s CSDK, object browsing, data editing, SQL backup / restore |
+| Domestic DB | YashanDB | Optional driver agent | Oracle-compatible querying via your YashanDB client, PL/SQL objects, execution plans, sync / migration |
+| Relational | Firebird | Optional driver agent | Firebird 2.5 / 3.0 / 4-5, procedures / triggers / packages, data editing, SQL backup / restore |
+| Time-series | QuestDB | Optional driver agent | Partitioned time-series tables, SQL querying, execution plans, append-only import |
+| Time-series | GreptimeDB | Optional driver agent | MySQL-protocol querying, TIME INDEX / tag metadata, append-only import |
+| Time-series | InfluxDB | Optional driver agent | InfluxDB 1.x (InfluxQL) / 2.x (Flux) / 3.x (SQL), line-protocol writes, grid editing |
+| Federated Query | Presto | Optional driver agent | PrestoDB / PrestoSQL catalogs, SQL execution, cancellation, migration source |
+| Search | OpenSearch | Optional driver agent | OpenSearch 1.x / 2.x / 3.x indices, guarded REST console, SQL / PPL |
+| Vector Database | Weaviate | Optional driver agent | Classes and tenants, GraphQL-backed grid browsing and editing, vector columns |
+| Search | Meilisearch | Optional driver agent | Indexes as tables, filter / sort push-down, document editing, REST console |
+| Search | Typesense | Optional driver agent | Collections as tables, filter_by push-down, document editing, REST console |
+| Key-Value | etcd | Optional driver agent | Prefix tree browsing, key / lease editing, etcdctl-style console (v2 / v3 APIs) |
+| Coordination | ZooKeeper | Optional driver agent | Znode tree browsing, data and ACL inspection, node editing, zkCli-style console |
 | Extensibility | Custom Driver/DSN | Custom | Extend to more data sources via Driver + DSN |
 
 </details>
@@ -280,9 +332,10 @@ Elasticsearch connections reuse the query workspace as a version-aware REST cons
 
 ### Prerequisites
 
-- [Go](https://go.dev/dl/) 1.21+
+- [Go](https://go.dev/dl/) 1.25+
 - [Node.js](https://nodejs.org/) 18+
 - [Wails CLI](https://wails.io/docs/gettingstarted/installation)
+- Linux only: a C compiler, pkg-config, and the GTK3 / WebKitGTK development packages
 
 ```bash
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
@@ -309,6 +362,21 @@ wails build -clean   # clean build before release
 ```
 
 Artifacts → `build/bin`.
+
+On Linux, install the build dependencies first (pick one):
+
+```bash
+# Debian 12+ / Ubuntu 22.04+
+sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+# Fedora / OpenCloudOS 9
+sudo dnf install -y gcc pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel
+# RHEL / Rocky / AlmaLinux 9 (WebKitGTK 4.0 only)
+sudo dnf install -y gcc pkgconf-pkg-config gtk3-devel webkit2gtk3-devel
+# Arch Linux
+sudo pacman -S --needed base-devel gtk3 webkit2gtk-4.1
+```
+
+The build detects whether WebKitGTK 4.1 or 4.0 is installed. The frontend build peaks at about 3 GB of memory.
 
 ### Prefer a binary?
 
@@ -605,7 +673,7 @@ Issues and PRs welcome. Branch from **`dev`**, PR against **`dev`**.
 ## Links
 
 - [APISmart](https://www.apismart.ai/) — Unified AI model API (GoNavi sponsor)
-- [HuaLongAI](https://api.hualong.online/) — AI API Gateway (GoNavi sponsor)
+- [HuaLongAI](https://gonavi.hualong.online/) — AI API Gateway (GoNavi sponsor)
 - [linux.do](https://linux.do/)
 - [AIBook](https://aibook.ren/)
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { Modal, type ModalFuncProps } from 'antd';
 import { t } from '../i18n';
@@ -119,8 +119,10 @@ vi.mock('@ant-design/icons', () => {
     DeleteOutlined: Icon,
     DownOutlined: Icon,
     DownloadOutlined: Icon,
+    ExportOutlined: Icon,
     FileSearchOutlined: Icon,
     FolderOpenOutlined: Icon,
+    ImportOutlined: Icon,
     InfoCircleFilled: Icon,
     ReloadOutlined: Icon,
     StopOutlined: Icon,
@@ -194,10 +196,30 @@ vi.mock('antd', () => {
 
   const Tooltip = ({ children }: any) => <>{children}</>;
   const Popover = ({ children }: any) => <>{children}</>;
+  const Checkbox = ({ children, checked, onChange }: any) => (
+    <label>
+      <input type="checkbox" checked={checked} onChange={onChange} />
+      {children}
+    </label>
+  );
+  const Table = ({ dataSource, columns, rowKey }: any) => (
+    <table>
+      <tbody>
+        {(dataSource || []).map((row: any, index: number) => (
+          <tr key={typeof rowKey === 'function' ? rowKey(row) : index}>
+            {(columns || []).map((column: any) => (
+              <td key={column.key}>{column.render ? column.render(row[column.dataIndex], row) : row[column.dataIndex]}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
 
   return {
     Alert,
     Button,
+    Checkbox,
     Collapse,
     Dropdown,
     Empty,
@@ -208,6 +230,7 @@ vi.mock('antd', () => {
     Select,
     Space,
     Switch,
+    Table,
     Tag,
     Tooltip,
     Typography,
@@ -216,6 +239,12 @@ vi.mock('antd', () => {
 });
 
 describe('DriverManagerModal i18n', () => {
+
+  beforeAll(async () => {
+    // 预热组件模块树的转换缓存：beforeEach 会 resetModules，首个用例的动态 import
+    // 不应在 5s 用例超时内承担整棵组件树的冷编译耗时。
+    await import('./DriverManagerModal');
+  }, 30_000);
 
   beforeEach(() => {
     vi.resetModules();
@@ -498,10 +527,13 @@ describe('DriverManagerModal i18n', () => {
       '检测到该驱动有 2 个活动连接。继续重装会自动断开这些连接、终止正在执行的查询，并回滚尚未提交的事务；已保存的连接配置不会删除，重装后需要重新连接。',
     );
 
+    // 确定按钮不能拿到安装 Promise：antd 会让弹窗一直转圈到它结束，批量重装时长达数分钟。
+    let okResult: unknown;
     await act(async () => {
-      await confirm.onOk?.();
+      okResult = confirm.onOk?.();
     });
 
+    expect(okResult).toBeUndefined();
     expect(backendApp.StartDriverPackageDownload).toHaveBeenCalledTimes(1);
     expect(backendApp.StartDriverPackageDownload).toHaveBeenCalledWith(
       'sqlserver',
