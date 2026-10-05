@@ -10,6 +10,7 @@ import type { SavedQuery, TabData } from '../types';
 import { ORACLE_ROWID_LOCATOR_COLUMN } from '../utils/rowLocator';
 import { setGlobalImeCompositionActive } from '../utils/shortcuts';
 import { clearQueryEditorResultSession } from '../utils/queryEditorResultSessionCache';
+import { resetQueryEditorTabSplitRatiosForTests, resolveQueryEditorTabSplitRatio, setQueryEditorTabSplitRatio } from '../utils/queryEditorSplitLayout';
 import { resolveNewQueryContext } from '../utils/newQueryContext';
 import { QUERY_TAB_RENAME_REQUEST_EVENT } from '../utils/queryTabTitle';
 import { clearQueryTabDraft, clearSQLFileTabDraft, getQueryTabDraft, getSQLFileTabDraft } from '../utils/sqlFileTabDrafts';
@@ -222,12 +223,21 @@ const notifyStoreSubscribers = () => {
   storeSubscribers.forEach((subscriber) => subscriber());
 };
 
-const backendApp = vi.hoisted(() => ({
+const backendApp = vi.hoisted(() => {
+  // The budgeted variants are thin wrappers over the base bindings so existing
+  // assertions on DBQueryMulti / ...InTransaction / ...Transactional keep working.
+  const queryMulti = vi.fn();
+  const queryMultiInTransaction = vi.fn();
+  const queryMultiTransactional = vi.fn();
+  return {
   DBQuery: vi.fn(),
   DBQueryWithCancel: vi.fn(),
-  DBQueryMulti: vi.fn(),
-  DBQueryMultiInTransaction: vi.fn(),
-  DBQueryMultiTransactional: vi.fn(),
+  DBQueryMulti: queryMulti,
+  DBQueryMultiWithOptions: vi.fn((...args: any[]) => queryMulti(...args.slice(0, 4))),
+  DBQueryMultiInTransaction: queryMultiInTransaction,
+  DBQueryMultiInTransactionWithOptions: vi.fn((...args: any[]) => queryMultiInTransaction(...args.slice(0, 3))),
+  DBQueryMultiTransactional: queryMultiTransactional,
+  DBQueryMultiTransactionalWithOptions: vi.fn((...args: any[]) => queryMultiTransactional(...args.slice(0, 4))),
   DBQueryAudited: vi.fn(),
   DBCommitTransaction: vi.fn(),
   DBCommitTransactionWithTrigger: vi.fn(),
@@ -248,7 +258,8 @@ const backendApp = vi.hoisted(() => ({
   ExportSQLFile: vi.fn(),
   InspectElasticsearchConsole: vi.fn(),
   ExecuteElasticsearchConsole: vi.fn(),
-}));
+  };
+});
 
 const messageApi = vi.hoisted(() => ({
   error: vi.fn(),
@@ -603,6 +614,7 @@ vi.mock('./LogPanel', () => ({
 vi.mock('@ant-design/icons', () => {
   const Icon = () => <span />;
   return {
+    ApiOutlined: Icon,
     ArrowLeftOutlined: Icon,
     ArrowRightOutlined: Icon,
     BugOutlined: Icon,
@@ -714,6 +726,15 @@ vi.mock('antd', () => {
     Space,
     Table,
     Tag: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
+    Checkbox: ({ children, checked, onChange }: any) => (
+      <label>
+        <input type="checkbox" checked={!!checked} onChange={(event) => onChange?.({ target: { checked: event.target.checked } })} />
+        {children}
+      </label>
+    ),
+    DatePicker: ({ value }: any) => <input data-mock="datepicker" value={value || ''} />,
+    InputNumber: ({ value }: any) => <input data-mock="inputnumber" value={value ?? ''} />,
+    Spin: () => <div className="mock-spin" />,
     Empty,
     message: messageApi,
     Modal,
@@ -913,6 +934,7 @@ const createQueryEditorSplitNodeMock = (element: any) => {
 
 describe('QueryEditor external SQL save', () => {
   beforeEach(() => {
+    resetQueryEditorTabSplitRatiosForTests();
     resetDatabaseServerVersionCache();
     clearQueryEditorInlineRuntimeReadinessCache();
     const completionState = (globalThis as any).__gonaviSqlCompletionState;
@@ -3206,7 +3228,7 @@ describe('QueryEditor external SQL save', () => {
       renderer = create(<QueryEditor tab={createTab()} />);
     });
 
-    expect(findSqlLogTab(renderer)).toHaveLength(1);
+    expect(findSqlLogTab(renderer)).toHaveLength(0);
 
     await act(async () => {
       windowListeners['gonavi:show-sql-execution-log']?.forEach((listener) => listener());
@@ -9595,7 +9617,9 @@ describe('QueryEditor external SQL save', () => {
         windowListeners[type] ||= [];
         windowListeners[type].push(listener);
       }),
-      removeEventListener: vi.fn(),
+      removeEventListener: vi.fn((type: string, listener: (event?: any) => void) => {
+        windowListeners[type] = (windowListeners[type] || []).filter((item) => item !== listener);
+      }),
       dispatchEvent: vi.fn(),
       setTimeout,
       clearTimeout,
@@ -17334,7 +17358,7 @@ WHERE GRANTEE = 'APPUSER';`;
     expect(document.removeEventListener).toHaveBeenCalledWith('mouseup', expect.any(Function));
   });
 
-  it('persists the editor and result panel split ratio after dragging the splitter', async () => {
+  it('keeps the editor and result split ratio on the dragged query tab', async () => {
 
     const moveListeners: Array<(event: MouseEvent) => void> = [];
     const upListeners: Array<() => void> = [];
@@ -17360,17 +17384,20 @@ WHERE GRANTEE = 'APPUSER';`;
       upListeners.forEach((listener) => listener());
     });
 
-    expect(storeState.setQueryOptions).toHaveBeenCalledWith({
-      queryEditorEditorHeightRatio: 0.6,
-    });
+    expect(storeState.setQueryOptions).not.toHaveBeenCalledWith(
+      expect.objectContaining({ queryEditorEditorHeightRatio: expect.any(Number) }),
+    );
+    expect(resolveQueryEditorTabSplitRatio('tab-1', 0.5)).toBe(0.6);
+    expect(resolveQueryEditorTabSplitRatio('tab-2', 0.5)).toBe(0.5);
   });
 
-  it('applies the persisted editor and result split ratio when opening another query tab', async () => {
+  it('keeps another query tab on its own split ratio', async () => {
 
+    setQueryEditorTabSplitRatio('tab-1', 0.75);
     storeState.activeTabId = 'tab-2';
     storeState.queryOptions = {
       ...storeState.queryOptions,
-      queryEditorEditorHeightRatio: 0.75,
+      queryEditorEditorHeightRatio: 0.5,
     };
 
     let renderer!: ReactTestRenderer;
@@ -17385,7 +17412,7 @@ WHERE GRANTEE = 'APPUSER';`;
       const className = String(node.props?.className || '');
       return className.includes('gn-v2-query-monaco-stage');
     });
-    expect(editorStage.props.style.height).toBe(525);
+    expect(editorStage.props.style.height).toBe(350);
   });
 
   it('inserts sidebar object text when dropped into the SQL editor', async () => {

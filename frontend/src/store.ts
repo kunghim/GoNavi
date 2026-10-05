@@ -44,7 +44,6 @@ import {
 } from "./utils/sqlSnippetDefaults";
 import {
   DEFAULT_BRAND_ICON_ID,
-  sanitizeBrandIconId,
 } from "./brand/brandIcons";
 
 export interface AIChatSessionSummary {
@@ -65,8 +64,8 @@ type ActiveContext = {
   tableName?: string;
 };
 
-const sanitizeBrandIconIdLocal = (value: unknown): string =>
-  sanitizeBrandIconId(value) || DEFAULT_BRAND_ICON_ID;
+const sanitizeBrandIconIdLocal = (_value: unknown): string =>
+  DEFAULT_BRAND_ICON_ID;
 import { toPersistedGlobalProxy } from "./utils/globalProxyDraft";
 import {
   DEFAULT_DATA_GRID_DISPLAY_SETTINGS,
@@ -201,6 +200,8 @@ export type ThemePreference = ThemeMode | "system";
 /** AI 聊天默认打开形态：侧栏 / 独立浮动窗 */
 export type AIChatOpenMode = "dock" | "detached";
 
+export type TitlebarMenuStyle = 'classic' | 'view-menu';
+
 export interface AppearanceSettings
   extends DataGridDisplaySettings, SqlEditorTypographySettings {
   enabled: boolean;
@@ -208,6 +209,7 @@ export interface AppearanceSettings
   blur: number;
   tableDoubleClickAction: TableDoubleClickAction;
   queryTableCtrlClickAction: QueryTableCtrlClickAction;
+  titlebarMenuStyle: TitlebarMenuStyle;
   v2SidebarSearchMode: "command" | "filter";
   v2SidebarPersistedFilter: string;
   v2SidebarRailScale: number;
@@ -238,6 +240,7 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   blur: 0,
   tableDoubleClickAction: "open-data",
   queryTableCtrlClickAction: "open-design",
+  titlebarMenuStyle: "classic",
   v2SidebarSearchMode: "command",
   v2SidebarPersistedFilter: "",
   v2SidebarRailScale: DEFAULT_V2_SIDEBAR_RAIL_SCALE,
@@ -293,6 +296,11 @@ const sanitizeQueryTableCtrlClickAction = (
   value: unknown,
 ): QueryTableCtrlClickAction => {
   return value === "locate" ? "locate" : DEFAULT_APPEARANCE.queryTableCtrlClickAction;
+};
+
+/** 未知值一律回退经典模式，保证老配置升级后标题栏外观不变。 */
+export const sanitizeTitlebarMenuStyle = (value: unknown): TitlebarMenuStyle => {
+  return value === "view-menu" ? "view-menu" : DEFAULT_APPEARANCE.titlebarMenuStyle;
 };
 
 const sanitizeV2SidebarPersistedFilter = (value: unknown): string => {
@@ -1982,6 +1990,8 @@ export interface SqlEditorPendingTransactionState {
   dbName?: string;
   statements?: string[];
   executionDurationMs?: number;
+  /** 事务所属连接；提交前按它做生产环境确认，见 PendingSqlEditorTransaction。 */
+  connectionId?: string;
 }
 
 interface AppState {
@@ -2188,7 +2198,6 @@ interface AppState {
 
   setTheme: (theme: ThemeMode) => void;
   setThemePreference: (themePreference: ThemePreference) => void;
-  setBrandIconId: (brandIconId: string) => void;
   setLanguagePreference: (languagePreference: LanguagePreference) => void;
   setAppearance: (appearance: Partial<AppearanceSettings>) => void;
   setRedisDbAlias: (
@@ -3344,6 +3353,9 @@ const sanitizeAppearance = (
     queryTableCtrlClickAction: sanitizeQueryTableCtrlClickAction(
       appearance.queryTableCtrlClickAction,
     ),
+    titlebarMenuStyle: sanitizeTitlebarMenuStyle(
+      appearance.titlebarMenuStyle,
+    ),
     v2SidebarSearchMode: sanitizeV2SidebarSearchMode(
       appearance.v2SidebarSearchMode,
     ),
@@ -3822,7 +3834,7 @@ export const useStore = create<AppState>()(
       pinnedConnectionTypes: [],
       theme: "light",
       themePreference: "light",
-      brandIconId: "03",
+      brandIconId: DEFAULT_BRAND_ICON_ID,
       languagePreference: DEFAULT_LANGUAGE_PREFERENCE,
       appearance: { ...DEFAULT_APPEARANCE },
       uiScale: DEFAULT_UI_SCALE,
@@ -5490,10 +5502,6 @@ export const useStore = create<AppState>()(
       setThemePreference: (themePreference) =>
         set({
           themePreference: sanitizeThemePreference(themePreference),
-        }),
-      setBrandIconId: (brandIconId) =>
-        set({
-          brandIconId: sanitizeBrandIconIdLocal(brandIconId),
         }),
       setLanguagePreference: (languagePreference) =>
         set({

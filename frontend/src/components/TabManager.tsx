@@ -79,6 +79,7 @@ import { dispatchSidebarLocateConnection } from '../utils/sidebarLocate';
 import { renderV2ActionMenuPopup } from './common/V2ActionMenuPopup';
 import { QueryEditorTabRunningIndicator } from './queryEditor/QueryEditorTabRunningIndicator';
 import { QueryEditorRunningTabsDock } from './queryEditor/QueryEditorRunningTabsDock';
+import { useWorkbenchTabLifecyclePolicy } from './queryEditor/useWorkbenchTabLifecyclePolicy';
 
 const getTabKindLabel = (tab: TabData): string => {
   if (tab.type === 'query') return t('tab_manager.kind_badge.query');
@@ -99,6 +100,7 @@ const getTabKindLabel = (tab: TabData): string => {
   if (tab.type === 'sql-file-execution') return t('sidebar.sql_file_exec.title');
   if (tab.type === 'sql-analysis') return t('tab_manager.kind_badge.sql_analysis');
   if (tab.type === 'sql-audit') return t('tab_manager.kind_badge.sql_audit');
+  if (tab.type === 'dml-snapshot') return t('tab_manager.kind_badge.dml_snapshot');
   if (tab.type === 'driver-manager') return t('tab_manager.kind_badge.driver_manager');
   if (tab.type === 'settings-center') return t('tab_manager.kind_badge.settings_center');
   if (tab.type === 'message-queue') return t('message_queue_workbench.tab_kind');
@@ -355,6 +357,7 @@ const getTabKindTooltipLabel = (tab: TabData): string => {
   if (tab.type === 'sql-file-execution') return t('sidebar.sql_file_exec.title');
   if (tab.type === 'sql-analysis') return t('tab_manager.hover.kind.sql_analysis');
   if (tab.type === 'sql-audit') return t('tab_manager.hover.kind.sql_audit');
+  if (tab.type === 'dml-snapshot') return t('tab_manager.hover.kind.dml_snapshot');
   if (tab.type === 'driver-manager') return t('tab_manager.hover.kind.driver_manager');
   if (tab.type === 'settings-center') return t('tab_manager.hover.kind.settings_center');
   if (tab.type === 'message-queue') return t('message_queue_workbench.tab_kind');
@@ -395,7 +398,7 @@ const getTabObjectLabel = (tab: TabData): string => {
   if (tab.filePath) return tab.filePath;
   if (tab.type === 'driver-manager') return t('app.tools.entry.drivers.title');
   if (tab.type === 'settings-center') return t('app.settings.title');
-  if (tab.type === 'sql-analysis' || tab.type === 'sql-audit') return tab.title;
+  if (tab.type === 'sql-analysis' || tab.type === 'sql-audit' || tab.type === 'dml-snapshot') return tab.title;
   if (tab.type === 'message-queue') return tab.messageQueueTarget || tab.dbName || '';
   if (tab.type.startsWith('redis')) return `db${tab.redisDB ?? 0}`;
   return '';
@@ -880,6 +883,7 @@ const TabManager: React.FC<TabManagerProps> = React.memo<TabManagerProps>(({ onF
   const appearance = useStore(state => state.appearance);
   const languagePreference = useStore(state => state.languagePreference);
   const activeTabId = useStore(state => state.activeTabId);
+  const shouldDestroyHiddenTab = useWorkbenchTabLifecyclePolicy();
   const setActiveTab = useStore(state => state.setActiveTab);
   const addTab = useStore(state => state.addTab);
   const closeTab = useStore(state => state.closeTab);
@@ -1605,9 +1609,10 @@ const TabManager: React.FC<TabManagerProps> = React.memo<TabManagerProps>(({ onF
       ),
       key: tab.id,
       closable: false,
+      destroyOnHidden: shouldDestroyHiddenTab(tab),
       children: <WorkbenchTabContent tab={tab} />,
     };
-  }), [dockedTabs, tabs, connections, connectionGroupNameById, appearance.tabDisplay, closeTab, closeTabsWithSQLFilePrompt, detachTabToWindow, true, languagePreference]);
+  }), [dockedTabs, tabs, connections, connectionGroupNameById, appearance.tabDisplay, closeTab, closeTabsWithSQLFilePrompt, detachTabToWindow, true, languagePreference, shouldDestroyHiddenTab]);
 
   const queryCapableConnections = useMemo(
     () => connections.filter((connection) => getDataSourceCapabilities(connection.config).supportsQueryEditor),
@@ -2176,7 +2181,6 @@ body[data-theme='dark'] .main-tabs .ant-tabs-tab.ant-tabs-tab-active {
             <Tabs
                 className={`main-tabs gn-v2-main-tabs${hasDoubleLineTabLabel ? ' gn-v2-main-tabs-double' : ''}`}
                 type="editable-card"
-                destroyOnHidden={false}
                 onChange={(newActiveKey) => {
                   if (Date.now() < suppressClickUntilRef.current) return;
                   onChange(newActiveKey);

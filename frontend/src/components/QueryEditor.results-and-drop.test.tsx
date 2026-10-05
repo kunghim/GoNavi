@@ -6,7 +6,10 @@ import { readV2ThemeCss } from '../test/readV2ThemeCss';
 
 import { setCurrentLanguage } from '../i18n';
 import type { SavedQuery, TabData } from '../types';
-import { clearQueryEditorResultSession } from '../utils/queryEditorResultSessionCache';
+import {
+  clearQueryEditorResultSession,
+  saveQueryEditorResultSession,
+} from '../utils/queryEditorResultSessionCache';
 import { formatSqlExecutionError } from '../utils/sqlErrorSemantics';
 import { clearQueryTabDraft, clearSQLFileTabDraft } from '../utils/sqlFileTabDrafts';
 import {
@@ -133,11 +136,17 @@ const notifyStoreSubscribers = () => {
   storeSubscribers.forEach((subscriber) => subscriber());
 };
 
-const backendApp = vi.hoisted(() => ({
+const backendApp = vi.hoisted(() => {
+  // Budgeted variants delegate to the base spies so existing assertions hold.
+  const queryMulti = vi.fn();
+  const queryMultiTransactional = vi.fn();
+  return {
   DBQuery: vi.fn(),
   DBQueryWithCancel: vi.fn(),
-  DBQueryMulti: vi.fn(),
-  DBQueryMultiTransactional: vi.fn(),
+  DBQueryMulti: queryMulti,
+  DBQueryMultiWithOptions: vi.fn((...args: any[]) => queryMulti(...args.slice(0, 4))),
+  DBQueryMultiTransactional: queryMultiTransactional,
+  DBQueryMultiTransactionalWithOptions: vi.fn((...args: any[]) => queryMultiTransactional(...args.slice(0, 4))),
   DBCommitTransaction: vi.fn(),
   DBCommitTransactionWithTrigger: vi.fn(),
   DBRollbackTransaction: vi.fn(),
@@ -152,7 +161,8 @@ const backendApp = vi.hoisted(() => ({
   GenerateQueryID: vi.fn(),
   WriteSQLFile: vi.fn(),
   ExportSQLFile: vi.fn(),
-}));
+  };
+});
 
 const nativeDetachedWindowState = vi.hoisted(() => ({
   openNativeQueryResultWindow: vi.fn(),
@@ -462,6 +472,7 @@ vi.mock('@ant-design/icons', () => {
     HistoryOutlined: Icon,
     KeyOutlined: Icon,
     TableOutlined: Icon,
+    ApiOutlined: Icon,
     ArrowLeftOutlined: Icon,
     ArrowRightOutlined: Icon,
     LoadingOutlined: Icon,
@@ -526,6 +537,15 @@ vi.mock('antd', () => {
     Space,
     Table,
     Tag: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
+    Spin: () => <div className="mock-spin" />,
+    Checkbox: ({ children, checked, onChange }: any) => (
+      <label>
+        <input type="checkbox" checked={!!checked} onChange={(event) => onChange?.({ target: { checked: event.target.checked } })} />
+        {children}
+      </label>
+    ),
+    DatePicker: ({ value }: any) => <input data-mock="datepicker" value={value || ''} />,
+    InputNumber: ({ value }: any) => <input data-mock="inputnumber" value={value ?? ''} />,
     Empty,
     message: messageApi,
     Modal: ({ children, open, onOk, okText = '确认' }: any) => (open ? (
@@ -1073,6 +1093,90 @@ describe('QueryEditor external SQL save', () => {
     renderer?.unmount();
   });
 
+  it('warns that a write executed without a managed transaction cannot be rolled back', async () => {
+    // DDL 在后端 shouldUseManagedSQLTransaction 中不算可托管写操作，
+    // 会以 autocommit 直接落地：必须显式告知不可撤销。
+    backendApp.DBQueryMultiTransactional.mockResolvedValueOnce({
+      success: true,
+      data: [{ columns: ['affectedRows'], rows: [{ affectedRows: 1 }] }],
+    });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ query: 'DROP TABLE tmp_table;' })} />);
+    });
+
+    await act(async () => {
+      await findButton(renderer!, '运行').props.onClick();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(messageApi.warning).toHaveBeenCalledWith(
+      expect.stringContaining('无法通过回滚撤销'),
+      expect.anything(),
+    );
+    expect(storeState.sqlEditorPendingTransactions['tab-1']).toBeUndefined();
+    renderer?.unmount();
+  });
+
+  it('does not warn about rollback for a write inside a managed transaction', async () => {
+    backendApp.DBQueryMultiTransactional.mockResolvedValueOnce({
+      success: true,
+      transactionId: 'tx-managed',
+      transactionPending: true,
+      data: [{ columns: ['affectedRows'], rows: [{ affectedRows: 1 }] }],
+    });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ query: 'DELETE FROM users WHERE id = 1;' })} />);
+    });
+
+    await act(async () => {
+      await findButton(renderer!, '运行').props.onClick();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(messageApi.warning).not.toHaveBeenCalledWith(
+      expect.stringContaining('无法通过回滚撤销'),
+      expect.anything(),
+    );
+    expect(storeState.sqlEditorPendingTransactions['tab-1']).toMatchObject({ id: 'tx-managed' });
+    renderer?.unmount();
+  });
+
+  it('does not warn about rollback for a pure read', async () => {
+    backendApp.DBQueryMulti.mockResolvedValueOnce({
+      success: true,
+      data: [{ columns: ['id'], rows: [{ id: 1 }] }],
+    });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ query: 'SELECT * FROM users;' })} />);
+    });
+
+    await act(async () => {
+      await findButton(renderer!, '运行').props.onClick();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(messageApi.warning).not.toHaveBeenCalledWith(
+      expect.stringContaining('无法通过回滚撤销'),
+      expect.anything(),
+    );
+    renderer?.unmount();
+  });
+
   it('runs a connection-scoped SQLite query without requiring a database name', async () => {
     storeState.connections[0].config.type = 'sqlite';
     storeState.connections[0].config.database = '';
@@ -1191,10 +1295,39 @@ describe('QueryEditor external SQL save', () => {
     expect(backendApp.DBQueryMulti).toHaveBeenCalledOnce();
     expect(backendApp.DBGetColumns).not.toHaveBeenCalled();
     expect(backendApp.DBGetIndexes).not.toHaveBeenCalled();
-    expect(resultTabs).toHaveLength(52);
+    // 52 statements produce more results than the history budget keeps: the
+    // oldest unpinned sets are released instead of mounting 52 grids.
+    expect(resultTabs).toHaveLength(20);
     await act(async () => {
       renderer.unmount();
     });
+  });
+
+  it('bounds restored result sessions before mounting their DataGrids', async () => {
+    saveQueryEditorResultSession('tab-1', {
+      resultSets: Array.from({ length: 25 }, (_, index) => ({
+        key: `result-${index + 1}`,
+        sql: `select ${index + 1}`,
+        columns: ['value'],
+        rows: [{ value: index + 1 }],
+        pkColumns: [],
+        readOnly: true,
+      })),
+      activeResultKey: 'result-1',
+      isResultPanelVisible: true,
+    });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab()} />);
+    });
+
+    const panel = renderer.root.findByType(QueryEditorResultsPanel);
+    expect(panel.props.resultSets).toHaveLength(20);
+    expect(panel.props.resultSets.map((result: any) => result.key)).toContain('result-1');
+    expect(panel.props.activeResultKey).toBe('result-1');
+    expect(messageApi.info).toHaveBeenCalledWith(expect.stringContaining('20'));
+    renderer.unmount();
   });
 
   it('runs the whole Oracle procedure when the cursor is in the exception tail', async () => {

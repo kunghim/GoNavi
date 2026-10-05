@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -111,7 +112,7 @@ func main() {
 	handled, err := runSpecialMode(os.Args[1:])
 	if handled {
 		if err != nil && !isNormalSpecialModeExit(err) {
-			logger.Error(err, "GoNavi 特殊模式退出")
+			reportFatalError(err, "GoNavi 特殊模式退出")
 			os.Exit(1)
 		}
 		return
@@ -173,9 +174,7 @@ func main() {
 		}, windowChrome.Frameless)
 	}
 
-	// Keep the first native window hidden until the selected Windows icon has
-	// been bound. This prevents the taskbar from caching Wails' embedded icon
-	// while the frontend is still hydrating its persisted brand selection.
+	// Keep the native startup barrier before showing the packaged application icon.
 	startupNativeIconReady := make(chan struct{})
 	var signalStartupNativeIconReadyOnce sync.Once
 	signalStartupNativeIconReady := func() {
@@ -212,13 +211,13 @@ func main() {
 			defer signalStartupNativeIconReady()
 			runtimeCtx = ctx
 			if isWindowsDesktop {
-				// Subscribe before brand-icon I/O so a fast first paint cannot
+				// Subscribe before startup continues so a fast first paint cannot
 				// emit gonavi:frontend-ready into an empty event bus.
 				wailsRuntime.EventsOn(ctx, windowsFrontendReadyEvent, func(...interface{}) {
 					windowsStartupGate.markFrontendReady()
 				})
-				if err := app.InitializePersistedNativeBrandIcon(application, ctx); err != nil {
-					logger.Warnf("启动时应用已保存的 Windows 品牌图标失败：%v", err)
+				if err := app.MigrateLegacyApplicationShortcuts(application); err != nil {
+					logger.Warnf("迁移 Windows 应用快捷方式失败：%v", err)
 				}
 			}
 			// The icon is now ready; the remaining lifecycle services may continue
@@ -281,9 +280,25 @@ func main() {
 	})
 
 	if err != nil {
-		logger.Error(err, "应用启动失败")
+		reportFatalError(err, "应用启动失败")
 		os.Exit(1)
 	}
+}
+
+// reportFatalError 把启动期致命错误同时写入日志文件与 stderr。
+//
+// internal/logger 默认只写文件，成功路径终端静默是设计如此；但**失败路径**
+// 同样静默就只剩一个空白终端和一个退出码：用户既看不到原因，也不知道该去
+// 哪里查（缺 WebKitGTK、前端资源缺失、数据目录不可写都只体现在日志里）。
+// stdout 承载 CLI 的 JSONL 契约不能占用，stderr 未被任何机器可读输出使用，
+// 因此在这里回显一份是安全的。
+func reportFatalError(err error, message string) {
+	// 固定格式串，避免 message 内的 % 被当成格式指令。
+	logger.Error(err, "%s", message)
+	if err == nil {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "[ERROR] %s；错误链：%s\n", message, logger.ErrorChain(err))
 }
 
 // newDesktopAgentToolCatalog keeps the Wails adapter on the same complete Go
@@ -353,20 +368,36 @@ func runMCPServerMode(ctx context.Context, args []string) error {
 
 	mode := strings.ToLower(strings.TrimSpace(args[0]))
 	switch mode {
+	case "help", "--help", "-h":
+		// 与 internal/cli 的 writeMCPUsage 同一惯例：帮助走 stdout、退出成功。
+		mcpserver.WriteAppMCPServerUsage(os.Stdout)
+		return nil
 	case "stdio", "--stdio":
 		return mcpserver.RunAppStdioServer(ctx)
 	case "http", "--http", "streamable-http", "--streamable-http":
 		options, err := mcpserver.ParseHTTPServerOptions(args[1:])
 		if err != nil {
-			return err
+			return reportUsageHelp(err, func() { mcpserver.WriteHTTPServerUsage(os.Stdout) })
 		}
 		logger.Infof("GoNavi MCP Streamable HTTP Server 启动：addr=%s path=%s schemaOnly=%v", options.Addr, options.Path, options.SchemaOnly)
 		return mcpserver.RunAppStreamableHTTPServer(ctx, options)
 	case "remote-config", "--remote-config":
-		return mcpserver.WriteRemoteMCPClientConfig(os.Stdout, args[1:])
+		err := mcpserver.WriteRemoteMCPClientConfig(os.Stdout, args[1:])
+		return reportUsageHelp(err, func() { mcpserver.WriteRemoteMCPClientConfigUsage(os.Stdout) })
 	default:
 		return fmt.Errorf("未知 MCP server 模式: %s（支持 stdio/http/remote-config）", args[0])
 	}
+}
+
+// reportUsageHelp 把 -h/--help 从错误转成正常退出：用户主动求助不是失败。
+// flag 包会把 ErrHelp 当错误返回，而各子模式的用法输出都被设成了丢弃
+// （io.Discard），若不在这里补打，终端只会剩一屏空白加一个非零退出码。
+func reportUsageHelp(err error, writeUsage func()) error {
+	if !errors.Is(err, flag.ErrHelp) {
+		return err
+	}
+	writeUsage()
+	return nil
 }
 
 func isLowMemoryMode() bool {

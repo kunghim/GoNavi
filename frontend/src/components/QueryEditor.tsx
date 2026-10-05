@@ -1,8 +1,9 @@
 import Modal from './common/ResizableDraggableModal';
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue } from 'react';
 import Editor, { type BeforeMount, type OnMount } from './MonacoEditor';
 import { message, Input, Form, MenuProps, Button, Segmented, type InputRef } from 'antd';
 import {
+    ApiOutlined,
     CodeOutlined,
     ClockCircleOutlined,
     EditOutlined,
@@ -18,7 +19,7 @@ import { format } from 'sql-formatter';
 import { v4 as uuidv4 } from 'uuid';
 import { TabData, ColumnDefinition, type ConnectionConfig, type SavedQuery, type SqlSnippet } from '../types';
 import { type SqlLog, useStore } from '../store';
-import { DBQuery, DBQueryWithCancel, DBQueryMulti, DBQueryMultiInTransaction, DBQueryMultiTransactional, DBQueryAudited, DBGetTables, DBTableExists, DBGetAllColumns, DBGetDatabases, DBGetColumns, DBGetTriggers, DBShowCreateTable, CancelQuery, DBRollbackTransactionWithTrigger, GenerateQueryID, WriteSQLFile, ExportSQLFile, InspectElasticsearchConsole, ExecuteElasticsearchConsole } from '../../wailsjs/go/app/App';
+import { DBQuery, DBQueryWithCancel, DBQueryMulti, DBQueryMultiInTransaction, DBQueryMultiInTransactionWithOptions, DBQueryMultiTransactional, DBQueryMultiTransactionalWithOptions, DBQueryMultiWithOptions, DBQueryAudited, DBGetTables, DBTableExists, DBGetAllColumns, DBGetDatabases, DBGetColumns, DBGetTriggers, DBShowCreateTable, CancelQuery, DBRollbackTransactionWithTrigger, GenerateQueryID, WriteSQLFile, ExportSQLFile, InspectElasticsearchConsole, ExecuteElasticsearchConsole } from '../../wailsjs/go/app/App';
 import { GONAVI_ROW_KEY } from './DataGrid';
 import { EventsOn, LogError, LogInfo } from '../../wailsjs/runtime';
 import {
@@ -50,7 +51,7 @@ import {
     type MetadataIdentityMode,
 } from '../utils/metadataIdentity';
 import { resolveOceanBaseProtocolFromConfig } from '../utils/oceanBaseProtocol';
-import { appendTableAlias, isOracleLikeDialect, resolveSqlDialect, resolveSqlFunctions, resolveSqlKeywords } from '../utils/sqlDialect';
+import { appendTableAlias, isOracleLikeDialect, resolveSqlDialect, resolveSqlFunctions, resolveSqlKeywords, sqlKeywordPriority } from '../utils/sqlDialect';
 import { applyQueryAutoLimit } from '../utils/queryAutoLimit';
 import {
     buildQueryResultCountSql,
@@ -70,6 +71,24 @@ import {
     shouldUseSqlEditorManagedTransactionForType,
 } from '../utils/sqlEditorTransaction';
 import { findSqlStatementRanges, resolveCurrentSqlStatementRange, resolveExecutableSql, stripLeadingSqlTrivia } from '../utils/sqlStatementSelection';
+import {
+    buildQueryEditorInlineMemoryEntries,
+    copyQueryEditorTextToClipboard,
+    matchesQueryEditorInlineMemoryDb,
+    normalizeQueryEditorCompletionAnalysisText,
+    normalizeQueryEditorInlineMemorySqlKey,
+} from './queryEditor/queryEditorInlineMemory';
+import { useQueryEditorParams } from './queryEditor/params/useQueryEditorParams';
+import { applyParamNameDecorations } from './queryEditor/params/queryEditorParamsDecorations';
+import { QueryEditorParamsBindDialog, QueryEditorParamsPanel } from './queryEditor/params/QueryEditorParamsPanel';
+import {
+    bindingsFromValues,
+    collectMissingParamNames,
+    QUERY_EDITOR_PARAMS_PANEL_KEY,
+    type QueryParamBindingInput,
+    type QueryParameterAnalysisInfo,
+} from './queryEditor/params/queryEditorParamsModel';
+import { DBQueryMultiWithParams, DBQueryMultiWithParamsInTransaction, DBQueryMultiTransactionalWithParams } from '../../wailsjs/go/app/App';
 import { isMacLikePlatform } from '../utils/appearance';
 import { splitSidebarQualifiedName } from '../utils/sidebarLocate';
 import { splitMetadataQualifiedName, splitQualifiedNameSegmentsDetailed } from '../utils/qualifiedName';
@@ -96,7 +115,8 @@ import {
     clampQueryEditorEditorHeight,
     resolveQueryEditorEditorHeightFromRatio,
     resolveQueryEditorEditorHeightRatio,
-    sanitizeQueryEditorEditorHeightRatio,
+    resolveQueryEditorTabSplitRatio,
+    setQueryEditorTabSplitRatio,
 } from '../utils/queryEditorSplitLayout';
 import {
     DUCKDB_ROWID_LOCATOR_COLUMN,
@@ -112,9 +132,18 @@ import {
 } from '../utils/sqlFileTabDrafts';
 import {
     clearQueryEditorResultSession,
-    saveQueryEditorResultSession,
+    saveQueryEditorResultSessionForOpenTab,
     takeQueryEditorResultSession,
 } from '../utils/queryEditorResultSessionCache';
+import { useQueryEditorResultSessionLifecycle } from './queryEditor/queryEditorResultSessionLifecycle';
+import {
+    QUERY_EDITOR_RESULT_HISTORY_MAX_BYTES,
+    QUERY_EDITOR_RESULT_HISTORY_MAX_RESULTS,
+    QUERY_EDITOR_RESULT_HISTORY_MAX_ROWS,
+    applyQueryEditorResultHistoryBudget,
+} from './queryEditor/queryEditorResultHistory';
+import { buildQueryEditorResultBudgetOptions } from './queryEditor/queryEditorResultBudget';
+import { useQueryEditorResultHistoryBudget } from './queryEditor/useQueryEditorResultHistoryBudget';
 import { buildEditableTriggerSql } from '../utils/triggerEditSql';
 import {
     isTableDesignerTriggerCreateStatement as isQueryEditorTriggerCreateStatement,
@@ -150,12 +179,16 @@ import {
     buildQueryEditorTableNavigationContextKey,
 } from './queryEditor/queryEditorVisibilityContext';
 import { useQueryEditorEverActive } from './queryEditor/useQueryEditorEverActive';
+import { useQueryEditorSqlLogBridge } from './queryEditor/useQueryEditorSqlLogBridge';
+import SqlSnippetPickerModal from './queryEditor/SqlSnippetPickerModal';
+import DuckDBAttachPickerModal from './queryEditor/DuckDBAttachPickerModal';
 import { useExternalSqlFileDrop } from './queryEditor/useExternalSqlFileDrop';
 import QueryEditorResultsPanel, {
     QUERY_EDITOR_SQL_LOG_TAB_KEY,
     resolveEffectiveActiveResultKey,
     type QueryEditorResultSet,
 } from './QueryEditorResultsPanel';
+import { expandCompactQueryResult, invokeBudgetedDBQueryMulti, invokeCompactDBQueryMulti } from './queryEditor/queryResultTransport';
 import { showCountdownDangerConfirm } from './common/countdownDangerConfirm';
 import ResultDiffWizard from './resultDiff/ResultDiffWizard';
 import ResultDiffPanel from './resultDiff/ResultDiffPanel';
@@ -205,6 +238,14 @@ import {
     supportsQueryEditorSchemaSelection,
 } from './queryEditor/queryEditorSchemaContext';
 import { useSqlEditorTransactionController } from './useSqlEditorTransactionController';
+import {
+    buildQueryEditorLazyTablesCacheKey as buildBoundedLazyTablesCacheKey,
+    buildQueryEditorMetadataCacheScope,
+    clearQueryEditorMetadataCaches,
+    invalidateQueryEditorMetadataCaches,
+    queryEditorColumnsCache as boundedColumnsCache,
+    queryEditorLazyTablesCache as boundedLazyTablesCache,
+} from './queryEditor/queryEditorMetadataCaches';
 import {
     type CompletionColumnMeta,
     type CompletionPackageMeta,
@@ -309,6 +350,10 @@ import {
     stripCompletionIdentifierQuotes,
     shouldHandleQueryEditorRunShortcutFallback,
 } from './queryEditor/QueryEditorHelpers';
+import { duplicateCurrentLineInEditor } from './queryEditor/queryEditorDuplicateLine';
+import { registerQueryEditorShortcutAction } from './queryEditor/queryEditorShortcutRegistration';
+import { useQueryEditorAIAction } from './queryEditor/useQueryEditorAIAction';
+import { registerQueryEditorCommentAction, resolveToggleLineCommentBindingPlan, runMonacoToggleLineComment } from './queryEditor/queryEditorCommentActions';
 import { finalizeQueryEditorSqlServerResultSets, resolveQueryEditorExecutionSuccessToast } from './queryEditor/queryEditorSqlServerResultMessages';
 import {
     applyQueryEditorCompletionFragmentCase,
@@ -451,92 +496,6 @@ const writeQueryEditorFormatLog = (level: 'info' | 'error', messageText: string)
     }
 };
 
-const normalizeQueryEditorInlineMemorySqlKey = (sql: string): string => (
-    String(sql || '')
-        .replace(/\r\n?/g, '\n')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toLowerCase()
-);
-
-const normalizeQueryEditorCompletionAnalysisText = (sql: string): string => {
-    const normalized = String(sql || '').replace(/\r\n?/g, '\n');
-    // Preserve offsets while preventing a UTF-8 BOM from becoming part of SQL syntax analysis.
-    return normalized.startsWith('\uFEFF') ? ` ${normalized.slice(1)}` : normalized;
-};
-
-const matchesQueryEditorInlineMemoryDb = (currentDb: string, candidateDb?: string): boolean => {
-    const normalizedCurrentDb = String(currentDb || '').trim().toLowerCase();
-    const normalizedCandidateDb = String(candidateDb || '').trim().toLowerCase();
-    if (!normalizedCurrentDb || !normalizedCandidateDb) {
-        return true;
-    }
-    return normalizedCurrentDb === normalizedCandidateDb;
-};
-
-const buildQueryEditorInlineMemoryEntries = ({
-    currentConnectionId,
-    currentDb,
-    savedQueries,
-    sqlLogs,
-}: {
-    currentConnectionId: string;
-    currentDb: string;
-    savedQueries: SavedQuery[];
-    sqlLogs: SqlLog[];
-}): Array<{ sql: string }> => {
-    const ranked = new Map<string, { sql: string; score: number; latestAt: number }>();
-    const addCandidate = (sql: string, score: number, latestAt: number) => {
-        const text = String(sql || '').trim();
-        if (!text) {
-            return;
-        }
-        const key = normalizeQueryEditorInlineMemorySqlKey(text);
-        if (!key) {
-            return;
-        }
-        const existing = ranked.get(key);
-        if (!existing) {
-            ranked.set(key, { sql: text, score, latestAt });
-            return;
-        }
-        existing.score += score;
-        if (latestAt >= existing.latestAt) {
-            existing.latestAt = latestAt;
-            existing.sql = text;
-        }
-    };
-
-    savedQueries.forEach((query) => {
-        if (currentConnectionId && String(query.connectionId || '').trim() !== currentConnectionId) {
-            return;
-        }
-        if (!matchesQueryEditorInlineMemoryDb(currentDb, query.dbName)) {
-            return;
-        }
-        addCandidate(query.sql, 600, Number(query.createdAt || 0));
-    });
-
-    sqlLogs.forEach((log) => {
-        if (log.status !== 'success' || log.category === 'transaction') {
-            return;
-        }
-        if (!matchesQueryEditorInlineMemoryDb(currentDb, log.dbName)) {
-            return;
-        }
-        addCandidate(log.sql, 80, Number(log.timestamp || 0));
-    });
-
-    return [...ranked.values()]
-        .sort((left, right) => (
-            right.score - left.score
-            || right.latestAt - left.latestAt
-            || left.sql.length - right.sql.length
-        ))
-        .slice(0, 16)
-        .map((entry) => ({ sql: entry.sql }));
-};
-
 const buildQueryEditorMonacoOptions = (
     isObjectEditQueryTab: boolean,
     wordWrapEnabled = false,
@@ -572,59 +531,6 @@ const QUERY_EDITOR_SQL_PROMPT_PLACEHOLDER = '{SQL}';
 const escapeQueryEditorObjectEditSqlLiteral = (value: unknown): string => (
     String(value || '').replace(/'/g, "''")
 );
-
-const CLIPBOARD_WRITE_TIMEOUT_MS = 2000;
-
-const copyQueryEditorTextToClipboard = async (text: string): Promise<boolean> => {
-    const tryAsyncClipboardWrite = async (): Promise<boolean> => {
-        if (typeof navigator?.clipboard?.writeText !== 'function') {
-            return false;
-        }
-
-        try {
-            const written = await Promise.race([
-                navigator.clipboard.writeText(text).then(() => true as const),
-                new Promise<false>((resolve) => setTimeout(() => resolve(false), CLIPBOARD_WRITE_TIMEOUT_MS)),
-            ]);
-            return written;
-        } catch {
-            return false;
-        }
-    };
-
-    if (typeof document?.createElement === 'function' && typeof document?.execCommand === 'function') {
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.setAttribute('readonly', 'true');
-        textarea.setAttribute('aria-hidden', 'true');
-        Object.assign(textarea.style, {
-            position: 'fixed',
-            top: '0',
-            left: '-9999px',
-            opacity: '0',
-            pointerEvents: 'none',
-        });
-
-        try {
-            document.body?.appendChild?.(textarea);
-            textarea.focus?.();
-            textarea.select?.();
-            textarea.setSelectionRange?.(0, text.length);
-            if (document.execCommand('copy')) {
-                return true;
-            }
-        } catch {
-            // Fall through to async clipboard APIs when execCommand is unavailable.
-        } finally {
-            textarea.remove?.();
-        }
-    }
-
-    if (await tryAsyncClipboardWrite()) {
-        return true;
-    }
-    return false;
-};
 
 const getQueryEditorObjectEditRawValue = (row: Record<string, any>, candidateKeys: string[]): any => {
     const keyMap = new Map<string, any>();
@@ -1334,9 +1240,9 @@ let sharedTriggersData: CompletionTriggerMeta[] = [];
 let sharedRoutinesData: CompletionRoutineMeta[] = [];
 let sharedSequencesData: CompletionSequenceMeta[] = [];
 let sharedPackagesData: CompletionPackageMeta[] = [];
-let sharedColumnsCacheData: Record<string, any[]> = {};
 let sharedActiveEditorModelUri = '';
-const sharedLazyTablesCache: Record<string, CompletionTableMeta[] | undefined> = {};
+// 表/列元数据改为带容量与 TTL 的共享缓存（#1254）：此前是无限增长的普通对象，
+// 访问过的库越多驻留越久，且没有任何失效入口。
 const sharedLazyTablesInFlight: Record<string, Promise<CompletionTableMeta[]> | undefined> = {};
 // Revisions prevent an already-running lazy metadata request from writing its
 // stale result back after a schema refresh. The global metadata generation is
@@ -1398,10 +1304,22 @@ const getSharedLazyTablesRevision = (cacheKey: string): number => (
     sharedLazyTablesRevisionByKey[cacheKey] || 0
 );
 
+// 每编辑器仍持有自己的 columns ref（用于失效），同时把当前连接的条目镜像进
+// 共享的带容量缓存：#1254 之前这里是全量赋值给一个无限增长的普通对象。
+const mirrorColumnsCacheIntoBoundedCache = (cache: Record<string, ColumnDefinition[]>) => {
+    const connectionId = String(sharedCurrentConnectionId || '').trim();
+    if (!connectionId) return;
+    const scope = buildQueryEditorMetadataCacheScope(connectionId, '');
+    Object.entries(cache).forEach(([key, value]) => {
+        if (!Array.isArray(value)) return;
+        boundedColumnsCache.set(key, scope, value);
+    });
+};
+
 const invalidateSharedLazyTablesCacheKey = (cacheKey: string) => {
     const normalizedCacheKey = String(cacheKey || '').trim();
     if (!normalizedCacheKey) return;
-    delete sharedLazyTablesCache[normalizedCacheKey];
+    boundedLazyTablesCache.delete(normalizedCacheKey);
     sharedLazyTablesRevisionByKey[normalizedCacheKey] = getSharedLazyTablesRevision(normalizedCacheKey) + 1;
     Object.keys(sharedLazyTablesInFlight).forEach((inFlightKey) => {
         const inFlightCacheKey = inFlightKey.replace(/\|\d+$/, '');
@@ -1416,7 +1334,6 @@ const invalidateSharedLazyTablesCache = (connectionId: string, dbName?: string) 
     if (!normalizedConnectionId) return;
 
     const cacheKeys = new Set([
-        ...Object.keys(sharedLazyTablesCache),
         ...Object.keys(sharedLazyTablesRevisionByKey),
     ]);
     Object.keys(sharedLazyTablesInFlight).forEach((inFlightKey) => {
@@ -1941,9 +1858,9 @@ const resetSharedQueryEditorMetadata = (releaseHoverDdlState = false) => {
     sharedRoutinesData = [];
     sharedSequencesData = [];
     sharedPackagesData = [];
-    sharedColumnsCacheData = {};
+    boundedColumnsCache.clear();
     sharedActiveEditorModelUri = '';
-    clearRecord(sharedLazyTablesCache);
+    clearQueryEditorMetadataCaches();
     clearRecord(sharedLazyTablesInFlight);
     clearRecord(sharedLazyTablesRevisionByKey);
     if (releaseHoverDdlState) {
@@ -2094,11 +2011,30 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
   // Result Sets (session cache survives detach/attach remounts)
   const restoredResultSessionRef = useRef(takeQueryEditorResultSession(tab.id));
+  // A restored session may predate the current history budget, so bound it on the
+  // way in: the trimmed set is what the editor mounts with, not just what it saves.
+  const restoredResultHistoryRef = useRef<{
+      resultSets: ResultSet[];
+      evictedKeys: string[];
+  } | null>(null);
+  if (restoredResultHistoryRef.current === null) {
+      const restoredActiveKey = restoredResultSessionRef.current?.activeResultKey || '';
+      restoredResultHistoryRef.current = applyQueryEditorResultHistoryBudget(
+          restoredResultSessionRef.current?.resultSets || [],
+          restoredActiveKey ? [restoredActiveKey] : [],
+      );
+  }
   const [resultSets, setResultSets] = useState<ResultSet[]>(
-    () => restoredResultSessionRef.current?.resultSets || [],
+    () => restoredResultHistoryRef.current?.resultSets || [],
   );
   const [activeResultKey, setActiveResultKey] = useState<string>(
-    () => restoredResultSessionRef.current?.activeResultKey || '',
+    () => {
+        const restoredActiveKey = restoredResultSessionRef.current?.activeResultKey || '';
+        const restoredResults = restoredResultHistoryRef.current?.resultSets || [];
+        return restoredResults.some((result) => result.key === restoredActiveKey)
+            ? restoredActiveKey
+            : restoredResults[0]?.key || '';
+    },
   );
   const [resultDataPreviewRequest, setResultDataPreviewRequest] = useState<{
       resultKey: string;
@@ -2106,12 +2042,33 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
   } | null>(null);
   const resultSetsRef = useRef(resultSets);
   const activeResultKeyRef = useRef(activeResultKey);
+  // 参数面板可用性快照：监听器闭包内不能读 paramsState（effect 不随分析刷新，
+  // 陈旧闭包会让快捷键误关未查看的结果 tab），与 isResultPanelVisibleRef 同模式。
+  const paramsPanelAvailableRef = useRef(false);
   const nativeRestoredResultRefs = useRef(new Map<
     string,
     { resultKey: string; result: ResultSet }
   >());
   resultSetsRef.current = resultSets;
   activeResultKeyRef.current = activeResultKey;
+  const notifyResultHistoryTrimmed = useCallback(() => {
+      void message.info(translate('query_editor.results_panel.message.history_trimmed', {
+          results: QUERY_EDITOR_RESULT_HISTORY_MAX_RESULTS,
+          rows: QUERY_EDITOR_RESULT_HISTORY_MAX_ROWS,
+          size: Math.round(QUERY_EDITOR_RESULT_HISTORY_MAX_BYTES / 1024 / 1024),
+      }));
+  }, []);
+  useEffect(() => {
+      if ((restoredResultHistoryRef.current?.evictedKeys.length || 0) === 0) return;
+      notifyResultHistoryTrimmed();
+  }, [notifyResultHistoryTrimmed]);
+  useQueryEditorResultHistoryBudget({
+      resultSets,
+      protectedActiveKey: activeResultKey === QUERY_EDITOR_SQL_LOG_TAB_KEY ? '' : activeResultKey,
+      resultSetsRef,
+      setResultSets,
+      onTrimmed: notifyResultHistoryTrimmed,
+  });
   const [loading, setLoading] = useState(false);
   const [queryEditorMetadataReloadTick, setQueryEditorMetadataReloadTick] = useState(0);
   // 事件驱动的结构变更重载必须绕过 fetchKey 去重（服务端结构可能已变，前端无从感知）
@@ -2160,6 +2117,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
   executionErrorRef.current = executionError;
   const [currentQueryId, setCurrentQueryId] = useState<string>('');
   const [isSqlSnippetPickerOpen, setIsSqlSnippetPickerOpen] = useState(false);
+  const [isDuckDBAttachPickerOpen, setIsDuckDBAttachPickerOpen] = useState(false);
   const [sqlSnippetPickerKeyword, setSqlSnippetPickerKeyword] = useState('');
   const runSeqRef = useRef(0);
   const currentQueryIdRef = useRef('');
@@ -2246,6 +2204,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
   const selectCurrentStatementActionRef = useRef<any>(null);
   const macFindWithSelectionGuardActionRef = useRef<any>(null);
   const duplicateCurrentLineActionRef = useRef<any>(null);
+  const toggleLineCommentActionRef = useRef<any>(null);
   const saveQueryActionRef = useRef<any>(null);
   const saveQueryAsActionRef = useRef<any>(null);
   const findInEditorActionRef = useRef<any>(null);
@@ -2436,6 +2395,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
   const addSqlLog = useStore(state => state.addSqlLog);
   const sqlLogs = useStore(state => (isActive ? state.sqlLogs : EMPTY_QUERY_EDITOR_SQL_LOGS));
   const sqlLogCount = sqlLogs.length;
+  const deferredSqlLogs = useDeferredValue(sqlLogs);
   const addTab = useStore(state => state.addTab);
   const setActiveContext = useStore(state => state.setActiveContext);
   const updateQueryTabDraft = useStore(state => state.updateQueryTabDraft);
@@ -2472,8 +2432,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       currentConnectionId,
       currentDb,
       savedQueries,
-      sqlLogs,
-  }), [currentConnectionId, currentDb, savedQueries, sqlLogs]);
+      sqlLogs: deferredSqlLogs,
+  }), [currentConnectionId, currentDb, savedQueries, deferredSqlLogs]);
   const draftSnapshotTab = useMemo(() => ({
       id: tab.id,
       title: tab.title,
@@ -2501,7 +2461,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
   const sqlFormatOptions = useStore(state => state.sqlFormatOptions);
   const setSqlFormatOptions = useStore(state => state.setSqlFormatOptions);
-  const queryEditorEditorHeightRatio = sanitizeQueryEditorEditorHeightRatio(
+  const queryEditorEditorHeightRatio = resolveQueryEditorTabSplitRatio(
+      tab.id,
       queryOptions?.queryEditorEditorHeightRatio,
   );
   const sqlEditorTransactionOptions = useStore(state => state.sqlEditorTransactionOptions);
@@ -2518,11 +2479,11 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       const captureSession = (event: Event) => {
           const requestedTabId = String((event as CustomEvent).detail?.tabId || '').trim();
           if (requestedTabId !== tab.id) return;
-          saveQueryEditorResultSession(tab.id, {
+          saveQueryEditorResultSessionForOpenTab(tab.id, {
               resultSets: resultSetsRef.current,
               activeResultKey: activeResultKeyRef.current,
               isResultPanelVisible: isResultPanelVisibleRef.current,
-          });
+          }, useStore.getState().tabs);
       };
       window.addEventListener('gonavi:capture-query-result-session', captureSession);
       return () => {
@@ -2530,25 +2491,17 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       };
   }, [tab.id]);
 
-  useEffect(() => {
-      // Keep result panel state across detach/attach remounts of the same tab.
-      return () => {
-          saveQueryEditorResultSession(tab.id, {
-              resultSets: resultSetsRef.current,
-              activeResultKey: activeResultKeyRef.current,
-              isResultPanelVisible: isResultPanelVisibleRef.current,
-          });
-      };
-  }, [tab.id]);
-
-  useEffect(() => {
-      if (!publishesDetachedResultSession) return;
-      saveQueryEditorResultSession(tab.id, {
-          resultSets,
-          activeResultKey,
-          isResultPanelVisible,
-      });
-  }, [activeResultKey, isResultPanelVisible, publishesDetachedResultSession, resultSets, tab.id]);
+  useQueryEditorResultSessionLifecycle({
+      tabId: tab.id,
+      resultSets,
+      activeResultKey,
+      isResultPanelVisible,
+      publishesDetachedResultSession,
+      resultSetsRef,
+      activeResultKeyRef,
+      isResultPanelVisibleRef,
+      editorRef,
+  });
   const shortcutOptions = useStore(state => state.shortcutOptions);
   const activeShortcutPlatform = getShortcutPlatform(isMacLikePlatform());
   const runQueryShortcutBinding = useMemo(
@@ -2785,6 +2738,10 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
   );
   const duplicateCurrentLineShortcutBinding = useMemo(
       () => resolveShortcutBinding(shortcutOptions, 'duplicateCurrentLine', activeShortcutPlatform),
+      [activeShortcutPlatform, shortcutOptions],
+  );
+  const toggleLineCommentShortcutBinding = useMemo(
+      () => resolveShortcutBinding(shortcutOptions, 'toggleLineComment', activeShortcutPlatform),
       [activeShortcutPlatform, shortcutOptions],
   );
   const saveQueryShortcutBinding = useMemo(
@@ -3196,6 +3153,28 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       return savedQueries.find((item) => item.id === tabId) || null;
   }, [savedQueries, tab.id, tab.savedQueryId]);
 
+  // 运行时绑定参数：面板防抖分析 + 执行前权威门控（见 handleRun）。
+  const paramsState = useQueryEditorParams({
+      config: (currentConnection?.config ?? null) as Record<string, unknown> | null,
+      dbName: currentDb,
+      sql: query,
+      getSql: () => editorRef.current?.getValue?.() ?? query,
+      enabled: Boolean(currentConnectionId),
+      savedParams: currentSavedQuery?.parameters ?? null,
+      resetToken: `${currentConnectionId || ''}:${currentDb || ''}`,
+  });
+  const [paramsDialogState, setParamsDialogState] = useState<{
+      open: boolean;
+      analysis: QueryParameterAnalysisInfo | null;
+  }>({ open: false, analysis: null });
+  const lastParamsRunScopeRef = useRef<QueryEditorRunScope>('default');
+  paramsPanelAvailableRef.current = paramsState.hasParams || !!paramsState.analysis;
+
+  // 参数名在 Monaco 中的展示高亮：随分析结果刷新（面板/执行同节奏）。
+  useEffect(() => {
+      applyParamNameDecorations(editorRef.current, monacoRef.current, paramsState.analysis?.parameterNames || []);
+  }, [paramsState.analysis]);
+
   useEffect(() => {
       queryEditorMountedRef.current = true;
       return () => {
@@ -3302,6 +3281,23 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       handleCloseSqlSnippetPicker();
       editor.focus?.();
   }, [applyQueryState, handleCloseSqlSnippetPicker]);
+  const handleInsertDuckDBAttachStatement = useCallback((statement: string) => {
+      const editor = editorRef.current;
+      const monaco = monacoRef.current;
+      if (!editor || !monaco?.Range || !statement) {
+          return;
+      }
+      const model = editor.getModel?.();
+      const position = editor.getPosition?.()
+          || { lineNumber: model?.getLineCount?.() || 1, column: model?.getLineMaxColumn?.(model?.getLineCount?.() || 1) || 1 };
+      const range = new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column);
+      editor.executeEdits?.('gonavi-duckdb-attach', [{ range, text: statement, forceMoveMarkers: true }]);
+      const nextValue = editor.getValue?.();
+      if (typeof nextValue === 'string') {
+          applyQueryState(nextValue);
+      }
+      editor.focus?.();
+  }, [applyQueryState]);
 
   useEffect(() => {
       const latestQuery = lastLocalQueryRef.current;
@@ -3453,11 +3449,11 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           ?? '',
       ).trim();
       const metadataDialect = normalizeMetadataDialect(conn);
-      const lazyTablesEntry = sharedLazyTablesCache[buildSharedLazyTablesCacheKey(
+      const lazyTablesEntry = boundedLazyTablesCache.get(buildBoundedLazyTablesCacheKey(
           resolvedConnectionId,
           currentDbName,
           metadataDialect,
-      )];
+      ));
 
       // 大库下全量合并可达数十万条且每次补全请求都会调用；依赖引用未变时复用上次结果，
       // 同时保持 tables/columns 数组身份稳定，让下游按数组身份缓存的索引也能跨请求复用。
@@ -3657,7 +3653,14 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                           tablesRef.current = [...nextTableByKey.values()];
                           sharedTablesData = tablesRef.current;
                           if (getSharedLazyTablesRevision(lazyTablesCacheKey) === lazyTablesCacheRevision) {
-                              sharedLazyTablesCache[lazyTablesCacheKey] = fetchedTables;
+                              boundedLazyTablesCache.set(
+                                  lazyTablesCacheKey,
+                                  buildQueryEditorMetadataCacheScope(
+                                      connectionId,
+                                      buildQueryEditorMetadataIdentityKey(metadataDialect, dbName),
+                                  ),
+                                  fetchedTables,
+                              );
                           }
                       }
                   }
@@ -3791,7 +3794,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       sharedRoutinesData = routinesRef.current;
       sharedSequencesData = sequencesRef.current;
       sharedPackagesData = packagesRef.current;
-      sharedColumnsCacheData = columnsCacheRef.current;
+      mirrorColumnsCacheIntoBoundedCache(columnsCacheRef.current);
       sharedActiveEditorModelUri = String(editorRef.current?.getModel?.()?.uri?.toString?.() || '');
   }, [isActive, currentDb, currentConnectionId, currentSchema, connections, tab.id]);
 
@@ -4124,7 +4127,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       aiContextCacheRef.current = null;
       sharedTablesData = tablesRef.current;
       sharedAllColumnsData = allColumnsRef.current;
-      sharedColumnsCacheData = columnsCacheRef.current;
+      mirrorColumnsCacheIntoBoundedCache(columnsCacheRef.current);
       refreshObjectDecorations(QUERY_EDITOR_LIVE_DECORATION_MAX_TEXT_LENGTH);
   }, [refreshObjectDecorations]);
 
@@ -4502,50 +4505,46 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       void message.error(translate('connection_modal.message.copy_failed'));
   };
 
-  const handleDuplicateCurrentLine = () => {
+  const handleDuplicateCurrentLine = useCallback(() => {
       const editor = editorRef.current;
       const monaco = monacoRef.current;
-      const model = editor?.getModel?.();
-      const normalizedPosition = normalizeEditorPosition(editor?.getPosition?.());
-      if (!editor || !monaco?.Range || !model || !normalizedPosition) {
+      if (!editor || !monaco) {
           return;
       }
+      duplicateCurrentLineInEditor(editor, monaco, applyQueryState);
+  }, [applyQueryState]);
 
-      const lineNumber = normalizedPosition.lineNumber;
-      const lineText = String(model.getLineContent?.(lineNumber) || '');
-      const maxColumn = Number(model.getLineMaxColumn?.(lineNumber) || (lineText.length + 1));
-      const modelValue = String(model.getValue?.() || '');
-      const lineBreak = typeof model.getEOL?.() === 'string'
-          ? model.getEOL()
-          : (modelValue.includes('\r\n') ? '\r\n' : '\n');
-      const insertRange = new monaco.Range(lineNumber, maxColumn, lineNumber, maxColumn);
-      const nextColumn = Math.min(normalizedPosition.column, lineText.length + 1);
+  // 「取消/添加注释」右键菜单 + 可配置快捷键：委托 Monaco 内置
+  // editor.action.commentLine（当前行/选区生效、一步撤销），语言或改键变化时重注册。
+  // 平台默认 Ctrl（Cmd）+/ 恒被吞键命令占用：enabled 时菜单键位委托切换
+  // 注释、disabled 时默认键完全静默，保证「禁用/改绑」对内置键位生效。
+  const disposeToggleLineCommentAction = useCallback(() => {
+      toggleLineCommentActionRef.current?.dispose?.();
+      toggleLineCommentActionRef.current = null;
+  }, []);
 
-      editor.executeEdits?.('gonavi-duplicate-current-line', [{
-          range: insertRange,
-          text: `${lineBreak}${lineText}`,
-          forceMoveMarkers: true,
-      }]);
-      editor.pushUndoStop?.();
-
-      const nextPosition = { lineNumber: lineNumber + 1, column: nextColumn };
-      const cursorSelection = new monaco.Range(
-          nextPosition.lineNumber,
-          nextPosition.column,
-          nextPosition.lineNumber,
-          nextPosition.column,
-      );
-      editor.setSelections?.([cursorSelection]);
-      editor.setSelection?.(cursorSelection);
-      editor.setPosition?.(nextPosition);
-      editor.revealLineInCenterIfOutsideViewport?.(nextPosition.lineNumber);
-      editor.focus?.();
-
-      const nextValue = editor.getValue?.();
-      if (typeof nextValue === 'string') {
-          applyQueryState(nextValue);
+  const registerToggleLineCommentAction = useCallback(() => {
+      const editor = editorRef.current;
+      if (!editor) {
+          return;
       }
-  };
+      disposeToggleLineCommentAction();
+      const plan = resolveToggleLineCommentBindingPlan({
+          platform: activeShortcutPlatform,
+          combo: toggleLineCommentShortcutBinding?.combo,
+          enabled: toggleLineCommentShortcutBinding?.enabled,
+          keyModEnum: monacoRef.current.KeyMod,
+          keyCodeEnum: monacoRef.current.KeyCode,
+      });
+      toggleLineCommentActionRef.current = registerQueryEditorCommentAction({
+          editor,
+          label: translate('query_editor.action.toggle_line_comment'),
+          keybindings: plan.menuKeybindings,
+          swallowKeybinding: plan.swallowKeybinding,
+          // 菜单入口不受快捷键禁用影响；吞键命令恒为空操作
+          run: () => runMonacoToggleLineComment(editorRef.current),
+      });
+  }, [activeShortcutPlatform, disposeToggleLineCommentAction, toggleLineCommentShortcutBinding, languagePreference]);
 
   const buildQueryEditorAiContextMenuActions = useCallback(() => ([
       {
@@ -5677,17 +5676,15 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           setEditorHeight(finalHeight);
           const availableHeight = resolveEditorSplitAvailableHeight();
           if (availableHeight > 0) {
-              setQueryOptions({
-                  queryEditorEditorHeightRatio: resolveQueryEditorEditorHeightRatio(
-                      finalHeight,
-                      availableHeight,
-                  ),
-              });
+              setQueryEditorTabSplitRatio(tab.id, resolveQueryEditorEditorHeightRatio(
+                  finalHeight,
+                  availableHeight,
+              ));
           }
       }
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
-  }, [applyEditorHeightToDom, cancelEditorResizeFrame, handleMouseMove, resolveEditorSplitAvailableHeight, setQueryOptions]);
+  }, [applyEditorHeightToDom, cancelEditorResizeFrame, handleMouseMove, resolveEditorSplitAvailableHeight, tab.id]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
       e.preventDefault();
@@ -7553,6 +7550,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       registerQueryEditorAiContextMenuActions(editor);
       registerInsertSqlSnippetContextMenuAction(editor);
       registerTransformCaseContextMenuActions(editor);
+      registerToggleLineCommentAction();
       registerTriggerSqlAiCompletionAction(editor, monaco);
 
       // Register runQuery shortcut inside Monaco so it overrides Monaco's default keybinding
@@ -7632,39 +7630,33 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           }
       }
 
-      const saveBinding = saveQueryShortcutBinding;
-      if (saveBinding?.enabled && saveBinding.combo) {
-          const keyBinding = comboToMonacoKeyBinding(
-              saveBinding.combo, monaco.KeyMod, monaco.KeyCode, activeShortcutPlatform,
-          );
-          if (keyBinding) {
-              saveQueryActionRef.current = editor.addAction({
-                  id: 'gonavi.saveQuery',
-                  label: buildQueryEditorMonacoActionLabel('app.shortcuts.action.saveQuery.label'),
-                  keybindings: [keyBinding.keyMod | keyBinding.keyCode],
-                  run: () => {
-                      window.dispatchEvent(new CustomEvent('gonavi:save-active-query'));
-                  },
-              });
-          }
-      }
+      saveQueryActionRef.current = registerQueryEditorShortcutAction({
+          editor,
+          monaco,
+          platform: activeShortcutPlatform,
+          id: 'gonavi.saveQuery',
+          label: buildQueryEditorMonacoActionLabel('app.shortcuts.action.saveQuery.label'),
+          combo: saveQueryShortcutBinding?.combo,
+          enabled: saveQueryShortcutBinding?.enabled,
+          run: () => {
+              window.dispatchEvent(new CustomEvent('gonavi:save-active-query'));
+          },
+      });
 
-      const saveAsBinding = saveQueryAsShortcutBinding;
-      if (currentSavedQuery && !tab.filePath && saveAsBinding?.enabled && saveAsBinding.combo) {
-          const keyBinding = comboToMonacoKeyBinding(
-              saveAsBinding.combo, monaco.KeyMod, monaco.KeyCode, activeShortcutPlatform,
-          );
-          if (keyBinding) {
-              saveQueryAsActionRef.current = editor.addAction({
-                  id: 'gonavi.saveQueryAs',
-                  label: buildQueryEditorMonacoActionLabel('app.shortcuts.action.saveQueryAs.label'),
-                  keybindings: [keyBinding.keyMod | keyBinding.keyCode],
-                  run: () => {
-                      window.dispatchEvent(new CustomEvent('gonavi:save-active-query-as'));
-                  },
-              });
-          }
-      }
+      saveQueryAsActionRef.current = currentSavedQuery && !tab.filePath
+          ? registerQueryEditorShortcutAction({
+              editor,
+              monaco,
+              platform: activeShortcutPlatform,
+              id: 'gonavi.saveQueryAs',
+              label: buildQueryEditorMonacoActionLabel('app.shortcuts.action.saveQueryAs.label'),
+              combo: saveQueryAsShortcutBinding?.combo,
+              enabled: saveQueryAsShortcutBinding?.enabled,
+              run: () => {
+                  window.dispatchEvent(new CustomEvent('gonavi:save-active-query-as'));
+              },
+          })
+          : null;
 
       const findInEditorKeyBinding = comboToMonacoKeyBinding(
           findInEditorShortcutCombo, monaco.KeyMod, monaco.KeyCode, activeShortcutPlatform,
@@ -7945,7 +7937,12 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
               );
               const activeConnectionHasScopedMetadata = isConnectionScopedQueryEditorMetadata(activeConnection);
               const dialectKeywords = resolveSqlKeywords(activeDialect);
-              const dialectFunctions = resolveSqlFunctions(activeDialect);
+              // 版本感知补全（#1328）：已探测到的服务端版本喂给函数解析，
+              // 低于函数最低版本的候选不出现在补全列表里。
+              const activeServerVersion = peekDatabaseServerVersion(
+                  String(currentConnectionIdRef.current || '').trim(),
+              );
+              const dialectFunctions = resolveSqlFunctions(activeDialect, activeServerVersion);
 
               const stripQuotes = stripCompletionIdentifierQuotes;
               const normalizeQualifiedName = normalizeCompletionQualifiedName;
@@ -8111,8 +8108,9 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                   dbName,
                   metadataDialect,
               );
-              if (sharedLazyTablesCache[cacheKey]) {
-                  return sharedLazyTablesCache[cacheKey];
+              const boundedCachedTables = boundedLazyTablesCache.get(cacheKey);
+              if (boundedCachedTables) {
+                  return boundedCachedTables;
               }
               const cacheRevision = getSharedLazyTablesRevision(cacheKey);
                   const metadataSnapshot: QueryEditorMetadataRequestSnapshot = {
@@ -8156,7 +8154,14 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                                   metadataDialect,
                               ))
                               .filter((table): table is CompletionTableMeta => !!table);
-                          sharedLazyTablesCache[cacheKey] = tables;
+                          boundedLazyTablesCache.set(
+                              cacheKey,
+                              buildQueryEditorMetadataCacheScope(
+                                  connId,
+                                  buildMetadataIdentityKey(metadataDialect, dbName),
+                              ),
+                              tables,
+                          );
                           if (tables.length > 0) {
                               const lazyTableByKey = new Map(tables.map((table) => [
                                   buildCompletionTableMetadataIdentityKey(
@@ -8301,7 +8306,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                       buildQueryEditorMetadataIdentityKey(activeDialect, lookupDbName),
                       normalizeQueryEditorTableTargetName(lookupTableName, activeDialect),
                   ].join('|');
-                  const cached = sharedColumnsCacheData[key] as ColumnDefinition[] | undefined;
+                  const cached = boundedColumnsCache.get(key) as ColumnDefinition[] | undefined;
                   if (cached) {
                       const cachedColumns = toCompletionColumns(cached, targetDb, targetTable);
                       mergeSharedCompletionColumns(cachedColumns);
@@ -8323,7 +8328,11 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                   }
                   if (res?.success && Array.isArray(res.data)) {
                       const cols = res.data as ColumnDefinition[];
-                      sharedColumnsCacheData[key] = cols;
+                      boundedColumnsCache.set(
+                          key,
+                          buildQueryEditorMetadataCacheScope(sharedCurrentConnectionId, ''),
+                          cols,
+                      );
                       const completionColumns = toCompletionColumns(cols, targetDb, targetTable);
                       mergeSharedCompletionColumns(completionColumns);
                       return completionColumns;
@@ -9108,8 +9117,12 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                       label: keyword,
                       kind: monaco.languages.CompletionItemKind.Keyword,
                       insertText: keyword,
+                      // filterText 让 Monaco 二次过滤（incomplete 大写列表）按
+                      // 关键字原文匹配，短前缀候选不再被 fuzzy 规则吞掉（#1328）。
+                      filterText: keyword,
                       range,
-                      sortText: sortGroups.keyword + keyword,
+                      // 组内按常用词权重排序，不再依赖字母序巧合（#1328）。
+                      sortText: sortGroups.keyword + sqlKeywordPriority(keyword) + keyword,
                   }),
               });
 
@@ -9125,6 +9138,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                       insertText: func.name + '($0)',
                       insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
                       detail: func.detail,
+                      // 同关键字：让 Monaco 二次过滤按函数名匹配（#1328）。
+                      filterText: func.name,
                       range,
                       sortText: sortGroups.func + func.name,
                   }),
@@ -9427,25 +9442,15 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       void message.success(translate('query_editor.message.format_restore_success'));
   };
 
+  const runAIAction = useQueryEditorAIAction({
+      isActive, shortcuts: shortcutOptions, platform: activeShortcutPlatform,
+      getSelection: () => editorRef.current?.getModel()?.getValueInRange(editorRef.current.getSelection()) || '',
+      getSQL: getCurrentQuery, placeholder: QUERY_EDITOR_SQL_PROMPT_PLACEHOLDER,
+      connection: connections.find((c) => c.id === currentConnectionId), database: currentDb,
+      openGenerate: openTextToSqlModal,
+  });
   const handleAIAction = (action: 'generate' | 'explain' | 'optimize' | 'schema') => {
-      if (action === 'generate') {
-          openTextToSqlModal();
-          return;
-      }
-
-      const editor = editorRef.current;
-      const selection = editor?.getModel()?.getValueInRange(editor.getSelection()) || '';
-      const fullSQL = getCurrentQuery();
-      const prompts: Record<string, string> = {
-          explain: translate('query_editor.ai_prompt.explain', { sql: selection || fullSQL || QUERY_EDITOR_SQL_PROMPT_PLACEHOLDER }),
-          optimize: translate('query_editor.ai_prompt.optimize', { sql: selection || fullSQL || QUERY_EDITOR_SQL_PROMPT_PLACEHOLDER }),
-          schema: translate('query_editor.ai_prompt.schema'),
-      };
-      void injectQueryEditorAiPromptWithContext({
-          connection: connections.find((c) => c.id === currentConnectionId),
-          database: currentDb,
-          prompt: prompts[action] || '',
-      });
+      runAIAction(action);
   };
 
   const formatSettingsMenu: MenuProps['items'] = [
@@ -9752,6 +9757,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       dbType = String(config.type || ''),
       connectionParamsOverride?: string,
       executionConnectionId = currentConnectionIdRef.current,
+      paramBindings?: QueryParamBindingInput[],
   ) => {
       const executionConfig = connectionParamsOverride === undefined
           ? buildSqlExecutionConnectionConfig(config)
@@ -9765,21 +9771,33 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
               || String(executionConfig.connectionParams || '')
                   === String(currentContextConfig.connectionParams || '')
           );
+      const resultBudget = buildQueryEditorResultBudgetOptions(queryOptions?.maxRows);
       const pendingTransaction = pendingSqlTransactionRef.current;
       if (
           pendingTransaction
           && matchesCurrentExecutionContext
           && canReusePendingSqlEditorTransactionForType(dbType, sourceStatements, config as ConnectionConfig)
       ) {
-          return DBQueryMultiInTransaction(pendingTransaction.id, sql, queryId);
+          if (paramBindings && paramBindings.length > 0) {
+              return DBQueryMultiWithParamsInTransaction(pendingTransaction.id, sql, queryId, paramBindings);
+          }
+          return DBQueryMultiInTransactionWithOptions(pendingTransaction.id, sql, queryId, resultBudget);
       }
       const rpcConfig = buildRpcConnectionConfig(executionConfig) as any;
-      return invokeRequestScopedApp(
-          'DBQueryMulti',
-          [rpcConfig, dbName, sql, queryId],
-          () => DBQueryMulti(rpcConfig, dbName, sql, queryId),
-      );
-  }, [buildSqlExecutionConnectionConfig, invokeRequestScopedApp]);
+      if (paramBindings && paramBindings.length > 0) {
+          return invokeRequestScopedApp(
+              'DBQueryMultiWithParams',
+              [rpcConfig, dbName, sql, queryId, paramBindings],
+              () => DBQueryMultiWithParams(rpcConfig, dbName, sql, queryId, paramBindings),
+          );
+      }
+      return invokeBudgetedDBQueryMulti(
+          [rpcConfig, dbName, sql, queryId, resultBudget],
+          () => DBQueryMultiWithOptions(rpcConfig, dbName, sql, queryId, resultBudget),
+          invokeRequestScopedApp,
+      )
+          .then(expandCompactQueryResult);
+  }, [buildSqlExecutionConnectionConfig, invokeRequestScopedApp, queryOptions?.maxRows]);
 
   // 精准重查询单个结果集（提交事务 / 刷新按钮使用），不会重跑整个编辑器 SQL
   const handleReloadResult = async (
@@ -9867,6 +9885,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                   normalizedDbType,
                   executionContext?.executionConnectionParams ?? currentResult?.executionConnectionParams,
                   executionConnectionId,
+                  currentResult?.executionBindings,
               );
           } finally {
               if (isCurrentRun()) {
@@ -10001,6 +10020,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
               normalizedDbType,
               target.executionConnectionParams,
               executionConnectionId,
+              target.executionBindings,
           );
           const duration = Date.now() - countStartedAt;
           addSqlLog({
@@ -10191,6 +10211,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                   normalizedDbType,
                   target.executionConnectionParams,
                   executionConnectionId,
+                  target.executionBindings,
               );
           } finally {
               if (isCurrentRun()) {
@@ -10564,7 +10585,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       }
   };
 
-  const handleRun = async (runScope: QueryEditorRunScope = 'default') => {
+  const handleRun = async (runScope: QueryEditorRunScope = 'default', runOptions?: { skipParamsGate?: boolean }) => {
     if (isElasticsearchMode) {
         await handleElasticsearchRun(runScope === 'all');
         return;
@@ -10672,7 +10693,10 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
         return;
     }
 
-    if (findPotentiallyMutatingConnectionStatements(conn.config, executableSQL).length > 0) {
+    // 写操作判定要复用同一结果：生产确认和"不可撤销"提示必须基于同一判断，
+    // 各算一遍会在边界 SQL 上出现"确认了却没提示"或反之的漂移。
+    const mutatingStatements = findPotentiallyMutatingConnectionStatements(conn.config, executableSQL);
+    if (mutatingStatements.length > 0) {
         const approved = await confirmProductionRisk({
             connection: conn,
             action: translate('connection.production_risk.action.execute_sql'),
@@ -11082,6 +11106,35 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                 : executableStatements.join(';\n');
             recordExecutionOrigin(currentQuery, executableSQL, fullSQL, executablePlans);
 
+            // 运行时绑定参数门控：以刚要执行的 SQL 做权威分析。
+            // skipParamsGate 表示用户已在绑定对话框确认——按对话框分析结果
+            // 与会话值构建绑定（对话框在缺值时禁用确认按钮），不再重复分析。
+            let paramBindings: QueryParamBindingInput[] | undefined;
+            if (runOptions?.skipParamsGate) {
+                const confirmed = paramsDialogState.analysis;
+                if (confirmed && confirmed.parameterNames.length > 0) {
+                    paramBindings = bindingsFromValues(confirmed.parameterNames, paramsState.values);
+                }
+            } else {
+                const freshAnalysis = await paramsState.analyzeNow(fullSQL, executionDbName);
+                if (freshAnalysis && freshAnalysis.parameterNames.length > 0) {
+                    if (!freshAnalysis.supported) {
+                        message.error(translate(freshAnalysis.messageKey || 'query_editor.params.unsupported_driver'));
+                        if (isCurrentRun()) setLoading(false);
+                        return;
+                    }
+                    const missing = collectMissingParamNames(freshAnalysis.parameterNames, paramsState.values);
+                    if (missing.length > 0) {
+                        lastParamsRunScopeRef.current = runScope;
+                        setParamsDialogState({ open: true, analysis: freshAnalysis });
+                        message.warning(translate('query_editor.params.missing_hint', { names: missing.join(', ') }));
+                        if (isCurrentRun()) setLoading(false);
+                        return;
+                    }
+                    paramBindings = bindingsFromValues(freshAnalysis.parameterNames, paramsState.values);
+                }
+            }
+
             let queryId: string;
             try {
                 queryId = await GenerateQueryID();
@@ -11095,15 +11148,25 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
             let res: any = undefined;
             const startTime = Date.now();
+            const resultBudget = buildQueryEditorResultBudgetOptions(queryOptions?.maxRows);
             setExecutionTimingActive(true);
             try {
                 res = useManagedTransaction
-                    ? await DBQueryMultiTransactional(
-                        buildRpcConnectionConfig(executionConfig) as any,
-                        executionDbName,
-                        fullSQL,
-                        queryId,
-                    )
+                    ? (paramBindings
+                        ? await DBQueryMultiTransactionalWithParams(
+                            buildRpcConnectionConfig(executionConfig) as any,
+                            executionDbName,
+                            fullSQL,
+                            queryId,
+                            paramBindings,
+                        )
+                        : await DBQueryMultiTransactionalWithOptions(
+                            buildRpcConnectionConfig(executionConfig) as any,
+                            executionDbName,
+                            fullSQL,
+                            queryId,
+                            resultBudget,
+                        ))
                     : await executeSqlEditorMultiQuery(
                         config,
                         executionDbName,
@@ -11113,6 +11176,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                         normalizedDbType,
                         executionConnectionParams,
                         currentConnectionId,
+                        paramBindings,
                     );
             } catch (error: any) {
                 // A rejected Wails call has the same ambiguity as a returned
@@ -11327,6 +11391,14 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                 return;
             }
 
+            // 有写操作、后端却没返回 transactionPending，说明本次是以 autocommit 落地的
+            // （DDL / TRUNCATE / CALL / 存储过程 / 非事务数据源，见后端 shouldUseManagedSQLTransaction）。
+            // 前端自己的 useManagedTransaction 判定比后端宽松，直接采信它会把 DDL 误报成"已托管"，
+            // 所以这里以后端的实际响应为准。必须显式告知，不能静默假装已保护（§3.2 验收 3）。
+            if (res.success && mutatingStatements.length > 0 && !res.transactionPending) {
+                message.warning(translate('query_editor.transaction.message.executed_without_transaction'), 6);
+            }
+
             if (res.transactionPending && res.transactionId) {
                 const transactionId = String(res.transactionId);
                 if (useManagedTransaction) {
@@ -11340,6 +11412,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                         dbName: executionDbName,
                         statements: sourceStatements,
                         executionDurationMs: duration,
+                        connectionId: currentConnectionId,
                     });
                 } else {
                     appendPendingSqlTransactionExecution({
@@ -11436,7 +11509,9 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                     });
                 } else {
                     let rows = Array.isArray(rsData.rows) ? rsData.rows : [];
-                    let truncated = false;
+                    // The backend scanner reports its own truncation; the client-side
+                    // slice below only covers the injected-LIMIT fallback.
+                    let truncated = rsData?.truncated === true;
                     // 仅当前端自动注入了 LIMIT 时才做兜底截断；用户手写 LIMIT 时尊重原始结果
                     if (anyLimitApplied && Number.isFinite(maxRows) && maxRows > 0 && rows.length > maxRows) {
                         truncated = true;
@@ -11479,7 +11554,10 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                         executionConnectionId: currentConnectionId,
                         executionDbName: executionDbName,
                         executionConnectionParams,
+                        executionBindings: paramBindings,
                         pkColumns: plan?.pkColumns || [],
+                        columnMetaMap: plan?.columnMetaMap,
+                        uniqueKeyGroups: plan?.uniqueKeyGroups,
                         editLocator,
                         readOnly: forceReadOnlyResult || !editLocator || editLocator.readOnly,
                         truncated,
@@ -11962,20 +12040,16 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       const monaco = monacoRef.current;
       if (!editor || !monaco) return;
 
-      const binding = duplicateCurrentLineShortcutBinding;
-      if (!binding?.enabled || !binding.combo) return;
-
-      const keyBinding = comboToMonacoKeyBinding(
-          binding.combo, monaco.KeyMod, monaco.KeyCode, activeShortcutPlatform,
-      );
-      if (keyBinding) {
-          duplicateCurrentLineActionRef.current = editor.addAction({
-              id: 'gonavi.duplicateCurrentLine',
-              label: buildQueryEditorMonacoActionLabel('app.shortcuts.action.duplicateCurrentLine.label'),
-              keybindings: [keyBinding.keyMod | keyBinding.keyCode],
-              run: handleDuplicateCurrentLine,
-          });
-      }
+      duplicateCurrentLineActionRef.current = registerQueryEditorShortcutAction({
+          editor,
+          monaco,
+          platform: activeShortcutPlatform,
+          id: 'gonavi.duplicateCurrentLine',
+          label: buildQueryEditorMonacoActionLabel('app.shortcuts.action.duplicateCurrentLine.label'),
+          combo: duplicateCurrentLineShortcutBinding?.combo,
+          enabled: duplicateCurrentLineShortcutBinding?.enabled,
+          run: handleDuplicateCurrentLine,
+      });
 
       return () => {
           if (duplicateCurrentLineActionRef.current) {
@@ -11984,6 +12058,15 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           }
       };
   }, [activeShortcutPlatform, duplicateCurrentLineShortcutBinding, handleDuplicateCurrentLine, languagePreference]);
+
+  // 「取消/添加注释」右键菜单 + 可配置快捷键：委托 Monaco 内置
+  // editor.action.commentLine（当前行/选区生效、一步撤销），语言或改键变化时重注册。
+  // 平台默认 Ctrl（Cmd）+/ 恒被吞键命令占用：enabled 时菜单键位委托切换
+  // 注释、disabled 时默认键完全静默，保证「禁用/改绑」对内置键位生效。
+  useEffect(() => {
+      registerToggleLineCommentAction();
+      return () => disposeToggleLineCommentAction();
+  }, [disposeToggleLineCommentAction, registerToggleLineCommentAction]);
 
   useEffect(() => {
       if (saveQueryActionRef.current) {
@@ -11995,22 +12078,18 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       const monaco = monacoRef.current;
       if (!editor || !monaco) return;
 
-      const binding = saveQueryShortcutBinding;
-      if (!binding?.enabled || !binding.combo) return;
-
-      const keyBinding = comboToMonacoKeyBinding(
-          binding.combo, monaco.KeyMod, monaco.KeyCode, activeShortcutPlatform,
-      );
-      if (keyBinding) {
-          saveQueryActionRef.current = editor.addAction({
-              id: 'gonavi.saveQuery',
-              label: buildQueryEditorMonacoActionLabel('app.shortcuts.action.saveQuery.label'),
-              keybindings: [keyBinding.keyMod | keyBinding.keyCode],
-              run: () => {
-                  window.dispatchEvent(new CustomEvent('gonavi:save-active-query'));
-              },
-          });
-      }
+      saveQueryActionRef.current = registerQueryEditorShortcutAction({
+          editor,
+          monaco,
+          platform: activeShortcutPlatform,
+          id: 'gonavi.saveQuery',
+          label: buildQueryEditorMonacoActionLabel('app.shortcuts.action.saveQuery.label'),
+          combo: saveQueryShortcutBinding?.combo,
+          enabled: saveQueryShortcutBinding?.enabled,
+          run: () => {
+              window.dispatchEvent(new CustomEvent('gonavi:save-active-query'));
+          },
+      });
 
       return () => {
           if (saveQueryActionRef.current) {
@@ -12030,22 +12109,18 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       const monaco = monacoRef.current;
       if (!editor || !monaco || !currentSavedQuery || tab.filePath) return;
 
-      const binding = saveQueryAsShortcutBinding;
-      if (!binding?.enabled || !binding.combo) return;
-
-      const keyBinding = comboToMonacoKeyBinding(
-          binding.combo, monaco.KeyMod, monaco.KeyCode, activeShortcutPlatform,
-      );
-      if (keyBinding) {
-          saveQueryAsActionRef.current = editor.addAction({
-              id: 'gonavi.saveQueryAs',
-              label: buildQueryEditorMonacoActionLabel('app.shortcuts.action.saveQueryAs.label'),
-              keybindings: [keyBinding.keyMod | keyBinding.keyCode],
-              run: () => {
-                  window.dispatchEvent(new CustomEvent('gonavi:save-active-query-as'));
-              },
-          });
-      }
+      saveQueryAsActionRef.current = registerQueryEditorShortcutAction({
+          editor,
+          monaco,
+          platform: activeShortcutPlatform,
+          id: 'gonavi.saveQueryAs',
+          label: buildQueryEditorMonacoActionLabel('app.shortcuts.action.saveQueryAs.label'),
+          combo: saveQueryAsShortcutBinding?.combo,
+          enabled: saveQueryAsShortcutBinding?.enabled,
+          run: () => {
+              window.dispatchEvent(new CustomEvent('gonavi:save-active-query-as'));
+          },
+      });
 
       return () => {
           if (saveQueryAsActionRef.current) {
@@ -12391,6 +12466,9 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
   }): Promise<boolean> => {
       const sql = getCurrentQuery();
       lastLocalQueryRef.current = sql;
+      // 重存已存查询时保留其已持久化的参数声明（当前 UI 无默认值编辑入口，
+      // payload 不含 parameters——缺省即不覆盖，防止保存动作清空声明）。
+      const existingParameters = savedQueries.find((item) => item.id === payload.id)?.parameters;
       const saved = {
           id: payload.id,
           name: payload.name,
@@ -12398,6 +12476,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           connectionId: currentConnectionId,
           dbName: currentDb ?? tab.dbName ?? '',
           createdAt: payload.createdAt ?? Date.now(),
+          parameters: existingParameters,
       };
       const persisted = await runQueuedSaveOperation(() => saveQuery(saved));
       if (!queryEditorMountedRef.current) {
@@ -12648,6 +12727,12 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           key: 'query-actions',
           label: translate('tab_manager.kind_badge.query'),
           children: [
+              ...(String(currentConnectionConfig?.type || '').toLowerCase() === 'duckdb' ? [{
+                  key: 'duckdb-attach-datasource',
+                  icon: <ApiOutlined />,
+                  label: translate('query_editor.duckdb_attach.menu'),
+                  onClick: () => setIsDuckDBAttachPickerOpen(true),
+              }] : []),
               ...(currentSavedQuery && !tab.filePath ? [{
                   key: 'save-query-as',
                   icon: <SaveOutlined />,
@@ -12997,17 +13082,11 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       };
   }, [currentSavedQuery, handleSaveQueryAs, isActive, tab.filePath]);
 
-  useEffect(() => {
-      const handleOpenSqlExecutionLog = (event: Event) => {
-          const mode = event instanceof CustomEvent && event.detail?.mode === 'open' ? 'open' : 'toggle';
-          handleShowSqlExecutionLog(mode);
-      };
-
-      window.addEventListener('gonavi:show-sql-execution-log', handleOpenSqlExecutionLog as EventListener);
-      return () => {
-          window.removeEventListener('gonavi:show-sql-execution-log', handleOpenSqlExecutionLog as EventListener);
-      };
-  }, [handleShowSqlExecutionLog]);
+  useQueryEditorSqlLogBridge({
+      isActive,
+      isOpen: isResultPanelVisible && activeResultKey === QUERY_EDITOR_SQL_LOG_TAB_KEY,
+      onShow: handleShowSqlExecutionLog,
+  });
 
   const handleSave = async () => {
       try {
@@ -13054,6 +13133,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           currentResultSets,
           activeResultKeyRef.current,
           true,
+          paramsPanelAvailableRef.current,
       );
       const nextResultSets = currentResultSets.filter(result => result.key !== key);
       const nextActiveKey = currentActiveKey && currentActiveKey !== key
@@ -13083,6 +13163,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
               resultSetsRef.current,
               activeResultKeyRef.current,
               true,
+              paramsPanelAvailableRef.current,
           );
           if (!effectiveActiveKey) return;
 
@@ -13464,6 +13545,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             onChange={(val) => {
                 const nextValue = val || '';
                 syncQueryDraft(nextValue);
+                paramsState.requestAnalysis();
             }}
             beforeMount={handleEditorBeforeMount}
             onMount={handleEditorDidMount}
@@ -13550,8 +13632,36 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             setResultDiffAnchorKey(resultKey);
             setResultDiffWizardOpen(true);
           }}
+          paramsPanel={
+            paramsState.hasParams || paramsState.analyzing || paramsState.analysis ? (
+              <QueryEditorParamsPanel
+                analysis={paramsState.analysis}
+                analyzing={paramsState.analyzing}
+                values={paramsState.values}
+                onChange={paramsState.setValue}
+              />
+            ) : undefined
+          }
         />
       )}
+
+      <QueryEditorParamsBindDialog
+        open={paramsDialogState.open}
+        analysis={paramsDialogState.analysis}
+        analyzing={paramsState.analyzing}
+        values={paramsState.values}
+        missingNames={
+          paramsDialogState.analysis
+            ? collectMissingParamNames(paramsDialogState.analysis.parameterNames, paramsState.values)
+            : []
+        }
+        onChange={paramsState.setValue}
+        onConfirm={() => {
+          setParamsDialogState((current) => ({ ...current, open: false }));
+          void handleRun(lastParamsRunScopeRef.current || 'default', { skipParamsGate: true });
+        }}
+        onCancel={() => setParamsDialogState((current) => ({ ...current, open: false }))}
+      />
 
       <ResultDiffWizard
         open={resultDiffWizardOpen}
@@ -13710,158 +13820,26 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
         </div>
       </Modal>
 
-      <Modal
-        title={translate('query_editor.snippet_picker.title')}
+      <SqlSnippetPickerModal
         open={isSqlSnippetPickerOpen}
-        centered
-        mask={false}
-        maskClosable={false}
-        width={620}
-        draggable
-        resizable
-        minResizableWidth={460}
-        minResizableHeight={320}
-        onCancel={handleCloseSqlSnippetPicker}
-        footer={null}
-        styles={{
-          content: {
-            borderRadius: 16,
-            border: darkMode ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(15,23,42,0.12)',
-            background: darkMode ? 'rgba(18,18,20,0.98)' : 'rgba(255,255,255,0.98)',
-            boxShadow: darkMode ? '0 24px 60px rgba(0,0,0,0.45)' : '0 24px 60px rgba(15,23,42,0.16)',
-            backdropFilter: 'blur(12px)',
-          },
-          header: {
-            background: 'transparent',
-            borderBottom: 'none',
-            paddingBottom: 8,
-          },
-          body: {
-            paddingTop: 8,
-            paddingBottom: 16,
-            display: 'flex',
-            flexDirection: 'column',
-            minHeight: 0,
-            overflow: 'hidden',
-          },
-        }}
-      >
-        <div
-          data-query-editor-snippet-picker="true"
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 12,
-            flex: '1 1 420px',
-            minHeight: 0,
-            overflow: 'hidden',
-          }}
-        >
-          <div style={{ fontSize: 12, lineHeight: 1.6, color: darkMode ? 'rgba(255,255,255,0.65)' : 'rgba(16,24,40,0.6)' }}>
-            {translate('query_editor.snippet_picker.description')}
-          </div>
-          <Input
-            autoFocus
-            data-query-editor-snippet-search="true"
-            value={sqlSnippetPickerKeyword}
-            onChange={(event) => setSqlSnippetPickerKeyword(event.target.value)}
-            onPressEnter={() => {
-              if (filteredSqlSnippets[0]) {
-                handleInsertSqlSnippet(filteredSqlSnippets[0]);
-              }
-            }}
-            placeholder={translate('query_editor.snippet_picker.search_placeholder')}
-          />
-          <div
-            style={{
-              flex: '1 1 auto',
-              minHeight: 0,
-              overflowY: 'auto',
-              paddingRight: 4,
-              display: 'grid',
-              gap: 8,
-            }}
-          >
-            {filteredSqlSnippets.map((snippet) => {
-              const preview = String(snippet.description || snippet.syntaxHelp || snippet.body || '')
-                .replace(/\s+/g, ' ')
-                .trim();
-              return (
-                <button
-                  key={snippet.id}
-                  type="button"
-                  data-query-editor-snippet-item={snippet.id}
-                  onClick={() => handleInsertSqlSnippet(snippet)}
-                  style={{
-                    textAlign: 'left',
-                    borderRadius: 12,
-                    border: darkMode ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(15,23,42,0.1)',
-                    background: darkMode ? 'rgba(255,255,255,0.03)' : '#fff',
-                    padding: '12px 14px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
-                    <span style={{ fontFamily: 'var(--gn-font-mono)', fontSize: 12, fontWeight: 700, color: '#1677ff' }}>
-                      {snippet.prefix}
-                    </span>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: darkMode ? 'rgba(255,255,255,0.9)' : 'rgba(15,23,42,0.88)' }}>
-                      {snippet.name}
-                    </span>
-                    {snippet.isBuiltin ? (
-                      <span
-                        style={{
-                          fontSize: 11,
-                          padding: '1px 8px',
-                          borderRadius: 999,
-                          background: darkMode ? 'rgba(22,119,255,0.18)' : 'rgba(22,119,255,0.1)',
-                          color: '#1677ff',
-                        }}
-                      >
-                        {translate('snippet_settings.tag.builtin')}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      lineHeight: 1.6,
-                      color: darkMode ? 'rgba(255,255,255,0.65)' : 'rgba(16,24,40,0.6)',
-                      fontFamily: preview.includes('${') ? 'var(--gn-font-mono)' : undefined,
-                    }}
-                  >
-                    {preview}
-                  </div>
-                </button>
-              );
-            })}
-            {!filteredSqlSnippets.length ? (
-              <div
-                data-query-editor-snippet-empty="true"
-                style={{
-                  borderRadius: 12,
-                  padding: '18px 16px',
-                  border: darkMode ? '1px dashed rgba(255,255,255,0.14)' : '1px dashed rgba(15,23,42,0.12)',
-                  color: darkMode ? 'rgba(255,255,255,0.6)' : 'rgba(16,24,40,0.55)',
-                  fontSize: 13,
-                  lineHeight: 1.7,
-                }}
-              >
-                {sqlSnippetPickerEmptyLabel}
-              </div>
-            ) : null}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <Button onClick={handleOpenSnippetSettingsFromPicker}>
-              {translate('query_editor.snippet_picker.manage')}
-            </Button>
-            <Button onClick={handleCloseSqlSnippetPicker}>
-              {translate('common.cancel')}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
+        darkMode={darkMode}
+        keyword={sqlSnippetPickerKeyword}
+        onKeywordChange={setSqlSnippetPickerKeyword}
+        filteredSnippets={filteredSqlSnippets}
+        emptyLabel={sqlSnippetPickerEmptyLabel}
+        onInsertSnippet={handleInsertSqlSnippet}
+        onManageSnippets={handleOpenSnippetSettingsFromPicker}
+        onClose={handleCloseSqlSnippetPicker}
+      />
+      <DuckDBAttachPickerModal
+        open={isDuckDBAttachPickerOpen}
+        connections={connections}
+        darkMode={darkMode}
+        hostConnectionConfig={currentConnectionConfig}
+        hostDbName={currentDb}
+        onClose={() => setIsDuckDBAttachPickerOpen(false)}
+        onInsert={handleInsertDuckDBAttachStatement}
+      />
       <Modal
         title={translate(
           saveModalMode === 'rename'

@@ -4,11 +4,14 @@ import { ArrowLeftOutlined, ArrowRightOutlined, BugOutlined, ClearOutlined, Clos
 
 import { useStore } from '../store';
 import type { EditRowLocator } from '../utils/rowLocator';
+import type { FilterCondition } from '../utils/sql';
 import type { GridSortInfoItem } from '../utils/dataGridSort';
+import type { ColumnMeta } from './dataGridColumnMeta';
 import type { QueryResultPaginationState } from '../utils/queryResultPagination';
 import { filterColumnNamesByGlobalHiddenColumns, useGlobalHiddenColumns } from '../utils/globalHiddenColumns';
 import { buildQueryResultColumnPinScope } from '../utils/queryResultColumnPinScope';
 import { t as defaultTranslate } from '../i18n';
+import { QUERY_EDITOR_PARAMS_PANEL_KEY, type QueryParamBindingInput } from './queryEditor/params/queryEditorParamsModel';
 import { useOptionalI18n } from '../i18n/provider';
 import {
   resolveNativeDetachPreferredBounds,
@@ -20,6 +23,7 @@ import DetachDragPreview, {
   buildDetachDragPreviewState,
   type DetachDragPreviewState,
 } from './DetachDragPreview';
+import QueryEditorResultTruncatedIndicator from './QueryEditorResultTruncatedIndicator';
 import DataGrid from './DataGrid';
 import QueryEditorResultTabContent, {
   isAffectedRowsResult,
@@ -66,7 +70,11 @@ export type QueryEditorResultSet = {
     executionConnectionParams?: string;
     executionConnectionId?: string;
     executionDbName?: string;
+    /** 参数化执行时的绑定值快照：分页/总计数/刷新等远端重跑路径必须原样携带 */
+    executionBindings?: QueryParamBindingInput[];
     pkColumns: string[];
+    columnMetaMap?: Record<string, ColumnMeta>;
+    uniqueKeyGroups?: string[][];
     editLocator?: EditRowLocator;
     readOnly: boolean;
     showRowNumberColumn?: boolean;
@@ -75,12 +83,24 @@ export type QueryEditorResultSet = {
     sortInfo?: GridSortInfoItem[];
     page?: QueryResultPaginationState & { loading?: boolean };
     pinned?: boolean;
+    filterConditions?: FilterCondition[];
+    quickWhereCondition?: string;
+    selectedRowKeys?: React.Key[];
+    selectedCellKeys?: string[];
+    scrollSnapshot?: { top: number; left: number };
+    hasPendingChanges?: boolean;
 };
+
+export type QueryEditorResultViewState = Pick<
+    QueryEditorResultSet,
+    'filterConditions' | 'quickWhereCondition' | 'selectedRowKeys' | 'selectedCellKeys' | 'scrollSnapshot' | 'hasPendingChanges'
+>;
 
 export const resolveEffectiveActiveResultKey = (
     resultSets: Pick<QueryEditorResultSet, 'key'>[],
     activeResultKey: string,
     showSqlLogTab: boolean,
+    showParamsTab = false,
 ): string => {
     if (resultSets.some((result) => result.key === activeResultKey)) {
         return activeResultKey;
@@ -88,11 +108,15 @@ export const resolveEffectiveActiveResultKey = (
     if (showSqlLogTab && activeResultKey === QUERY_EDITOR_SQL_LOG_TAB_KEY) {
         return QUERY_EDITOR_SQL_LOG_TAB_KEY;
     }
+    if (showParamsTab && activeResultKey === QUERY_EDITOR_PARAMS_PANEL_KEY) {
+        return QUERY_EDITOR_PARAMS_PANEL_KEY;
+    }
     return resultSets[0]?.key || (showSqlLogTab ? QUERY_EDITOR_SQL_LOG_TAB_KEY : '');
 };
 
 interface QueryEditorResultsPanelProps {
     workbenchTabId?: string;
+    paramsPanel?: React.ReactNode;
     resultSets: QueryEditorResultSet[];
     activeResultKey: string;
     isActive: boolean;
@@ -160,6 +184,7 @@ export const shouldActivateResultTabDetachPointer = (event: {
 };
 
 const QueryEditorResultsPanel: React.FC<QueryEditorResultsPanelProps> = ({
+    paramsPanel,
     workbenchTabId,
     resultSets,
     activeResultKey,
@@ -405,6 +430,7 @@ const QueryEditorResultsPanel: React.FC<QueryEditorResultsPanelProps> = ({
         resultSets,
         activeResultKey,
         true,
+        Boolean(paramsPanel),
     );
 
     // The per-result content reads actions through a ref so its props stay
@@ -615,6 +641,7 @@ const QueryEditorResultsPanel: React.FC<QueryEditorResultsPanelProps> = ({
                             <PushpinOutlined className="query-result-tab-pin" />
                         </Tooltip>
                     ) : null}
+                    {rs.truncated ? <QueryEditorResultTruncatedIndicator /> : null}
                     {(() => {
                         if (rs.resultType === 'message') return <span className="query-result-tab-count" data-query-result-tab-count="true">i</span>;
                         if (isAffectedRowsResult(rs)) return <span className="query-result-tab-count" data-query-result-tab-count="true">✓</span>;
@@ -642,7 +669,6 @@ const QueryEditorResultsPanel: React.FC<QueryEditorResultsPanelProps> = ({
                 rs={rs}
                 workbenchTabId={workbenchTabId}
                 isResultActive={isActive && resolvedActiveResultKey === rs.key}
-                loading={loading}
                 darkMode={darkMode}
                 currentDb={currentDb}
                 currentConnectionId={currentConnectionId}
@@ -677,7 +703,18 @@ const QueryEditorResultsPanel: React.FC<QueryEditorResultsPanelProps> = ({
                 />
             ),
         };
-    const tabItems = [logTabItem, ...resultTabItems];
+    const paramsTabItem = paramsPanel ? {
+            key: QUERY_EDITOR_PARAMS_PANEL_KEY,
+            label: (
+                <Tooltip title={t('query_editor.params.panel_title')}>
+                    <div className="query-result-tab-label">
+                        <span className="query-result-tab-text">{t('query_editor.params.panel_title')}</span>
+                    </div>
+                </Tooltip>
+            ),
+            children: paramsPanel,
+        } : null;
+    const tabItems = [logTabItem, ...(paramsTabItem ? [paramsTabItem] : []), ...resultTabItems];
     const activeResultSet = resultSets.find((rs) => rs.key === resolvedActiveResultKey) || null;
     const activeResultUsesDataGrid = Boolean(activeResultSet && activeResultSet.resultType !== 'message' && !isAffectedRowsResult(activeResultSet));
 
@@ -749,9 +786,6 @@ const QueryEditorResultsPanel: React.FC<QueryEditorResultsPanelProps> = ({
               .query-result-tabs .ant-tabs-extra-content .query-result-panel-tab-action { width: 28px; min-width: 28px; height: 28px !important; min-height: 28px !important; padding: 0 !important; display: inline-flex; align-items: center; justify-content: center; }
             `}</style>
             <div data-gonavi-close-shortcut-scope="result" className="gn-v2-query-results" style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                {tabItems.length > 0 && visibleExecutionLifecycle ? (
-                    <QueryEditorExecutionStatus compact lifecycle={visibleExecutionLifecycle} />
-                ) : null}
                 {tabItems.length > 0 ? (
                     <Tabs className="query-result-tabs" activeKey={resolvedActiveResultKey} onChange={onActiveResultKeyChange} animated={false} style={{ flex: 1, minHeight: 0 }} tabBarExtraContent={tabsExtraContent} items={tabItems} />
                 ) : executionError ? (

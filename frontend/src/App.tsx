@@ -12,6 +12,8 @@ import TitleBarPrimaryActions, {
   resolveTitleBarPrimaryActionShortcut,
 } from './components/TitleBarPrimaryActions';
 import TitleBarSystemActions from './components/TitleBarSystemActions';
+import TitleBarViewMenu from './components/TitleBarViewMenu';
+import { useTitleBarViewMenuEntries } from './components/useTitleBarViewMenuEntries';
 import ConnectionGroupManagementModal from './components/sidebar/ConnectionGroupManagementModal';
 import TabManager from './components/TabManager';
 import FloatingWorkbenchWindows from './components/FloatingWorkbenchWindows';
@@ -46,24 +48,12 @@ import SecurityUpdateSettingsModal from './components/SecurityUpdateSettingsModa
 import LanguageSettingsPanel from './components/LanguageSettingsPanel';
 import WebAuthSettingsPanel from './components/WebAuthSettingsPanel';
 import CloudBackupSettings from './components/CloudBackupSettings';
-import BrandIconPicker from './components/BrandIconPicker';
 import {
-  resolveBrandAboutSrc,
-  resolveBrandDockSrc,
   resolveBrandIconSrc,
-  resolveBrandIcon,
-  setLoadedBrandIconSources,
-  BRAND_ICONS,
-  type BrandIconId,
 } from './brand/brandIcons';
-import {
-  composeMacOSDockIconBase64,
-  composeWindowsNativeIconBase64,
-  LEGACY_MASCOT_DOCK_ICON_INSET,
-  shouldSyncApplicationBrandIcon,
-} from './brand/macDockIcon';
 import CustomThemeManager from './components/settings/CustomThemeManager';
 import ToolbarButtonAppearanceSettings from './components/settings/ToolbarButtonAppearanceSettings';
+import TitlebarMenuStyleSettings from './components/settings/TitlebarMenuStyleSettings';
 import SettingsCenterTreeNav, {
   findSettingsCenterTreeItem,
 } from './components/settings/SettingsCenterTreeNav';
@@ -163,6 +153,7 @@ import {
 import { SettingsCenterWorkbenchRegistrar } from './components/settings/SettingsCenterWorkbenchBridge';
 import { buildSqlAuditWorkbenchTab } from './utils/sqlAuditTab';
 import { buildRequestDiagnosticsWorkbenchTab } from './utils/requestDiagnosticsTab';
+import { buildDMLSnapshotWorkbenchTab } from './utils/dmlSnapshotTab';
 import {
   getDataSourceCapabilities,
   isMessageQueueDataSource,
@@ -238,6 +229,7 @@ import {
   ShortcutAction,
   canRecordShortcutForAction,
   eventToShortcut,
+  findEnabledActionConflicts,
   findReservedConflictsForAction,
   getShortcutDisplay,
   getShortcutDisplayLabel,
@@ -328,8 +320,6 @@ import {
   SelectDataRootDirectory,
   SelectLogDirectory,
   SelectSavedQueryDirectory,
-  SetApplicationBrandIcon,
-  GetBrandIconDataURL,
   SetWindowTranslucency,
 } from '../wailsjs/go/app/App';
 import { getAntdLocale } from './i18n/frameworkLocale';
@@ -659,7 +649,6 @@ type SettingsCenterGroupKey = 'preferences' | 'services' | ToolCenterGroupKey | 
 type SettingsCenterPaneKey =
   | 'language'
   | 'theme'
-  | 'brand-icon'
   | 'sidebar-metadata'
   | 'sidebar-objects'
   | 'proxy'
@@ -866,22 +855,16 @@ function App() {
   // snapshot while the panel is hidden, detached, or being remounted.
   useAIWorkspaceSnapshot({ enabled: true });
   const [notificationApi, notificationContextHolder] = notification.useNotification();
-  const [brandAssetRevision, setBrandAssetRevision] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isConnectionModalMounted, setIsConnectionModalMounted] = useState(false);
   const [editingConnection, setEditingConnection] = useState<SavedConnection | null>(null);
   const [connectionHealthTargetIds, setConnectionHealthTargetIds] = useState<string[]>([]);
   const pendingConnectionTagIdRef = useRef<string | null>(null);
-  // Suppresses the brand-icon sync effect while the explicit selection flow is
-  // applying the same icon through the native bridge, so the shortcut update
-  // and window identity rotation run exactly once.
-  const windowsBrandIconApplyingRef = useRef<BrandIconId | null>(null);
   const connectionModalWarmupDoneRef = useRef(false);
   const windowState = useStore(state => state.windowState);
   const themeMode = useStore(state => state.theme);
   const themePreference = useStore(state => state.themePreference);
   const brandIconId = useStore(state => state.brandIconId);
-  const setBrandIconId = useStore(state => state.setBrandIconId);
   const setTheme = useStore(state => state.setTheme);
   const setThemePreference = useStore(state => state.setThemePreference);
   const customThemes = useCustomThemeStore(state => state.themes);
@@ -1049,7 +1032,7 @@ function App() {
       void safeWindowRuntimeCall(() => WindowSetLightTheme(), undefined);
   }, [effectiveThemePreference, resolvedThemeMode, setTheme, themeMode]);
 
-  // Apply the selected brand mascot to the favicon and supported native OS surfaces.
+  // Use the bundled application brand for the browser favicon.
   useEffect(() => {
       if (typeof document === 'undefined') return;
       const href = resolveBrandIconSrc(brandIconId);
@@ -1060,77 +1043,10 @@ function App() {
           link.setAttribute('data-brand-icon', 'true');
           document.head.appendChild(link);
       }
-      // The current ribbon assets are SVG, while the restored 0.9.7 mascot
-      // assets are lossless WebP files. Keep the favicon MIME in sync with
-      // the selected asset so browsers do not discard the mascot icon.
-      link.type = /\.webp(?:[?#]|$)/i.test(href) ? 'image/webp' : 'image/svg+xml';
+      link.type = 'image/svg+xml';
       link.href = href;
 
-      // The selection flow below rotates the live window identity itself;
-      // skip this sync while that apply is in flight so the shortcut update
-      // and window re-grouping run exactly once.
-      if (runtimePlatform === 'windows' && windowsBrandIconApplyingRef.current === brandIconId) {
-          return;
-      }
-
-      let cancelled = false;
-      const applyNativeIcon = async () => {
-          try {
-              const environment = await Environment();
-              if (cancelled || !shouldSyncApplicationBrandIcon(environment)) {
-                  return;
-              }
-              const dockHref = resolveBrandDockSrc(brandIconId);
-              // The compact fallback is suitable for UI placeholders, but it
-              // must never become the cached Windows taskbar or macOS Dock icon.
-              if (!dockHref) return;
-              const b64 = runtimePlatform === 'windows'
-                  ? await composeWindowsNativeIconBase64(dockHref, {
-                      transparentMark: resolveBrandIcon(brandIconId).bundled ? true : undefined,
-                  })
-                  : await composeMacOSDockIconBase64(dockHref, {
-                      inset: resolveBrandIcon(brandIconId).bundled ? LEGACY_MASCOT_DOCK_ICON_INSET : undefined,
-                  });
-              if (cancelled) return;
-              const result = await SetApplicationBrandIcon(b64);
-              if (!result.success && !cancelled) {
-                  console.warn('Failed to update the native application icon:', result.message);
-                  message.warning(t('app.settings.entry.brand_icon.native_sync_failed'));
-              }
-          } catch (error) {
-              if (!cancelled) {
-                  console.warn('Failed to update the native application icon:', error);
-                  message.warning(t('app.settings.entry.brand_icon.native_sync_failed'));
-              }
-          }
-      };
-      void applyNativeIcon();
-      return () => {
-          cancelled = true;
-      };
-  }, [brandIconId, brandAssetRevision, runtimePlatform, t]);
-
-  useEffect(() => {
-      let cancelled = false;
-      const loadBrandAssets = async () => {
-          const loaded: Partial<Record<BrandIconId, string>> = {};
-          await Promise.all(BRAND_ICONS.filter((icon) => !icon.bundled).map(async (icon) => {
-              try {
-                  const source = await GetBrandIconDataURL(icon.id);
-                  if (source) loaded[icon.id] = source;
-              } catch {
-                  // The compact in-memory fallback keeps the UI usable offline.
-              }
-          }));
-          if (!cancelled && Object.keys(loaded).length > 0) {
-              setLoadedBrandIconSources(loaded);
-              setBrandAssetRevision((revision) => revision + 1);
-              window.dispatchEvent(new Event('gonavi-brand-assets-ready'));
-          }
-      };
-      void loadBrandAssets();
-      return () => { cancelled = true; };
-  }, []);
+  }, [brandIconId]);
 
   const selectPresetTheme = useCallback((preference: ThemePreference) => {
       // Custom CSS is an independent skin layer. Selecting a built-in preset
@@ -3506,54 +3422,6 @@ function App() {
       });
   }, [applicationQuitModalZIndex, ensureSavedQueriesLoaded, forceQuitApplication, resetApplicationQuitRequest, saveQuery, t]);
 
-  const handleBrandIconChange = useCallback(async (id: BrandIconId) => {
-      if (id === brandIconId) return;
-      const previousId = brandIconId;
-      if (runtimePlatform !== 'windows') {
-          setBrandIconId(id);
-          message.success(t('app.settings.entry.brand_icon.applied'));
-          return;
-      }
-
-      // Windows applies the new ICO to existing shortcuts and rotates the live
-      // window's AppUserModel identity in a single native call, so Explorer
-      // re-renders the taskbar group immediately — no restart required now
-      // that the identity follows the icon. Detached native windows spawned
-      // before the next full app restart keep the previous identity until
-      // then, which is the only leftover of skipping the restart.
-      windowsBrandIconApplyingRef.current = id;
-      setBrandIconId(id);
-      try {
-          const source = resolveBrandDockSrc(id);
-          if (!source) {
-              // Remote ribbon assets are still warming the cache. The compact
-              // GN fallback must never be written to the Windows icon cache;
-              // the dock sync effect applies the verified asset once it lands.
-              message.success(t('app.settings.entry.brand_icon.applied'));
-              return;
-          }
-          // Windows fills the whole taskbar tile; the macOS Dock safe-area
-          // inset would shrink the ICO mark relative to neighbouring apps.
-          // Bundled mascots drop the white tile and the GoNavi word mark —
-          // the cut-out dog itself becomes the whole icon, no background.
-          const b64 = await composeWindowsNativeIconBase64(source, {
-              transparentMark: resolveBrandIcon(id).bundled ? true : undefined,
-          });
-          const result = await SetApplicationBrandIcon(b64);
-          if (!result || result.success === false) {
-              throw new Error(result?.message || 'Windows brand icon update failed');
-          }
-          message.success(t('app.settings.entry.brand_icon.applied'));
-      } catch (error) {
-          setBrandIconId(previousId);
-          console.warn('Failed to apply the Windows brand icon:', error);
-          message.error(t('app.settings.entry.brand_icon.native_sync_failed'));
-      } finally {
-          if (windowsBrandIconApplyingRef.current === id) {
-              windowsBrandIconApplyingRef.current = null;
-          }
-      }
-  }, [brandIconId, runtimePlatform, setBrandIconId, t]);
 
   const handleInstallUpdateRequest = useCallback(async () => {
       let pendingCloseInstanceCount: number | null = null;
@@ -4505,6 +4373,19 @@ function App() {
           openSecurityUpdateSettings();
       }
   }, [openSecurityUpdateSettings, securityUpdateRepairSource]);
+  const titleBarViewMenuEntries = useTitleBarViewMenuEntries({
+      activeTabType: activeWorkbenchTab?.type,
+      aiPanelVisible,
+      fullscreen: windowState === 'fullscreen',
+      isMacRuntime,
+      onCloseSettings: closeSettingsCenterWorkbenchTab,
+      onCollapseSidebar: handleCollapseSidebarPanel,
+      onExpandSidebar: handleExpandSidebarPanel,
+      onOpenSettings: handleOpenSettingsModal,
+      onToggleAI: handleToggleOrFocusAIPanel,
+      settingsOpen: isSettingsModalOpen,
+      sidebarCollapsed: isSidebarCollapsed,
+  });
   const handleCancelSettingsCenterPane = useCallback(() => withAISettingsLeaveGuard(aiSettingsLeaveGuardRef.current, () => {
       const leavingAI = activeSettingsCenterPane?.key === 'ai';
       if (isConnectionPackageSettingsPaneKey(activeSettingsCenterPane?.key)) {
@@ -5824,16 +5705,12 @@ function App() {
                   : t('app.shortcuts.message.modifier_required'));
               return;
           }
-          const conflictAction = SHORTCUT_ACTION_ORDER.find((action) => {
-              if (action === capturingShortcutAction) {
-                  return false;
-              }
-              const binding = resolveShortcutBinding(shortcutOptions, action, activeShortcutPlatform);
-              if (!binding?.enabled) {
-                  return false;
-              }
-              return normalizeShortcutCombo(binding.combo) === normalizedCombo;
-          });
+          const conflictAction = findEnabledActionConflicts(
+              shortcutOptions,
+              capturingShortcutAction,
+              normalizedCombo,
+              activeShortcutPlatform,
+          )[0];
           if (conflictAction) {
               void message.warning(t('app.shortcuts.message.conflict', { action: SHORTCUT_ACTION_META[conflictAction].label }));
               return;
@@ -7311,6 +7188,11 @@ function App() {
                                   options?.hideSectionTabs ? null : t('app.theme.nav.appearance.title'),
                                   <>
                                       {renderThemeSettingsRow({
+                                          label: t('app.theme.appearance.titlebar_menu_style_title'),
+                                          stacked: true,
+                                          control: <TitlebarMenuStyleSettings />,
+                                      })}
+                                      {renderThemeSettingsRow({
                                           label: t('app.theme.appearance.ui_scale_title'),
                                           hint: t('app.theme.appearance.ui_scale_hint'),
                                           stacked: true,
@@ -8028,13 +7910,6 @@ function App() {
                   })),
               },
               {
-                  key: 'brand-icon',
-                  icon: <AppstoreOutlined />,
-                  title: t('app.settings.entry.brand_icon.title'),
-                  description: t('app.settings.entry.brand_icon.description'),
-                  onClick: () => handleOpenSettingsCenterPane('preferences', 'brand-icon'),
-              },
-              {
                   key: 'sidebar-metadata',
                   icon: <TableOutlined />,
                   title: t('app.settings.sidebar_metadata.title'),
@@ -8174,19 +8049,6 @@ function App() {
           return (
               <div style={{ height: '100%', minHeight: 0 }}>
                   {renderThemeSettingsContent({ hideSectionTabs: true })}
-              </div>
-          );
-      }
-      if (activeSettingsCenterPane.key === 'brand-icon') {
-          return (
-              <div style={{ padding: '16px 0 20px' }}>
-                  <BrandIconPicker
-                    value={brandIconId}
-                    darkMode={darkMode}
-                    accentColor={overlayTheme.selectedText}
-                    ariaLabel={t('app.settings.entry.brand_icon.title')}
-                    onChange={handleBrandIconChange}
-                  />
               </div>
           );
       }
@@ -8373,6 +8235,13 @@ function App() {
                     onConnectionGroupManagement={() => setIsConnectionGroupManagementOpen(true)}
                   />
                   <div id="gonavi-titlebar-quick-actions" className="gonavi-titlebar-quick-actions-slot" />
+                  {appearance.titlebarMenuStyle === 'view-menu' && (
+                      <TitleBarViewMenu
+                        label={t('app.view_menu.trigger')}
+                        entries={titleBarViewMenuEntries}
+                      />
+                  )}
+                  <div id="gonavi-titlebar-about-action" className="gonavi-titlebar-quick-actions-slot gn-v2-titlebar-about-slot" />
               </div>
               {isCollapsedSidebarActionsDocked && (
                   <div
@@ -8933,6 +8802,16 @@ function App() {
                     onClick: () => {
                       handleCancelSettingsCenterPane();
                       addTab(buildRequestDiagnosticsWorkbenchTab());
+                    },
+                  },
+                  {
+                    key: 'dml-snapshot',
+                    icon: <SafetyCertificateOutlined />,
+                    title: t('dml_snapshot.workbench.title'),
+                    description: t('dml_snapshot.workbench.description'),
+                    onClick: () => {
+                      handleCancelSettingsCenterPane();
+                      addTab(buildDMLSnapshotWorkbenchTab());
                     },
                   },
                 ],
