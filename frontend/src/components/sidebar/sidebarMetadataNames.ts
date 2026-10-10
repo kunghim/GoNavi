@@ -1,14 +1,18 @@
 import type { SavedConnection } from "../../types";
+import { buildMetadataDiscoveryScope, buildMetadataSchemaPredicate } from '../../utils/metadataDiscoveryScope';
 import { splitQualifiedNameSegmentsDetailed } from "../../utils/qualifiedName";
 import { quoteSqlIdentifierPart, resolveSqlDialect } from "../../utils/sqlDialect";
 import { getMetadataDialect, escapeSQLLiteral } from "./sidebarMetadataBasics";
+import { resolvePgTableStatsSql, resolveRegistryTableStatusSql } from "../../utils/dataSourceRegistry/tableStats";
 
 export const buildSidebarTableStatusSQL = (
   conn: SavedConnection,
   dbName: string,
+  serverVersion = "",
 ): string => {
   const dialect = getMetadataDialect(conn);
   const safeDbName = escapeSQLLiteral(dbName);
+  const schemaScope = buildMetadataDiscoveryScope(conn, dbName)?.schemas;
   switch (dialect) {
     case "mysql":
       return [
@@ -36,36 +40,40 @@ export const buildSidebarTableStatusSQL = (
     case "vastbase":
     case "highgo":
     case "opengauss":
-    case "gaussdb":
+    case "gaussdb": {
+      const stats = resolvePgTableStatsSql(conn?.config?.type, serverVersion);
       return [
-        "SELECT n.nspname || '.' || c.relname AS table_name, obj_description(c.oid, 'pg_class') AS table_comment,",
-        "CASE WHEN c.relkind = 'p' THEN NULL ELSE c.reltuples::bigint END AS table_rows,",
+        "SELECT n.nspname AS schema_name, c.relname AS object_name, n.nspname || '.' || c.relname AS table_name, obj_description(c.oid, 'pg_class') AS table_comment,",
+        `CASE WHEN c.relkind = 'p' THEN NULL ELSE ${stats.rows} END AS table_rows,`,
         "(SELECT parent_n.nspname || '.' || parent_c.relname",
         " FROM pg_inherits inheritance",
         " JOIN pg_class parent_c ON parent_c.oid = inheritance.inhparent AND parent_c.relkind = 'p'",
         " JOIN pg_namespace parent_n ON parent_n.oid = parent_c.relnamespace",
         " WHERE inheritance.inhrelid = c.oid",
         " ORDER BY inheritance.inhseqno LIMIT 1) AS partition_parent_table,",
-        "pg_total_relation_size(c.oid) AS table_size, NULL::text AS create_time, NULL::text AS update_time",
+        `${stats.size} AS table_size, NULL::text AS create_time, NULL::text AS update_time`,
         "FROM pg_class c",
         "JOIN pg_namespace n ON n.oid = c.relnamespace",
         "WHERE c.relkind IN ('r', 'p')",
         "AND n.nspname NOT IN ('information_schema', 'pg_catalog')",
         "AND n.nspname NOT LIKE 'pg\\_%' ESCAPE '\\'",
+        schemaScope ? `AND ${buildMetadataSchemaPredicate('n.nspname', schemaScope, dialect)}` : '',
         "ORDER BY n.nspname, c.relname",
       ].join("\n");
+    }
     case "sqlserver": {
       // Azure SQL Database rejects or hangs on three-part names such as
       // [db].sys.tables. The metadata connection is already opened with
       // database=dbName, so current-database sys.* views are the portable form.
       return [
-        "SELECT s.name + '.' + t.name AS table_name, CONVERT(nvarchar(4000), ep.value) AS table_comment, SUM(p.rows) AS table_rows,",
+        "SELECT s.name AS schema_name, t.name AS object_name, s.name + '.' + t.name AS table_name, CONVERT(nvarchar(4000), ep.value) AS table_comment, SUM(p.rows) AS table_rows,",
         "CAST(NULL AS bigint) AS table_size, t.create_date AS create_time, t.modify_date AS update_time",
         "FROM sys.tables t",
         "JOIN sys.schemas s ON t.schema_id = s.schema_id",
         "LEFT JOIN sys.extended_properties ep ON ep.major_id = t.object_id AND ep.minor_id = 0 AND ep.name = 'MS_Description'",
         "LEFT JOIN sys.partitions p ON t.object_id = p.object_id AND p.index_id IN (0, 1)",
         "WHERE t.type = 'U'",
+        schemaScope ? `AND ${buildMetadataSchemaPredicate('s.name', schemaScope, dialect)}` : '',
         "GROUP BY s.name, t.name, CONVERT(nvarchar(4000), ep.value), t.create_date, t.modify_date",
         "ORDER BY s.name, t.name",
       ].join("\n");
@@ -93,7 +101,7 @@ export const buildSidebarTableStatusSQL = (
       ].join("\n");
     }
     default:
-      return "";
+      return resolveRegistryTableStatusSql(conn?.config?.type, dbName, serverVersion);
   }
 };
 

@@ -13,6 +13,8 @@ import {
   DBRefreshTableStats,
 } from '../../../wailsjs/go/app/App';
 import { buildRpcConnectionConfig } from '../../utils/connectionRpcConfig';
+import { ensureTableStatsServerVersion } from './sidebarTableStatsVersion';
+import { needsServerVersionForTableStats } from '../../utils/dataSourceRegistry/tableStats';
 import { useStore } from '../../store';
 import {
   buildSidebarMessageObjectNodes,
@@ -52,6 +54,8 @@ import { loadOracleDatabaseLinks } from './sidebarOracleDatabaseLinks';
 import type { SidebarTreeLoadStateApi } from './useSidebarTreeLoadState';
 import type { UseSidebarTreeLoadersOptions } from './useSidebarTreeLoaders';
 import { createSidebarDatabaseChildrenBuilder } from './sidebarDatabaseChildren';
+import { invalidateQueryEditorSessionMetadata } from '../queryEditor/metadata/queryEditorSessionMetadataStore';
+import { applySidebarTableRowCounts, refreshSidebarTableRowCounts } from './sidebarTableRowCounts';
 
 export interface UseSidebarTableLoaderInput {
   loadingNodesRef: UseSidebarTreeLoadersOptions['loadingNodesRef'];
@@ -91,6 +95,7 @@ export const useSidebarTableLoader = ({
   	  const runLoadTables = async (
         node: any,
         expectedConnectionEpoch = getConnectionLoadEpoch(String(node?.dataRef?.id || '')),
+        options: SidebarTreeLoadOptions = {},
     ) => {
   		      const conn = node.dataRef; // has dbName
   		      const dbName = conn.dbName;
@@ -211,7 +216,9 @@ export const useSidebarTableLoader = ({
   	          // Table stats and the schema list only depend on the database, so they leave
   	          // together with the table list instead of after it (one round trip less on
   	          // remote links; on the serial driver-agent transport they simply queue behind).
-  	          const tableStatusSql = buildSidebarTableStatusSQL(conn as SavedConnection, conn.dbName);
+  	          // 只有表统计表达式按版本区分的数据源（TimescaleDB）才先取版本，其余类型不多等一个微任务。
+  	          const statsVersion = needsServerVersionForTableStats(conn?.config?.type) ? await ensureTableStatsServerVersion(conn) : '';
+  	          const tableStatusSql = buildSidebarTableStatusSQL(conn as SavedConnection, conn.dbName, statsVersion);
   	          const tableStatsPromise = tableStatusSql
   	              ? DBQuery(buildRpcConnectionConfig(config) as any, conn.dbName, tableStatusSql).catch(() => ({ success: false, data: [] as any[] }))
   	              : Promise.resolve({ success: false, data: [] as any[] });
@@ -520,6 +527,15 @@ export const useSidebarTableLoader = ({
                   onDatabaseTreeLoaded?.(String(key));
                   shouldMarkDatabaseSuccess = true;
   
+                if (options.rowCountTables?.length && getMetadataDialect(conn as SavedConnection) !== 'sqlite') {
+                    const counts = await refreshSidebarTableRowCounts(conn, tableEntries, options.rowCountTables, options.schemaName);
+                    if (!isCurrentLoad()) return;
+                    if (counts.size) {
+                        renderedDatabaseChildren = applySidebarTableRowCounts(renderedDatabaseChildren, counts);
+                        replaceTreeNodeChildren(key, renderedDatabaseChildren, latestDatabaseConnection);
+                    }
+                }
+
   	            if (getMetadataDialect(conn as SavedConnection) === 'sqlite') {
   	                const tableNames = tableRows
   	                    .map((row) => getSidebarTableName(row as Record<string, any>))
@@ -562,10 +578,14 @@ export const useSidebarTableLoader = ({
         const conn = node.dataRef;
         const loadKey = `tables-${conn.id}-${conn.dbName}`;
         const connectionEpoch = getConnectionLoadEpoch(conn.id);
+        if (options.ensureFresh) {
+            // 强制刷新说明结构可能变了（手动刷新、建表、删表、改名）：新开的查询页不能再用缓存的对象列表。
+            invalidateQueryEditorSessionMetadata(conn.id, conn.dbName);
+        }
         return scheduleSidebarLoad(
             tableLoadsRef.current,
             loadKey,
-            () => runLoadTables(node, connectionEpoch),
+            () => runLoadTables(node, connectionEpoch, options),
             options,
         );
     };

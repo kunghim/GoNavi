@@ -34,6 +34,33 @@ beforeEach(() => {
 });
 
 describe("sidebar table metadata", () => {
+  it('loads every candidate in visibility settings but scopes the explorer schema list', async () => {
+    const conn = { config: { type: 'postgres' }, schemaVisibilityByDatabase: { app: { mode: 'include', schemas: ['public'] } } } as any;
+    mockedDBQuery.mockResolvedValue({ success: true, data: [] } as any);
+    await loadSchemas(conn, 'app');
+    expect(mockedDBQuery.mock.calls[0][2]).not.toContain("nspname IN ('public')");
+    await loadSchemas(conn, 'app', mockedDBQuery, true);
+    expect(mockedDBQuery.mock.calls[1][2]).toContain("nspname IN ('public')");
+  });
+
+  it("restricts object queries and expensive table statistics to visible schemas", async () => {
+    const conn = {
+      config: { type: 'postgres' },
+      schemaVisibilityByDatabase: { app: { mode: 'include', schemas: ['Public', "tenant'o"] } },
+    } as any;
+    mockedDBQuery.mockResolvedValue({ success: true, data: [] } as any);
+    await loadViews(conn, 'app');
+    await loadFunctions(conn, 'app');
+    await loadDatabaseTriggers(conn, 'app');
+    await loadSequences(conn, 'app');
+    const sqls = mockedDBQuery.mock.calls.map((call) => call[2]);
+    sqls.push(buildSidebarTableStatusSQL(conn, 'app'));
+    expect(sqls.length).toBeGreaterThanOrEqual(5);
+    for (const sql of sqls) {
+      expect(sql).toContain("IN ('Public', 'tenant''o')");
+    }
+  });
+
   it("keeps the table name when SQLite table rows include an exact row count", () => {
     expect(getSidebarTableName({ Rows: "2", Table: "orders" })).toBe("orders");
   });
@@ -370,7 +397,7 @@ describe("Oracle object metadata loaders", () => {
       "SELECT OWNER AS schema_name, VIEW_NAME AS view_name FROM ALL_VIEWS WHERE OWNER = 'SBDEV' ORDER BY VIEW_NAME",
     ]);
     expect(buildFunctionsMetadataQuerySpecs("oracle", "SBDEV").map((spec) => spec.sql)).toEqual([
-      "SELECT OWNER AS schema_name, OBJECT_NAME AS routine_name, OBJECT_TYPE AS routine_type, STATUS AS object_status FROM ALL_OBJECTS WHERE OWNER = 'SBDEV' AND OBJECT_TYPE IN ('FUNCTION','PROCEDURE') ORDER BY OBJECT_TYPE, OBJECT_NAME",
+      "SELECT OWNER AS schema_name, OBJECT_NAME AS routine_name, CASE OBJECT_TYPE WHEN 'UDF' THEN 'FUNCTION' ELSE OBJECT_TYPE END AS routine_type, STATUS AS object_status FROM ALL_OBJECTS WHERE OWNER = 'SBDEV' AND OBJECT_TYPE IN ('FUNCTION','PROCEDURE','UDF') ORDER BY OBJECT_TYPE, OBJECT_NAME",
     ]);
     expect(buildSequencesMetadataQuerySpecs("oracle", "MYCIMLED").map((spec) => spec.sql)).toEqual([
       "SELECT OWNER AS schema_name, OBJECT_NAME AS sequence_name FROM ALL_OBJECTS WHERE OWNER = 'MYCIMLED' AND OBJECT_TYPE = 'SEQUENCE' ORDER BY OBJECT_NAME",
@@ -439,7 +466,7 @@ describe("Oracle object metadata loaders", () => {
           data: [{ OWNER: "SBDEV", VIEW_NAME: "V_RISK" }],
         };
       }
-      if (sql.includes("ALL_OBJECTS") && sql.includes("('FUNCTION','PROCEDURE')")) {
+      if (sql.includes("ALL_OBJECTS") && sql.includes("('FUNCTION','PROCEDURE','UDF')")) {
         return {
           success: true,
           message: "",

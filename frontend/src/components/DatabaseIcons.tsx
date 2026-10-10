@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { getRegistryIconConfig, getRegistryIconLabel, listRegistryIconTypes } from './databaseIconsRegistry';
+
 // ─── 公共接口 ───────────────────────────────────────────────
 
 export interface DbIconProps {
@@ -42,6 +44,7 @@ const DB_DEFAULT_COLORS: Record<string, string> = {
     oracle:     '#F80000',
     sqlserver:  '#CC2927',
     clickhouse: '#FFBF00',
+    trino:      '#DD00A1',
     sqlite:     '#003B57',
     duckdb:     '#FFC107',
     vastbase:   '#0066CC',
@@ -65,17 +68,17 @@ const DB_DEFAULT_COLORS: Record<string, string> = {
     diros:      '#0050B3',
     starrocks:  '#00A6A6',
     sphinx:     '#2F5D62',
-    custom:     '#888888',
+    custom:     '#64748B',
 };
 
 export const getDbDefaultColor = (type: string): string =>
-    DB_DEFAULT_COLORS[type?.toLowerCase()] || DB_DEFAULT_COLORS.custom;
+    DB_DEFAULT_COLORS[type?.toLowerCase()] || getRegistryIconConfig(type)?.color || DB_DEFAULT_COLORS.custom;
 
 /**
  * 获取数据库图标的静态资源路径（用于直接渲染 img 元素）
  */
 export const getDbIconAssetSrc = (type: string): string => {
-    const config = BRAND_ASSET_CONFIGS[type?.toLowerCase()];
+    const config = resolveBrandAssetConfig(type);
     return config?.src || `/db-icons/${type?.toLowerCase()}.svg`;
 };
 
@@ -112,6 +115,8 @@ const BRAND_ASSET_CONFIGS: Record<string, BrandAssetConfig> = {
     oracle: { src: '/db-icons/oracle.ico', iconScale: 0.72 },
     sqlserver: { src: '/db-icons/sqlserver.svg' },
     clickhouse: { src: '/db-icons/clickhouse.svg' },
+    // 官方标志是白色剪影，放在品牌色底上。
+    trino: { src: '/db-icons/trino.svg', background: '#DD00A1', borderColor: '#DD00A1', iconScale: 0.76 },
     sqlite: { src: '/db-icons/sqlite.svg' },
     duckdb: { src: '/db-icons/duckdb.svg' },
     vastbase: { src: '/db-icons/vastbase.svg', iconScale: 0.84 },
@@ -159,16 +164,20 @@ const BRAND_ASSET_CONFIGS: Record<string, BrandAssetConfig> = {
 
 const BRAND_ASSET_TYPES = new Set(Object.keys(BRAND_ASSET_CONFIGS));
 
+/** 品牌资源配置：历史类型查内置表，描述表类型回落到 /db-icons/<type>.svg。 */
+const resolveBrandAssetConfig = (type: string): BrandAssetConfig | undefined =>
+    BRAND_ASSET_CONFIGS[type?.toLowerCase()] ?? getRegistryIconConfig(type);
+
 /**
  * 检查指定数据库类型是否有官方品牌资源配置
  */
 export const hasDbIconAsset = (type: string): boolean => {
-    return BRAND_ASSET_TYPES.has(type?.toLowerCase());
+    return BRAND_ASSET_TYPES.has(type?.toLowerCase()) || Boolean(getRegistryIconConfig(type));
 };
 
 /** 品牌图标：用 <img> 加载官方 svg/png/ico 资源 */
 const BrandAssetIcon: React.FC<{ type: string; size: number; color?: string }> = ({ type, size, color }) => {
-    const config = BRAND_ASSET_CONFIGS[type.toLowerCase()];
+    const config = resolveBrandAssetConfig(type);
     const bgColor = color || config?.borderColor || getDbDefaultColor(type);
     const iconScale = config?.iconScale ?? 0.64;
     return (
@@ -217,6 +226,9 @@ const ClickHouseIcon: React.FC<DbIconProps> = ({ size = 16, color }) => (
 );
 const SQLiteIcon: React.FC<DbIconProps> = ({ size = 16, color }) => (
     <BrandAssetIcon type="sqlite" size={size} color={color} />
+);
+const TrinoIcon: React.FC<DbIconProps> = ({ size = 16, color }) => (
+    <BrandAssetIcon type="trino" size={size} color={color} />
 );
 
 const OracleIcon: React.FC<DbIconProps> = ({ size = 16, color }) => (
@@ -304,15 +316,18 @@ const ElasticsearchIcon: React.FC<DbIconProps> = ({ size = 16, color }) => (
     <BrandAssetIcon type="elasticsearch" size={size} color={color} />
 );
 
-/** Custom — 齿轮图标 */
+/** Custom — 数据库圆柱加插头角标：自己接驱动的数据源 */
 const CustomIcon: React.FC<DbIconProps> = ({ size = 16, color }) => {
     const c = color || DB_DEFAULT_COLORS.custom;
     return (
         <IconFrame size={size}>
             <svg width={size} height={size} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <rect x="0" y="0" width="24" height="24" rx="5" fill={c}/>
-                <circle cx="12" cy="12" r="3.5" stroke="#fff" strokeWidth="1.5" fill="none"/>
-                <path d="M12 4v2.5M12 17.5V20M4 12h2.5M17.5 12H20M6.34 6.34l1.77 1.77M15.89 15.89l1.77 1.77M6.34 17.66l1.77-1.77M15.89 8.11l1.77-1.77" stroke="#fff" strokeWidth="1.3" strokeLinecap="round"/>
+                <path d="M5.4 7.2c0-1.2 2-2.1 4.6-2.1s4.6.9 4.6 2.1v8.1c0 1.2-2 2.1-4.6 2.1s-4.6-.9-4.6-2.1V7.2z" stroke="#fff" strokeWidth="1.5" fill="none"/>
+                <path d="M5.4 7.2c0 1.2 2 2.1 4.6 2.1s4.6-.9 4.6-2.1M5.4 11.3c0 1.2 2 2.1 4.6 2.1 1 0 1.9-.1 2.7-.4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
+                <circle cx="17" cy="16.6" r="4.6" fill={c}/>
+                <path d="M15.7 12.9v1.6M18.3 12.9v1.6M17 18.3v1.6" stroke="#fff" strokeWidth="1.3" strokeLinecap="round"/>
+                <path d="M14.4 14.5h5.2v1.2a2.6 2.6 0 0 1-5.2 0v-1.2z" fill="#fff"/>
             </svg>
         </IconFrame>
     );
@@ -336,6 +351,7 @@ const DB_ICON_MAP: Record<string, React.FC<DbIconProps>> = {
     oracle: OracleIcon,
     sqlserver: SQLServerIcon,
     clickhouse: ClickHouseIcon,
+    trino: TrinoIcon,
     sqlite: SQLiteIcon,
     duckdb: DuckDBIcon,
     vastbase: VastBaseIcon,
@@ -363,18 +379,21 @@ const DB_ICON_MAP: Record<string, React.FC<DbIconProps>> = {
 /** 可选图标类型列表（用于图标选择器 UI） */
 export const DB_ICON_TYPES: string[] = [
     'mysql', 'mariadb', 'oceanbase', 'postgres', 'redis', 'mongodb', 'jvm',
-    'oracle', 'sqlserver', 'sqlite', 'duckdb', 'clickhouse', 'starrocks',
-    'kingbase', 'dameng', 'vastbase', 'opengauss', 'gaussdb', 'goldendb', 'highgo', 'iris', 'cache', 'tdengine', 'iotdb', 'rocketmq', 'mqtt', 'kafka', 'rabbitmq', 'pulsar', 'nacos', 'chroma', 'qdrant', 'milvus', 'elasticsearch', 'custom',
+    'oracle', 'sqlserver', 'sqlite', 'duckdb', 'clickhouse', 'trino', 'starrocks',
+    'kingbase', 'dameng', 'vastbase', 'opengauss', 'gaussdb', 'goldendb', 'highgo', 'iris', 'cache', 'tdengine', 'iotdb', 'rocketmq', 'mqtt', 'kafka', 'rabbitmq', 'pulsar', 'nacos', 'chroma', 'qdrant', 'milvus', 'elasticsearch', ...listRegistryIconTypes(), 'custom',
 ];
 
 /** 该类型是否有品牌图标资源 */
-export const hasBrandSvg = (type: string): boolean => BRAND_ASSET_TYPES.has(type?.toLowerCase());
+export const hasBrandSvg = (type: string): boolean =>
+    BRAND_ASSET_TYPES.has(type?.toLowerCase()) || Boolean(getRegistryIconConfig(type));
 
 /** 获取数据库图标 React 节点 */
 export const getDbIcon = (type: string, color?: string, size?: number): React.ReactNode => {
     const key = (type || 'custom').toLowerCase();
-    const Component = DB_ICON_MAP[key] || CustomIcon;
-    return <Component size={size} color={color} />;
+    const Component = DB_ICON_MAP[key];
+    if (Component) return <Component size={size} color={color} />;
+    if (getRegistryIconConfig(key)) return <BrandAssetIcon type={key} size={size ?? 16} color={color} />;
+    return <CustomIcon size={size} color={color} />;
 };
 
 type DbIconLabelTranslator = (key: string) => string;
@@ -395,7 +414,7 @@ export const getDbIconLabel = (type: string, translate?: DbIconLabelTranslator):
         mysql: 'MySQL', mariadb: 'MariaDB', oceanbase: 'OceanBase', postgres: 'PostgreSQL',
         redis: 'Redis', mongodb: 'MongoDB', jvm: 'JVM',
         oracle: 'Oracle',
-        sqlserver: 'SQL Server', clickhouse: 'ClickHouse', sqlite: 'SQLite',
+        sqlserver: 'SQL Server', clickhouse: 'ClickHouse', trino: 'Trino', sqlite: 'SQLite',
         starrocks: 'StarRocks',
         duckdb: 'DuckDB', kingbase: 'Kingbase', dameng: 'Dameng',
         vastbase: 'VastBase', opengauss: 'OpenGauss', gaussdb: 'GaussDB', goldendb: 'GoldenDB', highgo: 'HighGo', iris: 'InterSystems IRIS', cache: 'InterSystems Caché', tdengine: 'TDengine', iotdb: 'Apache IoTDB', rocketmq: 'RocketMQ', mqtt: 'MQTT', kafka: 'Kafka', rabbitmq: 'RabbitMQ', pulsar: 'Apache Pulsar', nacos: 'Nacos',
@@ -405,7 +424,7 @@ export const getDbIconLabel = (type: string, translate?: DbIconLabelTranslator):
         elasticsearch: 'Elasticsearch',
         custom: translateDbIconLabel(translate, 'connection_modal.db_icon_label.custom', 'Custom'),
     };
-    return labels[type?.toLowerCase()] || type;
+    return labels[type?.toLowerCase()] || getRegistryIconLabel(type) || type;
 };
 
 /** 预设颜色列表 */

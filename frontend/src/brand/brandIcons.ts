@@ -61,8 +61,11 @@ export const BRAND_ICONS: BrandIconDefinition[] = [
     titleEn: 'Graphite air',
     iconPath: '/brand-fallback.svg',
     aboutPath: '/brand-fallback.svg',
+    // Dark-tile artwork cropped to a full-bleed viewBox. Never flag it as a
+    // mascot: that flag drives the macOS white-tile Dock safe-area inset,
+    // which would shrink the running default icon a ring smaller than the
+    // bundled icns and neighbouring apps.
     bundled: true,
-    mascot: true,
   },
   {
     id: '02',
@@ -247,7 +250,7 @@ function brandAssetFileName(key: string): string {
   const definition = BRAND_ICON_BY_ID.get(id);
   if (!definition) return '';
   if (!definition.mascot) return kind === 'icon' ? `${definition.id}-${definition.slug}.svg` : '';
-  if (kind === 'about') return `${definition.id}-${definition.slug}-about.png`;
+  if (kind === 'about') return `${definition.id}-${definition.slug}-about-v2.png`;
   if (kind === 'titlebar') return definition.remoteTitlebar ? `${definition.id}-${definition.slug}-transparent.png` : '';
   return `${definition.id}-${definition.slug}.webp`;
 }
@@ -293,6 +296,18 @@ export function resolveBrandTitlebarSrc(id?: unknown): string {
  * taskbar icon while the real asset update is still queued. Bundled
  * compatibility assets are already verified by being shipped with the app.
  */
+/** Native icon composition source: mascots compose from the trimmed
+ * transparent v2 artwork (tile and background already gone server-side),
+ * ribbons keep composing from their SVG. Returns '' while the mascot's
+ * about asset is still downloading - the brand asset revision re-runs the
+ * composition once it lands. */
+export function resolveBrandNativeSrc(id?: unknown): string {
+  const definition = resolveBrandIcon(id);
+  if (definition.mascot && !definition.bundled) {
+    return loadedBrandAssetSources.get(brandAssetKey(definition.id, 'about')) || '';
+  }
+  return resolveBrandDockSrc(id);
+}
 export function resolveBrandDockSrc(id?: unknown): string {
   const definition = resolveBrandIcon(id);
   return loadedBrandAssetSources.get(definition.id) || (definition.bundled ? definition.iconPath : '');

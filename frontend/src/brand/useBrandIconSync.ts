@@ -6,7 +6,8 @@ import { useI18n } from '../i18n/provider';
 import { useStore } from '../store';
 import {
   brandAssetKeysFor,
-  resolveBrandDockSrc,
+  previewBrandAssetKeys,
+  resolveBrandNativeSrc,
   resolveBrandIconSrc,
   resolveBrandIcon,
   startupBrandAssetKeys,
@@ -71,7 +72,7 @@ export function useBrandIconSync(runtimePlatform: string) {
         if (cancelled || !shouldSyncApplicationBrandIcon(environment)) {
           return;
         }
-        const dockHref = resolveBrandDockSrc(brandIconId);
+        const dockHref = resolveBrandNativeSrc(brandIconId);
         // The compact fallback is suitable for UI placeholders, but it
         // must never become the cached Windows taskbar or macOS Dock icon.
         if (!dockHref) return;
@@ -102,9 +103,13 @@ export function useBrandIconSync(runtimePlatform: string) {
     };
   }, [brandIconId, brandAssetRevision, runtimePlatform, t]);
 
-  // 启动时只拉取缎带 SVG 与当前选中图标的资源；其余吉祥物等打开选择器时再加载。
+  // 启动即拉取缎带 SVG、当前选中图标的资源，并后台补齐选择器全部预览资源：
+  // 若吉祥物等到打开选择器才下载，首次打开会先渲染一排深色占位剪影，
+  // 资源到达后才突变为真图。预取走 GetBrandIconDataURL 的磁盘缓存，
+  // 只有首次安装或清缓存后才真正联网；about / titlebar 仍只在选中后拉取。
   useEffect(() => {
     void ensureBrandAssets(startupBrandAssetKeys(brandIconId));
+    void ensureBrandAssets(previewBrandAssetKeys());
   }, [brandIconId]);
 
   const handleBrandIconChange = useCallback(async (id: BrandIconId) => {
@@ -123,12 +128,12 @@ export function useBrandIconSync(runtimePlatform: string) {
     windowsBrandIconApplyingRef.current = id;
     setBrandIconId(id);
     try {
-      let source = resolveBrandDockSrc(id);
+      let source = resolveBrandNativeSrc(id);
       if (!source) {
         // 远端品牌资源可能还没下载完成（首屏加载失败/离线）。重试一次；
         // 仍不可用就必须如实回退并警告——绝不能弹「已应用」却什么都不改。
         await ensureBrandAssets(brandAssetKeysFor(id));
-        source = resolveBrandDockSrc(id);
+        source = resolveBrandNativeSrc(id);
         if (!source) {
           throw Object.assign(new Error(t('app.settings.entry.brand_icon.asset_not_ready')), { assetNotReady: true });
         }

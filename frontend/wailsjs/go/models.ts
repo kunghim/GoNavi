@@ -355,6 +355,7 @@ export namespace ai {
 	    temperature: number;
 	    thinkingIntensity?: string;
 	    effort?: string;
+	    headerTimeoutSeconds?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new ProviderConfig(source);
@@ -386,6 +387,7 @@ export namespace ai {
 	        this.temperature = source["temperature"];
 	        this.thinkingIntensity = source["thinkingIntensity"];
 	        this.effort = source["effort"];
+	        this.headerTimeoutSeconds = source["headerTimeoutSeconds"];
 	    }
 	}
 	export class ResultMaskingSettings {
@@ -837,6 +839,9 @@ export namespace app {
 	    truncated?: boolean;
 	    scannedCount?: number;
 	    durationMs?: number;
+	    mainQueryMs?: number;
+	    connWaitMs?: number;
+	    encodeMs?: number;
 	    queryId?: string;
 	    cancellationState?: string;
 	    transactionId?: string;
@@ -867,6 +872,9 @@ export namespace app {
 	        this.truncated = source["truncated"];
 	        this.scannedCount = source["scannedCount"];
 	        this.durationMs = source["durationMs"];
+	        this.mainQueryMs = source["mainQueryMs"];
+	        this.connWaitMs = source["connWaitMs"];
+	        this.encodeMs = source["encodeMs"];
 	        this.queryId = source["queryId"];
 	        this.cancellationState = source["cancellationState"];
 	        this.transactionId = source["transactionId"];
@@ -911,6 +919,7 @@ export namespace app {
 	    connections: connection.SavedConnectionView[];
 	    redisDbAliases?: Record<string, any>;
 	    excelGroups?: ConnectionExcelGroupAssignment[];
+	    skippedCount?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new ConnectionPackageImportResult(source);
@@ -921,6 +930,7 @@ export namespace app {
 	        this.connections = this.convertValues(source["connections"], connection.SavedConnectionView);
 	        this.redisDbAliases = source["redisDbAliases"];
 	        this.excelGroups = this.convertValues(source["excelGroups"], ConnectionExcelGroupAssignment);
+	        this.skippedCount = source["skippedCount"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1028,6 +1038,7 @@ export namespace app {
 	    explainDiagnosis: boolean;
 	    sqlQueryExport: boolean;
 	    copyInsert: boolean;
+	    mockData: boolean;
 	    copyTable: boolean;
 	    createDatabase: boolean;
 	    createDatabaseCharset: boolean;
@@ -1051,6 +1062,7 @@ export namespace app {
 	        this.explainDiagnosis = source["explainDiagnosis"];
 	        this.sqlQueryExport = source["sqlQueryExport"];
 	        this.copyInsert = source["copyInsert"];
+	        this.mockData = source["mockData"];
 	        this.copyTable = source["copyTable"];
 	        this.createDatabase = source["createDatabase"];
 	        this.createDatabaseCharset = source["createDatabaseCharset"];
@@ -1336,6 +1348,7 @@ export namespace app {
 	export class ExportFileOptions {
 	    format: string;
 	    columns?: string[];
+	    columnComments?: Record<string, string>;
 	    xlsxMaxRowsPerSheet?: number;
 	    jobId?: string;
 	    totalRowsHint?: number;
@@ -1356,6 +1369,7 @@ export namespace app {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.format = source["format"];
 	        this.columns = source["columns"];
+	        this.columnComments = source["columnComments"];
 	        this.xlsxMaxRowsPerSheet = source["xlsxMaxRowsPerSheet"];
 	        this.jobId = source["jobId"];
 	        this.totalRowsHint = source["totalRowsHint"];
@@ -1403,6 +1417,22 @@ export namespace app {
 	        this.conflictPolicy = source["conflictPolicy"];
 	        this.conflictKeyColumns = source["conflictKeyColumns"];
 	        this.resumeJobId = source["resumeJobId"];
+	    }
+	}
+	export class MockDataRunOptions {
+	    jobId: string;
+	    batchSize?: number;
+	    continueOnError?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new MockDataRunOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.jobId = source["jobId"];
+	        this.batchSize = source["batchSize"];
+	        this.continueOnError = source["continueOnError"];
 	    }
 	}
 	export class NacosConfigIdentity {
@@ -2418,6 +2448,7 @@ export namespace connection {
 	    uri?: string;
 	    clickHouseProtocol?: string;
 	    oceanBaseProtocol?: string;
+	    driverVariant?: string;
 	    hosts?: string[];
 	    topology?: string;
 	    mysqlReplicaUser?: string;
@@ -2473,6 +2504,7 @@ export namespace connection {
 	        this.uri = source["uri"];
 	        this.clickHouseProtocol = source["clickHouseProtocol"];
 	        this.oceanBaseProtocol = source["oceanBaseProtocol"];
+	        this.driverVariant = source["driverVariant"];
 	        this.hosts = source["hosts"];
 	        this.topology = source["topology"];
 	        this.mysqlReplicaUser = source["mysqlReplicaUser"];
@@ -2781,6 +2813,18 @@ export namespace connection {
 	        this.expectedRevision = source["expectedRevision"];
 	    }
 	}
+	export class DiagnoseOptions {
+	    analyze?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new DiagnoseOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.analyze = source["analyze"];
+	    }
+	}
 	export class GlobalProxyView {
 	    enabled: boolean;
 	    type: string;
@@ -2849,6 +2893,9 @@ export namespace connection {
 	    truncated?: boolean;
 	    scannedCount?: number;
 	    durationMs?: number;
+	    mainQueryMs?: number;
+	    connWaitMs?: number;
+	    encodeMs?: number;
 	    queryId?: string;
 	    cancellationState?: string;
 	    transactionId?: string;
@@ -2877,6 +2924,9 @@ export namespace connection {
 	        this.truncated = source["truncated"];
 	        this.scannedCount = source["scannedCount"];
 	        this.durationMs = source["durationMs"];
+	        this.mainQueryMs = source["mainQueryMs"];
+	        this.connWaitMs = source["connWaitMs"];
+	        this.encodeMs = source["encodeMs"];
 	        this.queryId = source["queryId"];
 	        this.cancellationState = source["cancellationState"];
 	        this.transactionId = source["transactionId"];
@@ -3624,6 +3674,126 @@ export namespace jvm {
 	        this.title = source["title"];
 	        this.reason = source["reason"];
 	    }
+	}
+
+}
+
+export namespace mockdata {
+	
+	export class Generator {
+	    kind: string;
+	    value?: string;
+	    values?: string[];
+	    min?: string;
+	    max?: string;
+	    start?: string;
+	    step?: string;
+	    prefix?: string;
+	    width?: number;
+	    scale?: number;
+	    minLength?: number;
+	    maxLength?: number;
+	    charset?: string;
+	    ratio?: number;
+	    locale?: string;
+	    compact?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Generator(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.value = source["value"];
+	        this.values = source["values"];
+	        this.min = source["min"];
+	        this.max = source["max"];
+	        this.start = source["start"];
+	        this.step = source["step"];
+	        this.prefix = source["prefix"];
+	        this.width = source["width"];
+	        this.scale = source["scale"];
+	        this.minLength = source["minLength"];
+	        this.maxLength = source["maxLength"];
+	        this.charset = source["charset"];
+	        this.ratio = source["ratio"];
+	        this.locale = source["locale"];
+	        this.compact = source["compact"];
+	    }
+	}
+	export class ColumnPlan {
+	    name: string;
+	    skip: boolean;
+	    nullRatio?: number;
+	    generator: Generator;
+	
+	    static createFrom(source: any = {}) {
+	        return new ColumnPlan(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.skip = source["skip"];
+	        this.nullRatio = source["nullRatio"];
+	        this.generator = this.convertValues(source["generator"], Generator);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class Plan {
+	    rowCount: number;
+	    seed: number;
+	    locale?: string;
+	    columns: ColumnPlan[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Plan(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.rowCount = source["rowCount"];
+	        this.seed = source["seed"];
+	        this.locale = source["locale"];
+	        this.columns = this.convertValues(source["columns"], ColumnPlan);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

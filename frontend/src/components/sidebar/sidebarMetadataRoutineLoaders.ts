@@ -2,6 +2,7 @@ import { DBQuery } from "../../../wailsjs/go/app/App";
 import type { SavedConnection } from "../../types";
 import { buildMetadataIdentityKey } from "../../utils/metadataIdentity";
 import { getDataSourceCapabilities } from "../../utils/dataSourceCapabilities";
+import { getDataSourceSpec } from "../../utils/dataSourceRegistry";
 import { normalizeOracleObjectCompileStatus } from "./oracleObjectCompilation";
 import {
   type MetadataLoadState,
@@ -33,7 +34,9 @@ export const loadFunctions = async (
   }>;
 } & MetadataLoadState> => {
   const dialect = getMetadataDialect(conn as SavedConnection);
-  const querySpecs = buildFunctionsMetadataQuerySpecs(dialect, dbName);
+  const querySpecs = buildFunctionsMetadataQuerySpecs(dialect, dbName, {
+    excludeExtensionMembers: getDataSourceSpec(conn?.config?.type)?.ui?.hideExtensionRoutines === true,
+  });
   const { results, hasSuccessfulQuery, failureMessage } = await queryMetadataRowsBySpecs(
     conn,
     dbName,
@@ -291,7 +294,7 @@ export const loadDatabaseEvents = async (
   return { events, supported: hasSuccessfulQuery, failureMessage };
 };
 
-export const loadSchemas = async (conn: any, dbName: string, query = DBQuery): Promise<{ schemas: string[] } & MetadataLoadState> => {
+export const loadSchemas = async (conn: any, dbName: string, query = DBQuery, respectVisibility = false): Promise<{ schemas: string[] } & MetadataLoadState> => {
   const savedConnection = conn as SavedConnection;
   const dialect = getMetadataDialect(savedConnection);
   const querySpecs = buildSchemasMetadataQuerySpecs(dialect, dbName);
@@ -302,6 +305,7 @@ export const loadSchemas = async (conn: any, dbName: string, query = DBQuery): P
     dbName,
     querySpecs,
     query,
+    respectVisibility,
   );
   const seen = new Set<string>();
   const schemas: string[] = [];

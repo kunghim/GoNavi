@@ -20,10 +20,13 @@ const (
 )
 
 type sessionSpec struct {
-	engine       string
-	capability   connection.SessionCapability
-	listQuery    string
-	durationUnit sessionDurationUnit
+	engine     string
+	capability connection.SessionCapability
+	listQuery  string
+	// fallbackListQueries run in order when listQuery fails, for engines whose
+	// session views changed between server versions. The first success wins.
+	fallbackListQueries []string
+	durationUnit        sessionDurationUnit
 	// rowDatabaseAuthoritative marks engines whose list query reports each
 	// session's own database. An empty value then means "no database selected"
 	// and must stay empty instead of borrowing the connection's default
@@ -41,12 +44,16 @@ func SessionCapabilityFor(config connection.ConnectionConfig) (string, connectio
 func sessionSpecFor(config connection.ConnectionConfig) sessionSpec {
 	engine := normalizeSessionEngine(config)
 	switch engine {
-	case "mysql", "mariadb", "goldendb", "oceanbase-mysql":
+	case "mysql", "mariadb", "goldendb":
 		return mysqlSessionSpec(engine)
+	case "oceanbase-mysql":
+		return oceanBaseMySQLSessionSpec()
 	case "doris", "starrocks":
 		return mysqlCompatibleAnalyticsSessionSpec(engine)
-	case "postgres", "kingbase", "highgo", "vastbase", "opengauss", "gaussdb":
+	case "postgres", "kingbase", "highgo", "vastbase", "opengauss", "gaussdb", "gbase8c":
 		return postgresSessionSpec(engine)
+	case "yashandb":
+		return yashanDBSessionSpec()
 	case "oracle":
 		return oracleSessionSpec()
 	case "oceanbase-oracle":
@@ -67,6 +74,10 @@ func sessionSpecFor(config connection.ConnectionConfig) sessionSpec {
 	case "mongodb", "elasticsearch", "iris", "sphinx":
 		return unsupportedSessionSpec(engine, sessionReasonUnsupported)
 	default:
+		// 借用 Trino 方言的描述表类型（Presto）：system.runtime.queries 与 kill_query 两者一致，引擎名保留原类型。
+		if registry, ok := DataSourceSpec(engine); ok && registry.DDLDialect == "trino" {
+			return prestoSessionSpec(engine)
+		}
 		return unsupportedSessionSpec(engine, sessionReasonNotApplicable)
 	}
 }
@@ -158,18 +169,10 @@ func postgresClientOnlyFilter(engine string) string {
 }
 
 func oracleSessionSpec() sessionSpec {
-	return oracleCompatibleSessionSpec("oracle")
-}
-
-func oceanBaseOracleSessionSpec() sessionSpec {
-	return oracleCompatibleSessionSpec("oceanbase-oracle")
-}
-
-func oracleCompatibleSessionSpec(engine string) sessionSpec {
 	capability := supportedSessionCapability(false, "", true, connection.SessionActionTargetSessionID)
 	capability.TerminateRequiresInstanceAndSerial = true
 	return sessionSpec{
-		engine:     engine,
+		engine:     "oracle",
 		capability: capability,
 		listQuery: `SELECT s.inst_id AS instance_id, s.sid AS session_id,
 s.serial# AS serial_number, s.service_name AS database_or_tenant,
@@ -244,6 +247,20 @@ WHERE "end" IS NULL
 ORDER BY created DESC`,
 		durationUnit: sessionDurationMilliseconds,
 	}
+}
+
+// prestoSessionSpec 与 Trino 相同，但按状态筛选未结束的查询：PrestoDB 0.29x 把运行中查询的 end
+// 记为 1970-01-01 而不是 NULL，"end" IS NULL 会把它们全部排除。
+func prestoSessionSpec(engine string) sessionSpec {
+	spec := trinoSessionSpec()
+	spec.engine = engine
+	spec.listQuery = `SELECT query_id, '' AS database_or_tenant, user AS user_name,
+state, CAST(date_diff('millisecond', created, current_timestamp) AS bigint) AS duration_ms,
+query AS statement
+FROM system.runtime.queries
+WHERE state NOT IN ('FINISHED', 'FAILED')
+ORDER BY created DESC`
+	return spec
 }
 
 func tdengineSessionSpec() sessionSpec {

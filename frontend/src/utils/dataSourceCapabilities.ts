@@ -6,6 +6,7 @@ import {
   isConnectionStructureEditRestricted,
 } from './connectionReadOnly';
 import { normalizeOceanBaseProtocol } from './oceanBaseProtocol';
+import { isElasticsearchFamilyType } from './elasticsearchFamily';
 
 type ConnectionLike = Pick<
   ConnectionConfig,
@@ -212,6 +213,7 @@ export type DataSourceUICapabilityFlags = {
   explainDiagnosis?: boolean;
   sqlQueryExport?: boolean;
   copyInsert?: boolean;
+  mockData?: boolean;
   copyTable?: boolean;
   createDatabase?: boolean;
   createDatabaseCharset?: boolean;
@@ -307,6 +309,8 @@ export type DataSourceCapabilities = {
   supportsExplainDiagnosis: boolean;
   supportsSqlQueryExport: boolean;
   supportsCopyInsert: boolean;
+  // 生成模拟数据属于批量写入：数据编辑或数据导入任一受限都关闭入口。
+  supportsMockData: boolean;
   supportsCopyTable: boolean;
   supportsCreateIndex: boolean;
   supportsCreateDatabase: boolean;
@@ -351,12 +355,13 @@ export const getDataSourceCapabilities = (config: ConnectionLike): DataSourceCap
     supportsExplainDiagnosis: ui.explainDiagnosis === true,
     supportsSqlQueryExport: ui.sqlQueryExport === true,
     supportsCopyInsert: ui.copyInsert === true,
+    supportsMockData: !dataEditRestricted && !dataImportRestricted && ui.mockData === true,
     supportsCopyTable:
       !customConnection
       && !dataImportRestricted
       && !structureEditRestricted
       && ui.copyTable === true,
-    supportsCreateIndex: contract.type === 'elasticsearch' && !structureEditRestricted,
+    supportsCreateIndex: isElasticsearchFamilyType(contract.type) && !structureEditRestricted,
     supportsCreateDatabase: !structureEditRestricted && ui.createDatabase === true,
     supportsCreateDatabaseCharset:
       !structureEditRestricted && ui.createDatabaseCharset === true,

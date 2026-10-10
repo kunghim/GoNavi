@@ -13,6 +13,7 @@ const (
 type ExportFileOptions struct {
 	Format                         string            `json:"format"`
 	Columns                        []string          `json:"columns,omitempty"`
+	ColumnComments                 map[string]string `json:"columnComments,omitempty"`
 	XLSXMaxRowsPerSheet            int               `json:"xlsxMaxRowsPerSheet,omitempty"`
 	JobID                          string            `json:"jobId,omitempty"`
 	TotalRowsHint                  int64             `json:"totalRowsHint,omitempty"`
@@ -34,18 +35,40 @@ func normalizeExportFileOptions(format string, options ExportFileOptions) Export
 	return ExportFileOptions{
 		Format:                         resolvedFormat,
 		Columns:                        normalizeExportColumns(options.Columns),
+		ColumnComments:                 options.ColumnComments,
 		XLSXMaxRowsPerSheet:            normalizeXLSXRowsPerSheet(options.XLSXMaxRowsPerSheet),
 		JobID:                          strings.TrimSpace(options.JobID),
 		TotalRowsHint:                  normalizeExportTotalRowsHint(options.TotalRowsHint, options.TotalRowsKnown),
 		TotalRowsKnown:                 options.TotalRowsKnown,
 		IncludeDropIfExists:            options.IncludeDropIfExists,
 		IncludeDatabaseContext:         options.IncludeDatabaseContext,
-		InsertSQLDialect:               strings.ToLower(strings.TrimSpace(options.InsertSQLDialect)),
+		InsertSQLDialect:               normalizeInsertSQLDialect(options.InsertSQLDialect),
 		InsertSQLTargetTable:           strings.TrimSpace(options.InsertSQLTargetTable),
 		InsertSQLColumnTypes:           options.InsertSQLColumnTypes,
 		InsertSQLTargetColumns:         options.InsertSQLTargetColumns,
 		InsertSQLAllowEmptyTargetTable: options.InsertSQLAllowEmptyTargetTable,
 	}
+}
+
+func resolveExportColumnHeaders(columns []string, comments map[string]string) []string {
+	headers := make([]string, len(columns))
+	for index, column := range columns {
+		headers[index] = column
+		if comment := strings.TrimSpace(comments[column]); comment != "" {
+			headers[index] = comment
+		}
+	}
+	return headers
+}
+
+// normalizeInsertSQLDialect 把前端传来的连接类型归一为写 INSERT 用的方言：借用方言的描述表类型（TiDB、
+// CockroachDB 等）按被借用方言转义字符串、布尔值与标识符。
+func normalizeInsertSQLDialect(dialect string) string {
+	dialect = strings.ToLower(strings.TrimSpace(dialect))
+	if borrowed, ok := registryDDLDialect(dialect); ok {
+		return borrowed
+	}
+	return dialect
 }
 
 func normalizeExportColumns(columns []string) []string {

@@ -67,6 +67,7 @@ import {
   buildOracleApproximateTotalSql,
 } from '../../../utils/approximateTableCount';
 import { formatDataViewerQueryError } from '../../../utils/dataViewerQueryError';
+import { allowDataGridQueryChange } from '../../../utils/dataGridQueryGuard';
 import type { DataViewerStateApi } from './useDataViewerState';
 import type { DataViewerProps } from '../../DataViewer';
 
@@ -126,6 +127,7 @@ export const useDataViewerFetchData = ({
   setColumnNames, setData, preferManualTotalCount, supportsApproximateTableCount,
 }: UseDataViewerFetchDataInput) => {
   const fetchData = useCallback(async (page = pagination.current, size = pagination.pageSize, options?: DataViewerFetchOptions) => {
+    if (!allowDataGridQueryChange(tab.id, tr)) return;
     const navigateToLastPage = options?.navigateToLastPage === true;
     const refreshTotal = options?.refreshTotal === true || navigateToLastPage;
     const seq = ++fetchSeqRef.current;
@@ -358,7 +360,7 @@ export const useDataViewerFetchData = ({
 
     const orderBySQL = isMongoDB
       ? ''
-      : buildOrderBySQL(dbType, sortInfo, resolveDataViewerOrderFallbackColumns(editLocatorForQuery, pkColumnsForQuery));
+      : buildOrderBySQL(dbType, sortInfo, resolveDataViewerOrderFallbackColumns(editLocatorForQuery, pkColumnsForQuery, dbType));
     const totalRows = refreshedTotal ?? Number(pagination.total);
     const hasFiniteTotal = Number.isFinite(totalRows) && totalRows >= 0;
     const totalKnown = refreshedTotal !== null || (!refreshTotal && pagination.totalKnown && hasFiniteTotal);
@@ -487,7 +489,7 @@ export const useDataViewerFetchData = ({
 
             if (safeSelect) {
                 let fallbackSql = `SELECT ${safeSelect} FROM ${quoteQualifiedIdent(dbType, tableName)} ${whereSQL}`;
-                fallbackSql = buildPaginatedSelectSQL(dbType, fallbackSql, buildOrderBySQL(dbType, sortInfo, resolveDataViewerOrderFallbackColumns(editLocatorForQuery, pkColumnsForQuery)), size + 1, offset);
+                fallbackSql = buildPaginatedSelectSQL(dbType, fallbackSql, buildOrderBySQL(dbType, sortInfo, resolveDataViewerOrderFallbackColumns(editLocatorForQuery, pkColumnsForQuery, dbType)), size + 1, offset);
                 executedSql = fallbackSql;
                 resData = await executeDataQuery(fallbackSql, tr('data_viewer.sql_log.phase.complex_type_fallback_retry'));
             }
@@ -528,6 +530,11 @@ export const useDataViewerFetchData = ({
                 fieldNames = Object.keys(resultData[0]);
             }
             if (fetchSeqRef.current !== seq) return;
+            // Preserve the edit baseline when a user changes a row during this request.
+            if (!allowDataGridQueryChange(tab.id, tr)) {
+                setLoading(false);
+                return;
+            }
             if (isMongoDB && !forceReadOnly && tableName) {
                 const nextLocator = buildMongoDataViewerEditLocator(fieldNames, tr);
                 pkColumnsForQuery = nextLocator.readOnly ? [] : [MONGODB_ID_COLUMN];
