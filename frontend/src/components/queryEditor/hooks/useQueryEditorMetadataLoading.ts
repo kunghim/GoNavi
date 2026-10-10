@@ -1,36 +1,15 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { useActivationGatedEffect } from './useActivationGatedEffect';
+import { useStore } from '../../../store';
 import {
     getTabQueryValue,
     normalizeMetadataDialect,
     resolveOracleLikeDefaultSchemaName,
-    getCaseInsensitiveValue,
     collectQueryEditorReferencedDatabaseNames,
     QUERY_EDITOR_OBJECT_DECORATION_MAX_TEXT_LENGTH,
-    type CompletionTableMeta,
-    type CompletionColumnMeta,
-    type CompletionViewMeta,
     type CompletionSynonymMeta,
-    type CompletionTriggerMeta,
-    type CompletionRoutineMeta,
-    type CompletionSequenceMeta,
-    type CompletionPackageMeta,
-    type MetadataQuerySpec,
-    type MetadataQueryResult,
-    queryCompletionMetadataRowsBySpecs,
-    buildCompletionSynonymsMetadataQuerySpecs,
-    buildCompletionViewsMetadataQuerySpecs,
-    buildCompletionMaterializedViewsMetadataQuerySpecs,
-    buildCompletionTriggersMetadataQuerySpecs,
-    buildCompletionFunctionsMetadataQuerySpecs,
-    buildCompletionSequencesMetadataQuerySpecs,
-    buildCompletionPackagesMetadataQuerySpecs,
 } from '../QueryEditorHelpers';
-import {
-    DBGetDatabases,
-    DBQuery,
-    DBGetTables,
-    DBGetAllColumns,
-} from '../../../../wailsjs/go/app/App';
+import { DBGetDatabases } from '../../../../wailsjs/go/app/App';
 import { buildRpcConnectionConfig } from '../../../utils/connectionRpcConfig';
 import { filterVisibleDatabaseNames } from '../../../utils/databaseVisibility';
 import {
@@ -50,12 +29,7 @@ import {
     sharedQueryEditorMetadataReloadRequestListeners,
     setSharedCurrentDb,
 } from '../queryEditorCompletionState';
-import {
-    QUERY_EDITOR_CURRENT_SCHEMA_SQL,
-    extractQueryEditorCurrentSchema,
-    resolveLoadedQueryEditorSchema,
-} from '../queryEditorSchemaContext';
-import { loadSchemas } from '../../sidebar/sidebarMetadataLoaders';
+import { resolveLoadedQueryEditorSchema } from '../queryEditorSchemaContext';
 import {
     installQueryEditorHoverDdlCacheInvalidationListener,
     uninstallQueryEditorHoverDdlCacheInvalidationListener,
@@ -65,20 +39,25 @@ import type { SidebarDatabaseRefreshRequest } from '../../../utils/sidebarDataba
 import {
     resetSharedQueryEditorMetadata,
     buildQueryEditorMetadataIdentityKey,
-    fetchCompletionTableCommentMap,
-    buildCompletionTableMeta,
 } from '../queryEditorCompletionTables';
 import { isConnectionScopedQueryEditorMetadata } from '../queryEditorLazyTablesCache';
 import {
-    collectQueryEditorSynonymMetadata,
-    collectQueryEditorColumnMetadata,
-    collectQueryEditorViewMetadata,
-    collectQueryEditorMaterializedViewMetadata,
-    collectQueryEditorTriggerMetadata,
-    collectQueryEditorRoutineMetadata,
-    collectQueryEditorSequenceMetadata,
-    collectQueryEditorPackageMetadata,
-} from '../metadata/queryEditorMetadataRowCollectors';
+    fetchQueryEditorDatabaseMetadata,
+    fetchQueryEditorSynonymMetadata,
+    type QueryEditorMetadataFetchContext,
+} from '../metadata/queryEditorDatabaseMetadataFetch';
+import { fetchQueryEditorSchemaContext } from '../metadata/queryEditorSchemaContextFetch';
+import {
+    buildQueryEditorSessionMetadataKey,
+    buildQueryEditorSessionMetadataScope,
+    queryEditorDatabaseMetadataSession,
+    queryEditorSchemaContextSession,
+    queryEditorSynonymSession,
+    type QueryEditorDatabaseMetadata,
+    type QueryEditorSchemaContext,
+    type QueryEditorSessionFetcher,
+    type QueryEditorSessionResource,
+} from '../metadata/queryEditorSessionMetadataStore';
 import type { QueryEditorCoreStateApi } from './useQueryEditorCoreState';
 import type { QueryEditorAiAssistActionsApi } from './useQueryEditorAiAssistActions';
 import type { QueryEditorExecutionStatusApi } from './useQueryEditorExecutionStatus';
@@ -156,6 +135,12 @@ export const useQueryEditorMetadataLoading = ({
     scheduleObjectDecorationRefresh, metadataRetryPendingRef, refreshObjectDecorations,
     lastSqlReferencedMetadataKeyRef, queryEditorMetadataReloadTick, sqlReferencedMetadataKey,
 }: UseQueryEditorMetadataLoadingInput) => {
+    // 非激活 tab 副作用瘦身：隐藏 tab 不再走元数据拉取（不再对每个可见面板发 IPC 争主线程）。
+    // 本 hook 没有 isActive 入参，但 queryEditorActiveRef 由 useQueryEditorShortcutsAndSnippets
+    // 在渲染期同步（其调用位置先于本 hook），同一帧内读到的是本帧最新值，可安全作为 effect 依赖。
+    const isEditorActive = queryEditorActiveRef.current;
+    // 失活期间被跳过的元数据刷新，在切回时补跑一次的脏标记。
+    const metadataActivationStaleRef = useRef(false);
     // If opening a saved query, load its SQL
     useEffect(() => {
         const incoming = getTabQueryValue(tab);
@@ -264,51 +249,75 @@ export const useQueryEditorMetadataLoading = ({
         const requestSeq = schemaLoadSeqRef.current + 1;
         schemaLoadSeqRef.current = requestSeq;
         let cancelled = false;
-        setSchemaLoading(true);
-
-        const config = {
-            ...conn.config,
-            port: Number(conn.config.port),
-            password: conn.config.password || '',
-            database: conn.config.database || '',
-            useSSH: conn.config.useSSH || false,
-            ssh: conn.config.ssh || { host: '', port: 22, user: '', password: '', keyPath: '' },
+        const applySchemaContext = (context: QueryEditorSchemaContext, appliedSeq = requestSeq) => {
+            const resolved = resolveLoadedQueryEditorSchema({
+                requestSeq: appliedSeq,
+                currentRequestSeq: schemaLoadSeqRef.current,
+                latestSelectedSchema: latestSelectedSchemaRef.current,
+                explicitSchema: String(tab.schemaName || ''),
+                rememberedSchema: String(tab.schemaName || ''),
+                currentSchema: context.defaultSchema,
+                schemaNames: context.schemaNames,
+            });
+            if (!resolved) return;
+            currentSchemaRef.current = resolved.selectedSchema;
+            setCurrentSchema(resolved.selectedSchema);
+            setSchemaList(resolved.schemaNames);
+            if (resolved.selectedSchema) {
+                updateQueryTabDraft(tab.id, { schemaName: resolved.selectedSchema });
+            }
         };
-        const loadCurrentSchema = DBQuery(
-            buildRpcConnectionConfig(config) as any,
-            dbName,
-            QUERY_EDITOR_CURRENT_SCHEMA_SQL,
-        ).then((result) => (
-            result.success ? extractQueryEditorCurrentSchema(result.data) : ''
-        )).catch(() => '');
 
-        void Promise.all([loadSchemas(conn, dbName), loadCurrentSchema])
-            .then(([result, databaseDefaultSchema]) => {
-                if (cancelled) return;
-                const resolved = resolveLoadedQueryEditorSchema({
-                    requestSeq,
-                    currentRequestSeq: schemaLoadSeqRef.current,
-                    latestSelectedSchema: latestSelectedSchemaRef.current,
-                    explicitSchema: String(tab.schemaName || ''),
-                    rememberedSchema: String(tab.schemaName || ''),
-                    currentSchema: databaseDefaultSchema,
-                    schemaNames: Array.isArray(result.schemas) ? result.schemas : [],
-                });
-                if (!resolved) return;
-                currentSchemaRef.current = resolved.selectedSchema;
-                setCurrentSchema(resolved.selectedSchema);
-                setSchemaList(resolved.schemaNames);
-                if (resolved.selectedSchema) {
-                    updateQueryTabDraft(tab.id, { schemaName: resolved.selectedSchema });
+        // 同一连接、同一库的 schema 列表在各查询页之间复用：有缓存时直接生效、不转圈，
+        // 过期的缓存先用着并在后台刷新。
+        const schemaSessionKey = buildQueryEditorSessionMetadataKey(currentConnectionId, { ...conn.config, schemaVisibilityByDatabase: conn.schemaVisibilityByDatabase }, dbName);
+        const cachedSchemaContext = queryEditorSchemaContextSession.read(schemaSessionKey);
+        if (cachedSchemaContext) {
+            applySchemaContext(cachedSchemaContext.value);
+            setSchemaLoading(false);
+            if (!cachedSchemaContext.stale) {
+                return () => {
+                    cancelled = true;
+                };
+            }
+        } else {
+            setSchemaLoading(true);
+        }
+        const blocksOnSchemaLoad = !cachedSchemaContext;
+
+        // schema 列表只有两条请求，页面切走也让它跑完，下一个查询页直接用。
+        const schemaLoad = queryEditorSchemaContextSession.load({
+            key: schemaSessionKey,
+            scope: buildQueryEditorSessionMetadataScope(currentConnectionId, dbName),
+            fetch: () => fetchQueryEditorSchemaContext(conn, dbName),
+        });
+        void schemaLoad.promise
+            .then((result) => {
+                if (!result) return;
+                if (blocksOnSchemaLoad) {
+                    if (!cancelled) applySchemaContext(result.value);
+                    return;
+                }
+                // 后台刷新不跟某一次 effect 绑定：只要本页还停在同一个连接和库上就应用新列表。
+                if (
+                    schemaContextKeyRef.current === contextKey
+                    && JSON.stringify(useStore.getState().connections.find((item) => item.id === currentConnectionId)?.schemaVisibilityByDatabase || {}) === JSON.stringify(conn.schemaVisibilityByDatabase || {})
+                    && isQueryEditorMetadataRequestCurrent({
+                        generation: metadataGenerationRef.current,
+                        connectionId: currentConnectionId,
+                        connectionConfig: conn.config,
+                    })
+                ) {
+                    applySchemaContext(result.value, schemaLoadSeqRef.current);
                 }
             })
             .catch(() => {
-                if (cancelled || requestSeq !== schemaLoadSeqRef.current) return;
+                if (cancelled || !blocksOnSchemaLoad || requestSeq !== schemaLoadSeqRef.current) return;
                 const fallbackSchema = String(currentSchemaRef.current || tab.schemaName || '').trim();
                 setSchemaList(fallbackSchema ? [fallbackSchema] : []);
             })
             .finally(() => {
-                if (!cancelled && requestSeq === schemaLoadSeqRef.current) {
+                if (blocksOnSchemaLoad && !cancelled && requestSeq === schemaLoadSeqRef.current) {
                     setSchemaLoading(false);
                 }
             });
@@ -323,6 +332,7 @@ export const useQueryEditorMetadataLoading = ({
         currentConnectionId,
         currentDb,
         hasBeenActive,
+        isQueryEditorMetadataRequestCurrent,
         setSchemaLoading,
         tab.id,
         updateQueryTabDraft,
@@ -386,6 +396,15 @@ export const useQueryEditorMetadataLoading = ({
         if (!hasBeenActive || !autoFetchVisible || isObjectEditQueryTab) {
             return;
         }
+        // 非激活 tab 副作用瘦身：隐藏 tab 不发元数据 IPC（多 tab 常开时这是「用一会变慢」的主要来源之一）。
+        // 早退点放在消费 queryEditorMetadataForceReloadRef 之前，事件驱动的强制重载因此得以保留，
+        // 切回时由补跑分支消费，不会被静默丢弃。
+        // 注意：失活不写 metadataFetchKeyRef、不 cancel 在途请求——已用过的编辑器切走后保留在途
+        // 请求、切回不整库重拉是既有语义（见 useQueryEditorEverActive 注释），此处只跳过多余的新拉取。
+        if (!queryEditorActiveRef.current) {
+            metadataActivationStaleRef.current = true;
+            return;
+        }
 
         let cancelled = false;
         // 事件驱动的重载只生效一次；普通依赖变化不绕过去重
@@ -395,6 +414,8 @@ export const useQueryEditorMetadataLoading = ({
         // 仅在本次 effect 成功完成后写入；中途 cancel 不得留下 key，否则同 key 永远不再拉取 → 超链接全灭
         let activeFetchKey = '';
         let metadataFetchFailed = false;
+        const releaseSessionLoads: Array<() => void> = [];
+        const startBackgroundRefreshes: Array<() => void> = [];
         const fetchMetadata = async () => {
             const conn = connections.find(c => c.id === currentConnectionId);
             if (!conn) return;
@@ -435,24 +456,6 @@ export const useQueryEditorMetadataLoading = ({
             const oracleMetadataOwner = metadataDialect === 'oracle'
                 ? (resolveOracleLikeDefaultSchemaName(config) || metadataDbName)
                 : '';
-            const isMetadataRowForDatabase = (
-                row: Record<string, any>,
-                targetDbName: string,
-                ownerKeys: string[],
-            ): boolean => {
-                if (metadataDialect !== 'oracle') return true;
-                const targetOwner = String(targetDbName || '').trim();
-                if (!targetOwner) return true;
-                const rowOwner = String(getCaseInsensitiveValue(row, ownerKeys) || '').trim();
-                if (rowOwner) {
-                    return rowOwner.toLowerCase() === targetOwner.toLowerCase();
-                }
-                // USER_* compatibility queries omit OWNER and always refer to
-                // the login schema. Never attribute those rows to another
-                // explicitly selected owner.
-                return !oracleMetadataOwner
-                    || oracleMetadataOwner.toLowerCase() === targetOwner.toLowerCase();
-            };
             if (queryEditorActiveRef.current) {
                 setSharedCurrentDb(metadataDbName);
             }
@@ -467,6 +470,7 @@ export const useQueryEditorMetadataLoading = ({
             }
             const metadataFetchKey = [
                 currentConnectionId,
+                JSON.stringify(conn.schemaVisibilityByDatabase || {}),
                 ...metadataDbNames.map((dbName) => (
                     buildQueryEditorMetadataIdentityKey(metadataDialect, dbName)
                 )).sort(),
@@ -489,41 +493,41 @@ export const useQueryEditorMetadataLoading = ({
             // key 相同但表为空（中途 cancel / 异常）：允许重拉
             activeFetchKey = metadataFetchKey;
 
-            const allTables: CompletionTableMeta[] = [];
-            const allColumns: CompletionColumnMeta[] = [];
-            const allViews: CompletionViewMeta[] = [];
-            const allMaterializedViews: CompletionViewMeta[] = [];
-            const allSynonyms: CompletionSynonymMeta[] = [];
-            const allTriggers: CompletionTriggerMeta[] = [];
-            const allRoutines: CompletionRoutineMeta[] = [];
-            const allSequences: CompletionSequenceMeta[] = [];
-            const allPackages: CompletionPackageMeta[] = [];
-            const runMetadataQuerySpecs = async (
-                targetDbName: string,
-                specs: MetadataQuerySpec[],
-            ): Promise<MetadataQueryResult[]> => {
-                const results = await queryCompletionMetadataRowsBySpecs(config, targetDbName, specs);
-                // An empty successful catalog is valid; an empty result for a
-                // non-empty spec set means every compatibility query failed and
-                // must remain retryable (especially over SSH).
-                if (specs.length > 0 && results.length === 0) {
-                    metadataFetchFailed = true;
-                }
-                return results;
-            };
+            const fetchContext: QueryEditorMetadataFetchContext = { config, metadataDialect, oracleMetadataOwner, connection: conn };
+            const buildSessionKey = (dbName: string) => buildQueryEditorSessionMetadataKey(
+                currentConnectionId,
+                { ...conn.config, schemaVisibilityByDatabase: conn.schemaVisibilityByDatabase },
+                buildQueryEditorMetadataIdentityKey(metadataDialect, dbName),
+                oracleMetadataOwner,
+            );
+            let synonyms: CompletionSynonymMeta[] = [];
+            const databaseMetadata = new Map<string, QueryEditorDatabaseMetadata>();
             const syncMetadataSnapshot = () => {
                 if (!isCurrentMetadataRequest()) {
                     return false;
                 }
-                tablesRef.current = [...allTables];
-                allColumnsRef.current = [...allColumns];
-                viewsRef.current = [...allViews];
-                materializedViewsRef.current = [...allMaterializedViews];
-                synonymsRef.current = [...allSynonyms];
-                triggersRef.current = [...allTriggers];
-                routinesRef.current = [...allRoutines];
-                sequencesRef.current = [...allSequences];
-                packagesRef.current = [...allPackages];
+                const loaded: QueryEditorDatabaseMetadata[] = [];
+                metadataDbNames.forEach((dbName) => {
+                    const metadata = databaseMetadata.get(dbName);
+                    if (!metadata) return;
+                    loaded.push(metadata);
+                    if (metadata.columnsIncomplete === undefined) return;
+                    const incompleteKey = buildQueryEditorMetadataIdentityKey(metadataDialect, dbName);
+                    if (metadata.columnsIncomplete) {
+                        incompleteColumnMetadataDbsRef.current.add(incompleteKey);
+                    } else {
+                        incompleteColumnMetadataDbsRef.current.delete(incompleteKey);
+                    }
+                });
+                tablesRef.current = loaded.flatMap((metadata) => metadata.tables);
+                allColumnsRef.current = loaded.flatMap((metadata) => metadata.columns);
+                viewsRef.current = loaded.flatMap((metadata) => metadata.views);
+                materializedViewsRef.current = loaded.flatMap((metadata) => metadata.materializedViews);
+                synonymsRef.current = [...synonyms];
+                triggersRef.current = loaded.flatMap((metadata) => metadata.triggers);
+                routinesRef.current = loaded.flatMap((metadata) => metadata.routines);
+                sequencesRef.current = loaded.flatMap((metadata) => metadata.sequences);
+                packagesRef.current = loaded.flatMap((metadata) => metadata.packages);
                 if (queryEditorActiveRef.current) {
                     setSharedCurrentDb(metadataDbName);
                     setSharedTablesData(tablesRef.current);
@@ -539,116 +543,70 @@ export const useQueryEditorMetadataLoading = ({
                 return true;
             };
 
-            const synonymSpecs = buildCompletionSynonymsMetadataQuerySpecs(metadataDialect);
-            const synonymResults = await runMetadataQuerySpecs(metadataDbName, synonymSpecs);
-            if (cancelled) return;
-            const seenSynonyms = new Set<string>();
-            collectQueryEditorSynonymMetadata({ synonymResults, metadataDialect, seenSynonyms, allSynonyms });
+            // 其它查询页已经加载过的库直接复用；过期的先用着，等本页可用后再在后台刷新。
+            // apply 返回 false 表示本次请求已不是当前上下文。
+            const loadSessionMetadata = async <T,>(
+                session: QueryEditorSessionResource<T>,
+                dbName: string,
+                fetch: QueryEditorSessionFetcher<T>,
+                apply: (value: T) => boolean,
+            ): Promise<boolean> => {
+                const key = buildSessionKey(dbName);
+                const scope = buildQueryEditorSessionMetadataScope(currentConnectionId, dbName);
+                const cached = session.read(key);
+                if (cached) {
+                    if (cached.stale) {
+                        startBackgroundRefreshes.push(() => {
+                            // 刷新不跟本次 effect 绑定：跑完后让本页从更新后的缓存重新装配一次（不再发请求）。
+                            void session.load({ key, scope, fetch, keepAlive: true }).promise.then((result) => {
+                                if (!result?.cacheable || !isQueryEditorMetadataRequestCurrent(metadataSnapshot)) return;
+                                metadataFetchKeyRef.current = '';
+                                setQueryEditorMetadataReloadTick((tick) => tick + 1);
+                            }, () => undefined);
+                        });
+                    }
+                    return apply(cached.value);
+                }
+                const load = session.load({
+                    key,
+                    scope,
+                    fetch,
+                    onProgress: (partial) => {
+                        apply(partial);
+                    },
+                });
+                releaseSessionLoads.push(load.release);
+                const result = await load.promise;
+                if (cancelled) return false;
+                if (!result?.cacheable) {
+                    metadataFetchFailed = true;
+                }
+                return result ? apply(result.value) : true;
+            };
+
+            const synonymsLoaded = await loadSessionMetadata(
+                queryEditorSynonymSession,
+                metadataDbName,
+                () => fetchQueryEditorSynonymMetadata(fetchContext, metadataDbName),
+                (value) => {
+                    synonyms = value;
+                    return !cancelled;
+                },
+            );
+            if (!synonymsLoaded) return;
 
             for (const dbName of metadataDbNames) {
                 if (cancelled) return;
-                const tableComments = await fetchCompletionTableCommentMap(config, dbName, metadataDialect);
-                if (cancelled) return;
-
-                // 获取表
-                let resTables: any = { success: false, data: [] };
-                try {
-                    resTables = await DBGetTables(buildRpcConnectionConfig(config) as any, dbName);
-                } catch (error) {
-                    metadataFetchFailed = true;
-                    if (cancelled) return;
-                    console.warn('GoNavi query editor table metadata fetch failed', error);
-                }
-                if (cancelled) return;
-                if (!resTables?.success || !Array.isArray(resTables.data)) {
-                    metadataFetchFailed = true;
-                }
-                if (resTables?.success && Array.isArray(resTables.data)) {
-                    resTables.data.forEach((row: any) => {
-                        const tableMeta = buildCompletionTableMeta(dbName, row, tableComments, metadataDialect);
-                        if (tableMeta) {
-                            allTables.push(tableMeta);
-                        }
-                    });
-                }
-                if (!syncMetadataSnapshot()) return;
-
-                // 获取列 (所有数据库类型都支持 DBGetAllColumns)
-                let resCols: any = { success: false, data: [] };
-                try {
-                    resCols = await DBGetAllColumns(buildRpcConnectionConfig(config) as any, dbName);
-                } catch (error) {
-                    metadataFetchFailed = true;
-                    if (cancelled) return;
-                    console.warn('GoNavi query editor column metadata fetch failed', error);
-                }
-                if (cancelled) return;
-                if (!resCols?.success || !Array.isArray(resCols.data)) {
-                    metadataFetchFailed = true;
-                }
-                collectQueryEditorColumnMetadata({
-                    resCols, metadataDialect, dbName, incompleteColumnMetadataDbsRef, allColumns,
-                });
-                if (!syncMetadataSnapshot()) return;
-
-                const viewSpecs = buildCompletionViewsMetadataQuerySpecs(metadataDialect, dbName, {
-                        includeCurrentOwnerFallback: metadataDialect !== 'oracle'
-                            || !oracleMetadataOwner
-                            || oracleMetadataOwner.toLowerCase() === dbName.toLowerCase(),
-                    });
-                const viewResults = await runMetadataQuerySpecs(dbName, viewSpecs);
-                if (cancelled) return;
-                const seenViews = new Set<string>();
-                collectQueryEditorViewMetadata({
-                    viewResults, isMetadataRowForDatabase, dbName, metadataDialect, seenViews,
-                    allViews,
-                });
-                if (!syncMetadataSnapshot()) return;
-
-                const materializedViewSpecs = buildCompletionMaterializedViewsMetadataQuerySpecs(metadataDialect, dbName);
-                const materializedViewResults = await runMetadataQuerySpecs(dbName, materializedViewSpecs);
-                if (cancelled) return;
-                const seenMaterializedViews = new Set<string>();
-                collectQueryEditorMaterializedViewMetadata({
-                    materializedViewResults, metadataDialect, dbName, seenMaterializedViews,
-                    allMaterializedViews,
-                });
-                if (!syncMetadataSnapshot()) return;
-
-                const triggerSpecs = buildCompletionTriggersMetadataQuerySpecs(metadataDialect, dbName);
-                const triggerResults = await runMetadataQuerySpecs(dbName, triggerSpecs);
-                if (cancelled) return;
-                const seenTriggers = new Set<string>();
-                collectQueryEditorTriggerMetadata({ triggerResults, metadataDialect, dbName, seenTriggers, allTriggers });
-                if (!syncMetadataSnapshot()) return;
-
-                const routineSpecs = buildCompletionFunctionsMetadataQuerySpecs(metadataDialect, dbName, {
-                        includeCurrentOwnerFallback: metadataDialect !== 'oracle'
-                            || !oracleMetadataOwner
-                            || oracleMetadataOwner.toLowerCase() === dbName.toLowerCase(),
-                    });
-                const routineResults = await runMetadataQuerySpecs(dbName, routineSpecs);
-                if (cancelled) return;
-                const seenRoutines = new Set<string>();
-                collectQueryEditorRoutineMetadata({
-                    routineResults, isMetadataRowForDatabase, dbName, metadataDialect, seenRoutines,
-                    allRoutines,
-                });
-                if (!syncMetadataSnapshot()) return;
-
-                const sequenceSpecs = buildCompletionSequencesMetadataQuerySpecs(metadataDialect, dbName);
-                const sequenceResults = await runMetadataQuerySpecs(dbName, sequenceSpecs);
-                if (cancelled) return;
-                const seenSequences = new Set<string>();
-                collectQueryEditorSequenceMetadata({ sequenceResults, metadataDialect, dbName, seenSequences, allSequences });
-                if (!syncMetadataSnapshot()) return;
-
-                const packageSpecs = buildCompletionPackagesMetadataQuerySpecs(metadataDialect, dbName);
-                const packageResults = await runMetadataQuerySpecs(dbName, packageSpecs);
-                if (cancelled) return;
-                const seenPackages = new Set<string>();
-                collectQueryEditorPackageMetadata({ packageResults, metadataDialect, dbName, seenPackages, allPackages });
-                if (!syncMetadataSnapshot()) return;
+                const databaseLoaded = await loadSessionMetadata(
+                    queryEditorDatabaseMetadataSession,
+                    dbName,
+                    (report, shouldStop) => fetchQueryEditorDatabaseMetadata(fetchContext, dbName, report, shouldStop),
+                    (value) => {
+                        databaseMetadata.set(dbName, value);
+                        return syncMetadataSnapshot();
+                    },
+                );
+                if (!databaseLoaded) return;
             }
 
             if (!syncMetadataSnapshot()) return;
@@ -673,9 +631,12 @@ export const useQueryEditorMetadataLoading = ({
             if (!cancelled) {
                 console.warn('GoNavi query editor metadata refresh failed', error);
             }
+        }).finally(() => {
+            startBackgroundRefreshes.forEach((start) => start());
         });
         return () => {
             cancelled = true;
+            releaseSessionLoads.forEach((release) => release());
         };
     }, [
         autoFetchVisible,
@@ -690,6 +651,18 @@ export const useQueryEditorMetadataLoading = ({
         scheduleObjectDecorationRefresh,
         sqlReferencedMetadataKey,
     ]);
+
+    // 非激活 tab 副作用瘦身之补跑：失活期间被跳过的元数据刷新，在切回本 tab 时补一次。
+    // 只丢一个 tick 就是完整补跑——主 effect 的 fetchKey 去重会吃掉「其实已是最新」的空跑，
+    // 因此这里不需要额外判重。首次激活（hasBeenActive 由 false 翻转）不需要补跑。
+    useActivationGatedEffect(isEditorActive, () => {
+        if (!metadataActivationStaleRef.current) {
+            return undefined;
+        }
+        metadataActivationStaleRef.current = false;
+        setQueryEditorMetadataReloadTick((tick) => tick + 1);
+        return undefined;
+    }, [setQueryEditorMetadataReloadTick]);
 };
 
 export type QueryEditorMetadataLoadingApi = ReturnType<typeof useQueryEditorMetadataLoading>;

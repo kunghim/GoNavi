@@ -54,6 +54,8 @@ import { loadOracleDatabaseLinks } from './sidebarOracleDatabaseLinks';
 import type { SidebarTreeLoadStateApi } from './useSidebarTreeLoadState';
 import type { UseSidebarTreeLoadersOptions } from './useSidebarTreeLoaders';
 import { createSidebarDatabaseChildrenBuilder } from './sidebarDatabaseChildren';
+import { invalidateQueryEditorSessionMetadata } from '../queryEditor/metadata/queryEditorSessionMetadataStore';
+import { applySidebarTableRowCounts, refreshSidebarTableRowCounts } from './sidebarTableRowCounts';
 
 export interface UseSidebarTableLoaderInput {
   loadingNodesRef: UseSidebarTreeLoadersOptions['loadingNodesRef'];
@@ -93,6 +95,7 @@ export const useSidebarTableLoader = ({
   	  const runLoadTables = async (
         node: any,
         expectedConnectionEpoch = getConnectionLoadEpoch(String(node?.dataRef?.id || '')),
+        options: SidebarTreeLoadOptions = {},
     ) => {
   		      const conn = node.dataRef; // has dbName
   		      const dbName = conn.dbName;
@@ -524,6 +527,15 @@ export const useSidebarTableLoader = ({
                   onDatabaseTreeLoaded?.(String(key));
                   shouldMarkDatabaseSuccess = true;
   
+                if (options.rowCountTables?.length && getMetadataDialect(conn as SavedConnection) !== 'sqlite') {
+                    const counts = await refreshSidebarTableRowCounts(conn, tableEntries, options.rowCountTables, options.schemaName);
+                    if (!isCurrentLoad()) return;
+                    if (counts.size) {
+                        renderedDatabaseChildren = applySidebarTableRowCounts(renderedDatabaseChildren, counts);
+                        replaceTreeNodeChildren(key, renderedDatabaseChildren, latestDatabaseConnection);
+                    }
+                }
+
   	            if (getMetadataDialect(conn as SavedConnection) === 'sqlite') {
   	                const tableNames = tableRows
   	                    .map((row) => getSidebarTableName(row as Record<string, any>))
@@ -566,10 +578,14 @@ export const useSidebarTableLoader = ({
         const conn = node.dataRef;
         const loadKey = `tables-${conn.id}-${conn.dbName}`;
         const connectionEpoch = getConnectionLoadEpoch(conn.id);
+        if (options.ensureFresh) {
+            // 强制刷新说明结构可能变了（手动刷新、建表、删表、改名）：新开的查询页不能再用缓存的对象列表。
+            invalidateQueryEditorSessionMetadata(conn.id, conn.dbName);
+        }
         return scheduleSidebarLoad(
             tableLoadsRef.current,
             loadKey,
-            () => runLoadTables(node, connectionEpoch),
+            () => runLoadTables(node, connectionEpoch, options),
             options,
         );
     };

@@ -34,6 +34,7 @@ import type { SidebarSearchStateApi } from './useSidebarSearchState';
 import type { SidebarTreeViewStateApi } from './useSidebarTreeViewState';
 import type { SidebarTitlebarSyncApi } from './useSidebarTitlebarSync';
 import { isElasticsearchFamilyType } from '../../utils/elasticsearchFamily';
+import { prefetchTableOpenMetadata } from '../../utils/tableOpenPrefetch';
 
 export interface UseSidebarTreeEventsInput {
   loadDatabases: ReturnType<typeof useSidebarTreeLoaders>['loadDatabases'];
@@ -97,7 +98,7 @@ export const useSidebarTreeEvents = ({
         await loadDatabases({ key, dataRef });
     } else if (type === 'jvm-mode' || type === 'jvm-resource') {
         await loadJVMResources({ key, dataRef });
-    } else if (type === 'database' || type === 'message-namespace') {
+    } else if (type === 'database' || type === 'message-namespace' || (type === 'object-group' && dataRef?.groupKey === 'schema' && dataRef?.schemaLazy)) {
         await loadTables({ key, dataRef });
     } else if (type === 'nacos-config-entry') {
         await loadNacosConfigGroups({ key, dataRef });
@@ -437,6 +438,12 @@ export const useSidebarTreeEvents = ({
           const { tableName, dbName, id, schemaName } = node.dataRef;
           // 记录表访问
           recordTableAccess(id, dbName, tableName);
+          // 页签挂载前就把它最先要用的元数据请求发出去。
+          prefetchTableOpenMetadata({
+              connection: connections.find((item) => item.id === id),
+              connectionId: id, dbName, tableName,
+              view: tableDoubleClickAction === 'open-design' ? 'fields' : 'data',
+          });
           addTab({
               id: node.key,
               title: tableName,
