@@ -103,6 +103,21 @@ class WindowsReleaseArtifactsTest(unittest.TestCase):
             self.assertIn(f"GoNavi-${{version}}-Windows-{arch}-Portable.exe", publish_source)
             self.assertIn(f"GoNavi-${{version}}-Windows-{arch}-Portable.zip", publish_source)
 
+    def test_portable_sfx_runs_root_gonavi_exe(self) -> None:
+        source = (ROOT / "tools" / "make-portable-sfx.ps1").read_text(encoding="utf-8")
+        self.assertIn('RunProgram="GoNavi.exe"', source)
+        self.assertIn('Copy-Item -LiteralPath $SourceExe -Destination (Join-Path $stageDir "GoNavi.exe") -Force', source)
+        self.assertIn("$archivePath = New-PortableArchive -SevenZip $sevenZip -WorkDir $WorkDir -SourceExe $SourceExe -LicenseFile $LicenseFile -NoticeFile $NoticeFile", source)
+        self.assertIn("Assert-PortableArchiveLayout -SevenZip $SevenZip -WorkDir $WorkDir -ArchivePath $archivePath -ExpectedNames $stagedNames", source)
+        self.assertIn("SFX 归档根目录缺少", source)
+        self.assertIn("SFX 归档里的可执行文件必须是根目录 GoNavi.exe", source)
+        # CI 产物名是 gonavi-build-windows-*.exe。直接把这个绝对路径交给 7z 时，
+        # 归档叶子名不是 GoNavi.exe，SFX 会报「系统找不到指定的文件」。
+        self.assertNotIn("$archivePath, $SourceExe", source)
+        archive_args = source.split("$archiveArgs = ", 1)[1].split("\n", 1)[0]
+        self.assertNotIn("$SourceExe", archive_args)
+        self.assertIn("$stagedNames", archive_args)
+
     def test_local_windows_release_keeps_unpacked_trimmed_executables(self) -> None:
         source = LOCAL_RELEASE_SCRIPT.read_text(encoding="utf-8")
         windows_builds = source.split("# --- Windows AMD64", 1)[1].split("# --- Linux AMD64", 1)[0]
@@ -151,7 +166,9 @@ class WindowsReleaseArtifactsTest(unittest.TestCase):
         start_menu_shortcut = executable.find("wix:Shortcut[@Id='StartMenuShortcut']", ns)
         self.assertIsNotNone(start_menu_shortcut)
         assert start_menu_shortcut is not None
-        self.assertNotIn("Icon", start_menu_shortcut.attrib)
+        # A fresh install must show the packaged icon before GoNavi's first
+        # launch rewrites the shortcut to the user's persisted brand ICO.
+        self.assertEqual(start_menu_shortcut.attrib["Icon"], "GoNaviIcon")
         self.assertIsNone(executable.find("wix:Shortcut[@Id='DesktopShortcut']", ns))
 
         desktop_component = package.find("wix:Component[@Id='DesktopShortcutComponent']", ns)
@@ -164,7 +181,7 @@ class WindowsReleaseArtifactsTest(unittest.TestCase):
         desktop_shortcut = desktop_component.find("wix:Shortcut[@Id='DesktopShortcut']", ns)
         self.assertIsNotNone(desktop_shortcut)
         assert desktop_shortcut is not None
-        self.assertNotIn("Icon", desktop_shortcut.attrib)
+        self.assertEqual(desktop_shortcut.attrib["Icon"], "GoNaviIcon")
         self.assertEqual(desktop_shortcut.attrib["Target"], "[#GoNaviExe]")
         self.assertEqual(desktop_shortcut.attrib["WorkingDirectory"], "INSTALLFOLDER")
         desktop_key_path = desktop_component.find("wix:RegistryValue[@KeyPath='yes']", ns)
@@ -188,6 +205,92 @@ class WindowsReleaseArtifactsTest(unittest.TestCase):
         assert file_marker is not None
         self.assertEqual(file_marker.attrib["Source"], "$(var.InstallMarker)")
         self.assertEqual(file_marker.attrib["Name"], ".gonavi-msi-install")
+        apply_script = package.find(".//wix:File[@Id='GoNaviApplyBrandIconScript']", ns)
+        self.assertIsNotNone(apply_script)
+        assert apply_script is not None
+        self.assertEqual(apply_script.attrib["Source"], "$(var.ApplyBrandIconScript)")
+        self.assertEqual(apply_script.attrib["Name"], "apply-brand-icon.ps1")
+
+        # Install-time brand icon restore: the deferred SYSTEM action rewrites
+        # the freshly created default-icon shortcuts to the user's persisted
+        # brand icon before the first launch (the in-app restore only runs
+        # once GoNavi starts). Failures must be ignored, and the action must
+        # never run on uninstall.
+        set_apply_cmd = package.find("wix:CustomAction[@Id='SetApplyPersistedBrandIconCmd']", ns)
+        self.assertIsNotNone(set_apply_cmd)
+        assert set_apply_cmd is not None
+        self.assertEqual(set_apply_cmd.attrib["Property"], "ApplyPersistedBrandIcon")
+        command_value = set_apply_cmd.attrib["Value"]
+        for token in (
+            "powershell.exe",
+            "[INSTALLFOLDER]apply-brand-icon.ps1",
+            '-ApplicationDataFolder "[AppDataFolder]." >> -ApplicationDataFolder "[AppDataFolder]"'.split(" >> ")[0],
+            '-StartMenuShortcut "[ProgramMenuFolder]$(var.ProductName).lnk"',
+            '-DesktopShortcut "[DesktopFolder]$(var.ProductName).lnk"',
+        ):
+            self.assertIn(token, command_value)
+        # [AppDataFolder] ends with a backslash; quoted raw it escapes the
+        # closing quote and swallows every remaining argument (observed: the
+        # whole action silently did nothing). The trailing "." is load-bearing.
+        self.assertNotIn('[AppDataFolder]"', command_value)
+        apply_action = package.find("wix:CustomAction[@Id='ApplyPersistedBrandIcon']", ns)
+        self.assertIsNotNone(apply_action)
+        assert apply_action is not None
+        self.assertEqual(apply_action.attrib["Directory"], "SystemFolder")
+        self.assertEqual(apply_action.attrib["Execute"], "deferred")
+        self.assertEqual(apply_action.attrib["Impersonate"], "no")
+        self.assertEqual(apply_action.attrib["Return"], "ignore")
+        self.assertEqual(apply_action.attrib["ExeCommand"], "[ApplyPersistedBrandIcon]")
+        sequence = package.find("wix:InstallExecuteSequence", ns)
+        self.assertIsNotNone(sequence)
+        assert sequence is not None
+        set_apply_entry = sequence.find("wix:Custom[@Action='SetApplyPersistedBrandIconCmd']", ns)
+        self.assertIsNotNone(set_apply_entry)
+        assert set_apply_entry is not None
+        self.assertEqual(set_apply_entry.attrib["After"], "InstallFiles")
+        self.assertEqual(set_apply_entry.attrib["Condition"], "NOT REMOVE")
+        apply_entry = sequence.find("wix:Custom[@Action='ApplyPersistedBrandIcon']", ns)
+        self.assertIsNotNone(apply_entry)
+        assert apply_entry is not None
+        self.assertEqual(apply_entry.attrib["Before"], "InstallFinalize")
+        self.assertEqual(apply_entry.attrib["Condition"], "NOT REMOVE")
+
+        # Genuine-uninstall cleanup: removes the migrated user-layer Start
+        # Menu shortcut and the taskbar pins that keep launching the removed
+        # executable. UPGRADINGPRODUCTCODE must exclude the major-upgrade
+        # teardown so an update never unpins the user.
+        set_cleanup_cmd = package.find("wix:CustomAction[@Id='SetUninstallBrandCleanupCmd']", ns)
+        self.assertIsNotNone(set_cleanup_cmd)
+        assert set_cleanup_cmd is not None
+        self.assertEqual(set_cleanup_cmd.attrib["Property"], "UninstallBrandCleanup")
+        cleanup_value = set_cleanup_cmd.attrib["Value"]
+        for token in (
+            "powershell.exe",
+            "[INSTALLFOLDER]apply-brand-icon.ps1",
+            "-UninstallCleanup",
+            '-ApplicationDataFolder "[AppDataFolder]."',
+            '-ExpectedTarget "[INSTALLFOLDER]GoNavi.exe"',
+        ):
+            self.assertIn(token, cleanup_value)
+        self.assertNotIn('[AppDataFolder]"', cleanup_value)
+        cleanup_action = package.find("wix:CustomAction[@Id='UninstallBrandCleanup']", ns)
+        self.assertIsNotNone(cleanup_action)
+        assert cleanup_action is not None
+        self.assertEqual(cleanup_action.attrib["Directory"], "SystemFolder")
+        self.assertEqual(cleanup_action.attrib["Execute"], "deferred")
+        self.assertEqual(cleanup_action.attrib["Impersonate"], "no")
+        self.assertEqual(cleanup_action.attrib["Return"], "ignore")
+        self.assertEqual(cleanup_action.attrib["ExeCommand"], "[UninstallBrandCleanup]")
+        set_cleanup_entry = sequence.find("wix:Custom[@Action='SetUninstallBrandCleanupCmd']", ns)
+        self.assertIsNotNone(set_cleanup_entry)
+        assert set_cleanup_entry is not None
+        self.assertEqual(set_cleanup_entry.attrib["After"], "InstallValidate")
+        self.assertEqual(set_cleanup_entry.attrib["Condition"], "REMOVE AND NOT UPGRADINGPRODUCTCODE")
+        cleanup_entry = sequence.find("wix:Custom[@Action='UninstallBrandCleanup']", ns)
+        self.assertIsNotNone(cleanup_entry)
+        assert cleanup_entry is not None
+        self.assertEqual(cleanup_entry.attrib["After"], "InstallInitialize")
+        self.assertEqual(cleanup_entry.attrib["Condition"], "REMOVE AND NOT UPGRADINGPRODUCTCODE")
         license_file = package.find(".//wix:File[@Id='GoNaviLicense']", ns)
         self.assertIsNotNone(license_file)
         assert license_file is not None

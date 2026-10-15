@@ -26,6 +26,8 @@ const environmentState = vi.hoisted(() => ({ shouldSync: false, platform: 'windo
 const brandDefinitionState = vi.hoisted(() => ({
   value: { mascot: true } as { mascot?: boolean; bundled?: boolean },
 }));
+// Windows 原生合成的取景缩放：按 id 返回（捕获传错 id 的回归），默认 1。
+const nativeIconZoomState = vi.hoisted(() => ({ forId: '', value: 1 }));
 
 vi.mock('antd', () => ({ message: messageApi }));
 vi.mock('../store', () => ({
@@ -45,6 +47,8 @@ vi.mock('./brandIcons', () => ({
   resolveBrandIconSrc: () => 'asset:icon',
   resolveBrandDockSrc: (id: string) => `dock:${id}`,
   resolveBrandNativeSrc: (id: string) => `dock:${id}`,
+  resolveBrandNativeIconZoom: (id: unknown) =>
+    String(id) === nativeIconZoomState.forId ? nativeIconZoomState.value : 1,
   resolveBrandIcon: () => brandDefinitionState.value,
   brandAssetKeysFor: () => [],
   startupBrandAssetKeys: () => ['startup-keys'],
@@ -58,7 +62,7 @@ vi.mock('./brandAssetLoader', () => ({
 vi.mock('./macDockIcon', () => ({
   composeWindowsNativeIconBase64: composeWindowsNativeIcon,
   composeMacOSDockIconBase64: composeMacOSDockIcon,
-  LEGACY_MASCOT_DOCK_ICON_INSET: 100,
+  APPLE_DOCK_ICON_GRID_INSET: 100,
   shouldSyncApplicationBrandIcon: () => environmentState.shouldSync,
 }));
 
@@ -96,6 +100,8 @@ describe('useBrandIconSync handleBrandIconChange', () => {
     messageApi.warning.mockClear();
     messageApi.error.mockClear();
     setApplicationBrandIcon.mockReset();
+    nativeIconZoomState.forId = '';
+    nativeIconZoomState.value = 1;
     storeState.brandIconId = 'legacy';
     storeState.setBrandIconId = (id: string) => { storeState.brandIconId = id; };
     vi.spyOn(storeState, 'setBrandIconId');
@@ -168,6 +174,26 @@ describe('useBrandIconSync handleBrandIconChange', () => {
     expect(messageApi.success).toHaveBeenCalledTimes(1);
     expect(messageApi.error).not.toHaveBeenCalled();
   });
+
+  it('passes the asset-family native zoom into the Windows tile composition', async () => {
+    // forId 限定让 mock 只对被选 id 生效：实现若误传 previousId 或别的
+    // id，这里会拿到 1 而不是 1.25，断言即失败。
+    nativeIconZoomState.forId = 'aurora';
+    nativeIconZoomState.value = 1.25;
+    let renderer: ReactTestRenderer | undefined;
+    await act(async () => {
+      renderer = create(React.createElement(Harness));
+    });
+
+    setApplicationBrandIcon.mockImplementationOnce(async () => ({ success: true }));
+    await act(async () => {
+      await capturedHandler('aurora' as BrandIconId);
+    });
+    void renderer;
+
+    expect(composeWindowsNativeIcon).toHaveBeenCalledWith('dock:aurora', { zoom: 1.25 });
+    expect(setApplicationBrandIcon).toHaveBeenCalledWith('b64');
+  });
 });
 
 describe('useBrandIconSync native dock icon composition', () => {
@@ -201,7 +227,7 @@ describe('useBrandIconSync native dock icon composition', () => {
     brandDefinitionState.value = { mascot: true };
   });
 
-  it('composes the bundled dark-tile default full-bleed without the mascot safe-area inset', async () => {
+  it('composes every family onto the strict Apple grid on macOS', async () => {
     let renderer: ReactTestRenderer | undefined;
     await act(async () => {
       renderer = create(React.createElement(DarwinHarness));
@@ -210,13 +236,21 @@ describe('useBrandIconSync native dock icon composition', () => {
     void renderer;
 
     expect(composeMacOSDockIcon).toHaveBeenCalledTimes(1);
-    expect(composeMacOSDockIcon).toHaveBeenCalledWith('dock:legacy', { inset: undefined });
+    // zoom 走 mock 默认值 1：接线测试只验证参数透传，真实家族取值（缎带
+    // 1.25）由 brandIcons.test 锁定，这里不重复。
+    expect(composeMacOSDockIcon).toHaveBeenCalledWith('dock:legacy', {
+      inset: 100,
+      zoom: 1,
+      fillTileBackground: false,
+    });
     expect(composeWindowsNativeIcon).not.toHaveBeenCalled();
     expect(setApplicationBrandIcon).toHaveBeenCalledWith('b64');
   });
 
-  it('keeps the white-tile mascot safe-area inset on macOS', async () => {
+  it('keeps the mascot white-tile base and family zoom on the Apple grid', async () => {
     brandDefinitionState.value = { mascot: true, bundled: false };
+    nativeIconZoomState.forId = 'legacy';
+    nativeIconZoomState.value = 1.25;
     let renderer: ReactTestRenderer | undefined;
     await act(async () => {
       renderer = create(React.createElement(DarwinHarness));
@@ -225,7 +259,11 @@ describe('useBrandIconSync native dock icon composition', () => {
     void renderer;
 
     expect(composeMacOSDockIcon).toHaveBeenCalledTimes(1);
-    expect(composeMacOSDockIcon).toHaveBeenCalledWith('dock:legacy', { inset: 100 });
+    expect(composeMacOSDockIcon).toHaveBeenCalledWith('dock:legacy', {
+      inset: 100,
+      zoom: 1.25,
+      fillTileBackground: true,
+    });
     expect(setApplicationBrandIcon).toHaveBeenCalledWith('b64');
   });
 });
