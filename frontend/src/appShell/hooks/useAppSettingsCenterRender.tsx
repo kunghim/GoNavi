@@ -4,18 +4,19 @@ import {
   SkinOutlined,
   TableOutlined,
   FolderOpenOutlined,
-  CloudDownloadOutlined,
+  LinkOutlined,
   SafetyCertificateOutlined,
   InfoCircleOutlined,
   AppstoreOutlined,
 } from '@ant-design/icons';
 import React, { useCallback } from 'react';
 import { Alert, Button, Spin } from 'antd';
+import { useSettingsCenterScrollReset } from './useSettingsCenterScrollReset';
 import AiSparkOutlined from '../../components/icons/AiSparkOutlined';
 import { AI_SETTINGS_NAV_ITEMS } from '../../components/ai/AISettingsSidebar';
 import LanguageSettingsPanel from '../../components/LanguageSettingsPanel';
 import WebAuthSettingsPanel from '../../components/WebAuthSettingsPanel';
-import CloudBackupSettings from '../../components/CloudBackupSettings';
+import ShortcutSettingsPane from '../../components/settings/ShortcutSettingsPane';
 import BrandIconPicker from '../../components/BrandIconPicker';
 import AIPanelErrorBoundary from '../../components/ai/AIPanelErrorBoundary';
 import {
@@ -26,6 +27,8 @@ import { useNativeMenuUpdateCheck } from '../../hooks/useNativeMenuUpdateCheck';
 import { useMacNativeMenuBridge } from '../../hooks/useMacNativeMenuBridge';
 import TitleBarSystemActions from '../../components/TitleBarSystemActions';
 import TitleBarActionRow from '../../components/titlebar/TitleBarActionRow';
+import TitleBarToolBar from '../../components/titlebar/TitleBarToolBar';
+import { useWorkbenchToolbarObjectActions } from './useWorkbenchToolbarObjectActions';
 import { DockedSidebarActionsHost } from '../../components/sidebar/SidebarExplorerToolbar';
 import type { AppCoreStateApi } from './useAppCoreState';
 import type { AppSettingsNavigationApi } from './useAppSettingsNavigation';
@@ -60,7 +63,15 @@ export interface UseAppSettingsCenterRenderInput {
   renderSidebarMetadataSettingsPane: AppSettingsPanesRenderApi['renderSidebarMetadataSettingsPane'];
   renderSidebarObjectVisibilitySettingsPane: AppSettingsPanesRenderApi['renderSidebarObjectVisibilitySettingsPane'];
   renderProxySettingsContent: AppSettingsPanesRenderApi['renderProxySettingsContent'];
-  renderDownloadSourceSettingsContent: AppSettingsPanesRenderApi['renderDownloadSourceSettingsContent'];
+  setCapturingShortcutAction: AppProxySettingsApi['setCapturingShortcutAction'];
+  resetShortcutOptions: AppCoreStateApi['resetShortcutOptions'];
+  isMacRuntime: AppShellStateApi['isMacRuntime'];
+  shortcutOptions: AppCoreStateApi['shortcutOptions'];
+  activeShortcutPlatform: AppUpdateAndDiagnosticsApi['activeShortcutPlatform'];
+  capturingShortcutAction: AppProxySettingsApi['capturingShortcutAction'];
+  shortcutConflictMap: AppProxySettingsApi['shortcutConflictMap'];
+  resolvedMonoFontFamily: AppShellStateApi['resolvedMonoFontFamily'];
+  updateShortcut: AppCoreStateApi['updateShortcut'];
   darkMode: AppCoreStateApi['darkMode'];
   aiSettingsRenderNonce: AppShellStateApi['aiSettingsRenderNonce'];
   handleAIPanelRenderError: AppWorkbenchActionsApi['handleAIPanelRenderError'];
@@ -108,7 +119,9 @@ export const useAppSettingsCenterRender = ({
   toolCenterDetailBodyStyle, utilityPanelStyle, overlayTheme, utilityMutedTextStyle,
   renderThemeSettingsContent, renderSidebarMetadataSettingsPane,
   renderSidebarObjectVisibilitySettingsPane, renderProxySettingsContent,
-  renderDownloadSourceSettingsContent, darkMode, aiSettingsRenderNonce, handleAIPanelRenderError,
+  setCapturingShortcutAction, resetShortcutOptions, isMacRuntime, shortcutOptions,
+  activeShortcutPlatform, capturingShortcutAction, shortcutConflictMap, resolvedMonoFontFamily,
+  updateShortcut, darkMode, aiSettingsRenderNonce, handleAIPanelRenderError,
   handleRetryAISettingsRender, LazyAISettingsContent, isSettingsModalOpen, aiSettingsSection,
   aiSettingsProviderView, handleCancelSettingsCenterPane, handlePrepareExternalMCPUse,
   registerAISettingsLeaveGuard, applicationQuitModalZIndex, renderSettingsCenterAboutPane,
@@ -120,6 +133,9 @@ export const useAppSettingsCenterRender = ({
   setCollapsedSidebarActionsTarget, handleExpandSidebarPanel, handleCollapseSidebarPanel,
   sidebarCollapsedToggleRef, brandIconId, handleBrandIconChange,
 }: UseAppSettingsCenterRenderInput) => {
+  const workbenchToolbarObjectActions = useWorkbenchToolbarObjectActions();
+  // 设置页签隐藏不销毁，切回时内容滚动复位到顶，避免顶部大段空白残留。
+  useSettingsCenterScrollReset();
   const settingsCenterGroups: SettingsCenterNavigationGroup[] = [
       {
           key: 'preferences' as const,
@@ -179,6 +195,13 @@ export const useAppSettingsCenterRender = ({
                   description: t('app.settings.entry.brand_icon.description'),
                   onClick: () => handleOpenSettingsCenterPane('preferences', 'brand-icon'),
               },
+              {
+                  key: 'shortcut-settings',
+                  icon: <LinkOutlined />,
+                  title: t('app.tools.entry.shortcuts.title'),
+                  description: t('app.tools.entry.shortcuts.description'),
+                  onClick: () => handleOpenSettingsCenterPane('preferences', 'shortcut-settings'),
+              },
           ],
       },
       {
@@ -194,13 +217,6 @@ export const useAppSettingsCenterRender = ({
                   description: t('app.settings.entry.proxy.description'),
                   onClick: () => handleOpenSettingsCenterPane('services', 'proxy'),
               },
-              {
-                  key: 'download-source',
-                  icon: <CloudDownloadOutlined />,
-                  title: t('app.settings.entry.download_source.title'),
-                  description: t('app.settings.entry.download_source.description'),
-                  onClick: () => handleOpenSettingsCenterPane('services', 'download-source'),
-              },
               ...(isWebRuntime ? [{
                   key: 'web-auth' as const,
                   icon: <SafetyCertificateOutlined />,
@@ -208,13 +224,6 @@ export const useAppSettingsCenterRender = ({
                   description: t('app.settings.entry.web_auth.description'),
                   onClick: () => handleOpenSettingsCenterPane('services', 'web-auth'),
               }] : []),
-              {
-                  key: 'cloud-backup',
-                  icon: <CloudDownloadOutlined />,
-                  title: t('app.settings.entry.cloud_backup.title'),
-                  description: t('app.settings.entry.cloud_backup.description'),
-                  onClick: () => handleOpenSettingsCenterPane('services', 'cloud-backup'),
-              },
               {
                   key: 'ai',
                   icon: <AiSparkOutlined />,
@@ -314,6 +323,25 @@ export const useAppSettingsCenterRender = ({
               </div>
           );
       }
+      if (activeSettingsCenterPane.key === 'shortcut-settings') {
+          return (
+              <ShortcutSettingsPane
+                  t={t}
+                  darkMode={darkMode}
+                  utilityPanelStyle={utilityPanelStyle}
+                  isMacRuntime={isMacRuntime}
+                  shortcutOptions={shortcutOptions}
+                  activeShortcutPlatform={activeShortcutPlatform}
+                  capturingShortcutAction={capturingShortcutAction}
+                  setCapturingShortcutAction={setCapturingShortcutAction}
+                  shortcutConflictMap={shortcutConflictMap}
+                  resolvedMonoFontFamily={resolvedMonoFontFamily}
+                  updateShortcut={updateShortcut}
+                  resetShortcutOptions={resetShortcutOptions}
+                  onClose={handleCancelSettingsCenterPane}
+              />
+          );
+      }
       if (activeSettingsCenterPane.key === 'theme') {
           return (
               <div style={{ height: '100%', minHeight: 0 }}>
@@ -330,9 +358,6 @@ export const useAppSettingsCenterRender = ({
       if (activeSettingsCenterPane.key === 'proxy') {
           return renderProxySettingsContent();
       }
-      if (activeSettingsCenterPane.key === 'download-source') {
-          return renderDownloadSourceSettingsContent();
-      }
       if (activeSettingsCenterPane.key === 'web-auth') {
           return (
               <WebAuthSettingsPanel
@@ -341,11 +366,6 @@ export const useAppSettingsCenterRender = ({
                 mutedColor={String(utilityMutedTextStyle.color || overlayTheme.mutedText)}
                 titleColor={overlayTheme.titleText}
               />
-          );
-      }
-      if (activeSettingsCenterPane.key === 'cloud-backup') {
-          return (
-              <CloudBackupSettings t={t} />
           );
       }
       if (activeSettingsCenterPane.key === 'ai') {
@@ -437,8 +457,18 @@ export const useAppSettingsCenterRender = ({
       onManageConnectionGroups={() => setIsConnectionGroupManagementOpen(true)}
       aiActive={aiPanelVisible} onToggleAI={handleToggleOrFocusAIPanel}
       trailingSlot={useNativeMacWindowControls ? titleBarTrailingSlot : undefined}
+      objectActions={workbenchToolbarObjectActions.node}
     />
   );
+
+  // Navicat 界面风格：对象工具条（表 / 视图 / 函数…）是该风格的组成部分，
+  // 不随「功能入口位置」内联而消失；功能入口内联到标题栏时，对象工具条
+  // 独立成行渲染在标题栏下方（工具条形态下已随 titleBarActionRow 同行渲染）。
+  const titleBarObjectActionsRow = appearance.uiLayoutMode === 'navicat' && titleBarActionsInline ? (
+    <TitleBarToolBar ariaLabel={t('app.titlebar.toolbar.aria')}>
+      {workbenchToolbarObjectActions.node}
+    </TitleBarToolBar>
+  ) : null;
 
   const dockedSidebarActionsHost = shouldDockCollapsedSidebarActionsInTitlebar ? (
     <DockedSidebarActionsHost
@@ -455,6 +485,7 @@ export const useAppSettingsCenterRender = ({
     settingsCenterGroups, activeSettingsCenterDetailPanelStyle, settingsCenterDetailBodyStyle,
     renderSettingsCenterPane, sidebarPanelCollapseLabel, sidebarPanelExpandLabel,
     handleAppContextMenu, handleNativeMenuCheckUpdate, titleBarSystemActionsNode, titleBarActionRow,
+    titleBarObjectActionsRow,
     dockedSidebarActionsHost,
   };
 };

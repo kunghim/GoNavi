@@ -1,3 +1,4 @@
+import { WorkbenchSidebarAutoCollapseSetting } from './WorkbenchSidebarAutoCollapseSetting';
 import { Switch, Select } from 'antd';
 import { ThemeSettingsSlider } from '../ThemeSettingsSlider';
 import {
@@ -64,6 +65,17 @@ export const ThemeAppearanceSettingsSection = ({
           // 设置中心侧栏已显示「显示与字体」，内容区不再重复分区标题
           options?.hideSectionTabs ? null : t('app.theme.nav.appearance.title'),
           <>
+              {renderThemeSettingsRow({
+                  label: t('app.theme.appearance.navicat_layout_title'),
+                  hint: t('app.theme.appearance.navicat_layout_hint'),
+                  stacked: true,
+                  control: (
+                      <Switch
+                          checked={appearance.uiLayoutMode === 'navicat'}
+                          onChange={(checked) => setAppearance({ uiLayoutMode: checked ? 'navicat' : 'classic' })}
+                      />
+                  ),
+              })}
               {renderThemeSettingsRow({
                   label: t('app.theme.appearance.ui_scale_title'),
                   hint: t('app.theme.appearance.ui_scale_hint'),
@@ -137,6 +149,7 @@ export const ThemeAppearanceSettingsSection = ({
                       />
                   ),
               })}
+              <WorkbenchSidebarAutoCollapseSetting appearance={appearance} setAppearance={setAppearance} t={t} renderThemeSettingsRow={renderThemeSettingsRow} />
               {renderThemeSettingsRow({
                   label: t('app.theme.appearance.single_database_expansion_title'),
                   hint: t('app.theme.appearance.single_database_expansion_hint'),
