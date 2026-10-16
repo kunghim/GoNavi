@@ -1,3 +1,4 @@
+import { sanitizeFavoriteSettings } from '../utils/favoriteSettings';
 import { SavedConnection, GlobalProxyConfig } from "../types";
 import {
   ShortcutOptions,
@@ -10,6 +11,10 @@ import {
   sanitizeSqlEditorTypographySettings,
 } from "../utils/sqlEditorTypography";
 import { sanitizeTitlebarActionsPlacementSettings } from "../utils/titlebarActionsPlacement";
+import {
+  sanitizeTabAppearanceStyle,
+  sanitizeTabCloseButtonPosition,
+} from "../utils/tabAppearance";
 import { sanitizeFontFamilyInput } from "../utils/fontFamilies";
 import type { AIChatDetachedBoundsMemory, DetachedWindowBounds } from "../utils/detachedWindow";
 import {
@@ -548,10 +553,15 @@ export const sanitizeAppearance = (
     tabEnvironmentAccentThickness: sanitizeTabEnvironmentAccentThickness(
       appearance.tabEnvironmentAccentThickness,
     ),
+    tabAppearanceStyle: sanitizeTabAppearanceStyle(appearance.tabAppearanceStyle),
+    tabCloseButtonPosition: sanitizeTabCloseButtonPosition(
+      appearance.tabCloseButtonPosition,
+    ),
     toolbarButtonColorOverrides: sanitizeToolbarButtonColorOverrides(
       appearance.toolbarButtonColorOverrides,
     ),
     workbenchSidebarAutoCollapse: appearance.workbenchSidebarAutoCollapse === true,
+    favoriteSettings: sanitizeFavoriteSettings(appearance.favoriteSettings),
     sidebarSingleDatabaseExpansion:
       appearance.sidebarSingleDatabaseExpansion === true,
     sidebarHiddenObjectGroups: sanitizeSidebarHiddenObjectGroups(

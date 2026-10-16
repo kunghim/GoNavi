@@ -82,7 +82,7 @@ describe('store appearance persistence', () => {
     expect(appearance.sidebarHiddenObjectGroups).toEqual([]);
     expect(appearance.showDataTableVerticalBorders).toBe(false);
     expect(appearance.showDataTableRowNumber).toBe(true);
-    expect(appearance.dataTableDensity).toBe('comfortable');
+    expect(appearance.dataTableDensity).toBe('compact');
     expect(appearance.dataTableFontSize).toBeNull();
     expect(appearance.dataTableFontSizeFollowGlobal).toBe(true);
     expect(appearance.sqlEditorFontSize).toBeNull();
@@ -96,9 +96,9 @@ describe('store appearance persistence', () => {
     expect(appearance.customTableAliasPrefixEnabled).toBe(false);
     expect(appearance.customTableAliasPrefix).toBe('');
     expect(appearance.tabDisplay).toEqual({
-      layout: 'double',
-      primaryElements: ['object'],
-      secondaryElements: ['kind', 'connection', 'database'],
+      layout: 'single',
+      primaryElements: ['connection', 'kind', 'object'],
+      secondaryElements: [],
     });
   }, 30000);
 
@@ -158,10 +158,12 @@ describe('store appearance persistence', () => {
     }));
 
     const migrated = await importStore();
+    // 默认布局已翻转为单行：旧默认（单行 [connection,kind,object]）迁移后保持等值，
+    // 仅版本号升级；自定义 double 快照原样保留（不被默认迁移覆盖）。
     expect(migrated.useStore.getState().appearance.tabDisplay).toEqual({
-      layout: 'double',
-      primaryElements: ['object'],
-      secondaryElements: ['kind', 'connection', 'database'],
+      layout: 'single',
+      primaryElements: ['connection', 'kind', 'object'],
+      secondaryElements: [],
     });
     expect(JSON.parse(storage.getItem('lite-db-storage') || '{}').version).toBe(22);
 
@@ -267,6 +269,18 @@ describe('store appearance persistence', () => {
       vi.resetModules();
       store = (await importStore()).useStore;
       expect(store.getState().appearance.workbenchSidebarAutoCollapse).toBe(enabled);
+    }
+  });
+
+  it('persists custom favorite settings, their order and an intentionally empty selection', async () => {
+    let store = (await importStore()).useStore;
+    expect(store.getState().appearance.favoriteSettings).toContain('layout');
+    const target = 'entry:fonts-settings/fonts-settings/app.theme.font_family.ui_title';
+    for (const favoriteSettings of [[target, 'rows', 'density'], []]) {
+      store.getState().setAppearance({ favoriteSettings });
+      vi.resetModules();
+      store = (await importStore()).useStore;
+      expect(store.getState().appearance.favoriteSettings).toEqual(favoriteSettings);
     }
   });
 

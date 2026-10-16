@@ -1,5 +1,6 @@
 import { DATA_GRID_FILL_BODY_CSS } from './dataGridLayout';
 import type { DataGridCssVars } from './dataGridStyles';
+import { buildDataGridDensityCss } from '../utils/dataGridDensity';
 
 export const buildDataGridTableCss = ({
     gridId,
@@ -31,7 +32,7 @@ export const buildDataGridTableCss = ({
         `.${gridId}.data-grid-root .ant-table-tbody-virtual-holder .ant-table-row.${bandClass}${zebraStateGuard} > .ant-table-cell:is(.data-grid-row-number-cell, .ant-table-selection-column)`,
         `.${gridId}.data-grid-root .ant-table-tbody > tr.${bandClass}${zebraStateGuard} > td:is(.data-grid-row-number-cell, .ant-table-selection-column)`,
     ].join(',\n');
-    return `${DATA_GRID_FILL_BODY_CSS}
+    return `${buildDataGridDensityCss(`.${gridId}`, densityParams)}${DATA_GRID_FILL_BODY_CSS}
                 .${gridId} .data-grid-toolbar-scroll > * {
 
                     flex-shrink: 0;
@@ -560,6 +561,24 @@ export const buildDataGridTableCss = ({
                         var(--gn-bg-selected, rgba(34, 197, 94, 0.14)),
                         var(--gn-bg-selected, rgba(34, 197, 94, 0.14))
                     ) !important;
+                }
+
+                /*
+                 * Navicat 式整行选中（非复选框形态，body 标记见 useAppLayoutEffects）：
+                 * 实心强调色 + 反白文字，覆盖淡绿 wash 与固定控制列的既有选中底。
+                 * 放在选中行规则之后，保持既有层叠次序不变。
+                 */
+                body[data-ui-layout='navicat']:not([data-grid-selection-checkbox='true']) .${gridId} .ant-table-tbody-virtual-holder .ant-table-row.ant-table-row-selected > .ant-table-cell,
+                body[data-ui-layout='navicat']:not([data-grid-selection-checkbox='true']) .${gridId} .ant-table-tbody-virtual-holder .ant-table-row.ant-table-row-selected > .ant-table-cell.ant-table-cell-row-hover,
+                body[data-ui-layout='navicat']:not([data-grid-selection-checkbox='true']) .${gridId} .ant-table-tbody-virtual .ant-table-row.ant-table-row-selected > .ant-table-cell,
+                body[data-ui-layout='navicat']:not([data-grid-selection-checkbox='true']) .${gridId} .ant-table-tbody-virtual-holder-inner .ant-table-row.ant-table-row-selected > .ant-table-cell,
+                body[data-ui-layout='navicat']:not([data-grid-selection-checkbox='true']) .${gridId} .ant-table-tbody .ant-table-row.ant-table-row-selected > .ant-table-cell,
+                body[data-ui-layout='navicat']:not([data-grid-selection-checkbox='true']) .${gridId} .ant-table-tbody > tr.ant-table-row-selected > td,
+                body[data-ui-layout='navicat']:not([data-grid-selection-checkbox='true']) .${gridId} .ant-table-row.ant-table-row-selected > .ant-table-cell {
+                    background: var(--gn-accent-strong, var(--gn-accent, #16a34a)) !important;
+                    background-color: var(--gn-accent-strong, var(--gn-accent, #16a34a)) !important;
+                    background-image: none !important;
+                    color: var(--gn-on-accent, var(--gn-ant-on-primary, #ffffff)) !important;
                 }
 
                 .${gridId} .row-added td,
