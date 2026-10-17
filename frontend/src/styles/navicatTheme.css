@@ -25,11 +25,10 @@ body[data-ui-layout='navicat'][data-ui-version='v2'] .gn-v2-app-root {
   --gonavi-window-opacity: 1;
 }
 
-/* 侧栏 + 主页签条（对齐 Navicat 观感）：比内容区表面再深一档。
-   在 chrome 基础上向前景色偏移 6%：亮色主题压暗、暗色主题提亮，
-   GoNavi 内置/自定义主题自动跟随；比内容区（panel-2）明显更灰。 */
+/* 侧栏 + 主页签条：与主体内容区完全同色（直接引用 panel-2 token），
+   亮/暗基础主题与 GoNavi 内置/自定义主题自动跟随。 */
 body[data-ui-layout='navicat'][data-ui-version='v2'] {
-  --gn-navicat-side-surface: color-mix(in srgb, var(--gn-bg-chrome, var(--gn-bg-panel-2, #f2f2f5)) 94%, var(--gn-fg-1, #26262b));
+  --gn-navicat-side-surface: var(--gn-bg-panel-2, #f6f6f8);
 }
 body[data-ui-layout='navicat'][data-ui-version='v2'] .gn-v2-app-sider,
 body[data-ui-layout='navicat'][data-ui-version='v2'] .gn-v2-sidebar-redesign,
@@ -93,11 +92,16 @@ body[data-ui-layout='navicat'][data-ui-version='v2'] .gn-v2-main-tabs .ant-tabs-
   background: var(--gn-bg-hover, rgba(38, 38, 43, 0.05)) !important;
 }
 
-/* 激活页签：无盒子，仅加粗文字 + 基础层的 2px 主题强调色顶部标记。
-   指示条放顶部而不是 antd 墨线（ink-bar）的底部：页签底部有连接
-   环境色条（生产/测试标识，TabManager 内联样式），放底部会互相压盖。 */
+/* 激活页签高亮：与 classic 模式同色（--gn-bg-panel 面板白）+ 加粗文字 +
+   基础层的 2px 主题强调色顶部标记。页签带与内容区同色（panel-2）后
+   仅靠顶标难以区分当前页签，用面板色高亮明确标识，两种布局观感一致。 */
 body[data-ui-layout='navicat'][data-ui-version='v2'] .gn-v2-main-tabs .ant-tabs-tab.ant-tabs-tab-active {
-  background: transparent !important;
+  background: var(--gn-bg-panel, #ffffff) !important;
+}
+
+/* 激活页签悬浮不加深：保持高亮底稳定，避免闪烁。 */
+body[data-ui-layout='navicat'][data-ui-version='v2'] .gn-v2-main-tabs .ant-tabs-tab.ant-tabs-tab-active:hover {
+  background: var(--gn-bg-panel, #ffffff) !important;
 }
 
 /* 页签文字：非激活 fg-3 / 激活 fg-1。btn 上必须显式声明——antd 自身对
@@ -105,7 +109,7 @@ body[data-ui-layout='navicat'][data-ui-version='v2'] .gn-v2-main-tabs .ant-tabs-
    颜色继承不进去。 */
 body[data-ui-layout='navicat'][data-ui-version='v2'] .gn-v2-main-tabs .ant-tabs-tab .ant-tabs-tab-btn {
   color: var(--gn-fg-3, #5f5f68);
-  font-size: 12px;
+  font-size: var(--gn-font-size-sm, 12px);
 }
 
 body[data-ui-layout='navicat'][data-ui-version='v2'] .gn-v2-main-tabs .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
@@ -185,7 +189,7 @@ body[data-ui-layout='navicat'][data-ui-version='v2'] .gn-v2-main-tabs .gn-v2-tab
 
 /* 主标题：略大更清晰，非激活 500 / 激活 600（颜色沿用基础层 fg-3 / fg-1）。 */
 body[data-ui-layout='navicat'][data-ui-version='v2'] .gn-v2-main-tabs .gn-v2-tab-label-main.tab-title-text {
-  font-size: 12.5px;
+  font-size: calc(var(--gn-font-size-sm, 12px) + 0.5px);
   font-weight: 500;
   letter-spacing: 0.1px;
 }
@@ -196,7 +200,7 @@ body[data-ui-layout='navicat'][data-ui-version='v2'] .gn-v2-main-tabs .ant-tabs-
 
 /* 双行模式第二行：更小更淡 */
 body[data-ui-layout='navicat'][data-ui-version='v2'] .gn-v2-main-tabs .gn-v2-tab-label-secondary {
-  font-size: 10.5px;
+  font-size: var(--gn-font-size-xs, 11px);
   color: var(--gn-fg-4, #8b8b94);
 }
 
