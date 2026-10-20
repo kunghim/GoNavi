@@ -1,0 +1,327 @@
+/* 组件画廊样式：全部走 --gn-* 变量，切换内置主题时自动跟随。 */
+
+.gonavi-component-gallery-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--gn-bg-app);
+  color: var(--gn-fg-1);
+  font-family: var(--gn-font-sans, inherit);
+  font-size: var(--gn-font-size, 14px);
+}
+
+/* ─── 顶部工具条 ─────────────────────────────────────── */
+.gonavi-component-gallery-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 10px 18px;
+  background: var(--gn-bg-chrome);
+  border-bottom: 1px solid var(--gn-br-2);
+  flex: 0 0 auto;
+}
+
+.gonavi-component-gallery-toolbar-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.gonavi-component-gallery-toolbar-brand strong {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--gn-fg-1);
+}
+
+.gonavi-component-gallery-toolbar-brand span {
+  font-size: 12px;
+  color: var(--gn-fg-4);
+}
+
+.gonavi-component-gallery-toolbar-actions {
+  align-items: center;
+}
+
+.gonavi-component-gallery-theme-select {
+  min-width: 230px;
+}
+
+.gonavi-component-gallery-search {
+  width: 220px;
+}
+
+/* 主题下拉里的色板 */
+.gonavi-component-gallery-theme-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gonavi-component-gallery-theme-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 14px;
+  border: 1px solid;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
+
+.gonavi-component-gallery-theme-swatch i {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+/* ─── 主体两栏 ───────────────────────────────────────── */
+.gonavi-component-gallery-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.gonavi-component-gallery-nav {
+  flex: 0 0 208px;
+  overflow-y: auto;
+  padding: 14px 10px;
+  background: var(--gn-bg-panel);
+  border-right: 1px solid var(--gn-br-2);
+}
+
+.gonavi-component-gallery-nav-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 10px;
+}
+
+.gonavi-component-gallery-nav-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gn-fg-4);
+}
+
+.gonavi-component-gallery-nav-count {
+  font-size: 11px;
+  color: var(--gn-fg-5);
+  background: var(--gn-bg-panel-2);
+  border: 1px solid var(--gn-br-2);
+  border-radius: 9px;
+  padding: 0 7px;
+}
+
+.gonavi-component-gallery-nav-group {
+  margin-bottom: 12px;
+}
+
+.gonavi-component-gallery-nav-group-title {
+  padding: 4px 10px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gn-fg-5);
+}
+
+.gonavi-component-gallery-nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gonavi-component-gallery-nav-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--gn-v2-menu-item-radius, 5px);
+  background: transparent;
+  color: var(--gn-fg-2);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.gonavi-component-gallery-nav-item:hover {
+  background: var(--gn-bg-hover);
+  color: var(--gn-fg-1);
+}
+
+.gonavi-component-gallery-nav-item.is-active {
+  background: var(--gn-accent-soft);
+  color: var(--gn-accent-text, var(--gn-accent));
+  font-weight: 600;
+}
+
+.gonavi-component-gallery-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 18px 22px 64px;
+}
+
+.gonavi-component-gallery-empty {
+  padding: 48px 0;
+  text-align: center;
+  color: var(--gn-fg-4);
+}
+
+/* ─── 分区 ───────────────────────────────────────────── */
+.gonavi-component-gallery-section {
+  margin-bottom: 30px;
+  scroll-margin-top: 12px;
+}
+
+.gonavi-component-component-gallery-section-header h2 {
+  margin: 0 0 3px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--gn-fg-1);
+}
+
+.gonavi-component-component-gallery-section-header p {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--gn-fg-4);
+}
+
+.gonavi-component-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+/* ─── 条目卡片 ───────────────────────────────────────── */
+.gonavi-component-gallery-item {
+  border: 1px solid var(--gn-br-2);
+  border-radius: 8px;
+  background: var(--gn-bg-panel);
+  overflow: hidden;
+  box-shadow: var(--gn-shadow-sm);
+}
+
+.gonavi-component-gallery-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--gn-br-1);
+  background: var(--gn-bg-panel-2);
+}
+
+.gonavi-component-gallery-item-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gn-fg-1);
+  font-family: var(--gn-font-mono, monospace);
+}
+
+.gonavi-component-gallery-item-source {
+  font-size: 10px;
+  color: var(--gn-fg-5);
+  font-family: var(--gn-font-mono, monospace);
+  cursor: default;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 58%;
+  direction: rtl;
+  text-align: left;
+}
+
+.gonavi-component-gallery-item-stage {
+  padding: 14px;
+  min-height: 72px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--gn-fg-2);
+}
+
+.gonavi-component-gallery-item-stage > * {
+  max-width: 100%;
+}
+
+/* 条目里常见的横向排布小组件 */
+.gonavi-component-gallery-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.gonavi-component-gallery-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.gonavi-component-gallery-label {
+  font-size: 11px;
+  color: var(--gn-fg-4);
+  min-width: 72px;
+}
+
+/* 画布类组件（网格、图表、流程图）需要整块宽度 */
+.gonavi-component-gallery-item-wide {
+  grid-column: 1 / -1;
+}
+
+.gonavi-component-gallery-item-wide .gonavi-component-gallery-item-stage {
+  flex-direction: column;
+}
+
+/* ─── 图标网格 ───────────────────────────────────────── */
+.gonavi-component-gallery-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+  gap: 6px;
+  width: 100%;
+}
+
+.gonavi-component-gallery-icon-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--gn-br-2);
+  border-radius: 6px;
+  background: var(--gn-bg-panel-2);
+  color: var(--gn-fg-2);
+  font-size: 15px;
+}
+
+.gonavi-component-gallery-icon-cell:hover {
+  color: var(--gn-accent-text, var(--gn-accent));
+  border-color: var(--gn-br-3);
+}
+
+/* ─── 右键菜单预览 ───────────────────────────────────── */
+.gonavi-component-gallery-context-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 220px;
+  padding: 4px;
+  border: 1px solid var(--gn-br-2);
+  border-radius: 8px;
+  background: var(--gn-bg-panel-2);
+  box-shadow: var(--gn-shadow-md);
+}

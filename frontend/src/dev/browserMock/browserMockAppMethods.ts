@@ -202,6 +202,39 @@ export const createBrowserMockAppMethods = ({
         },
         DBGetAllColumns: async () => ({ success: true, data: cloneBrowserMockValue(mockQueryColumns) }),
         DBGetDatabaseForeignKeys: async () => ({ success: true, data: {} }),
+        // ER 图需要单表外键与索引元数据，浏览器预览里给出最小可用的样例。
+        DBGetForeignKeys: async (_config: any, _dbName: string, tableName: string) => {
+            const table = String(tableName || '').trim().toLowerCase();
+            if (table !== 'videos') {
+                return { success: true, data: [] };
+            }
+            return {
+                success: true,
+                data: [{
+                    name: 'fk_videos_user_id',
+                    columnName: 'user_id',
+                    refTableName: 'users',
+                    refColumnName: 'id',
+                    constraintName: 'fk_videos_user_id',
+                }],
+            };
+        },
+        DBGetIndexes: async (_config: any, _dbName: string, tableName: string) => {
+            const table = String(tableName || '').trim().toLowerCase();
+            if (table !== 'videos' && table !== 'users') {
+                return { success: true, data: [] };
+            }
+            return {
+                success: true,
+                data: [{
+                    name: 'PRIMARY',
+                    columnName: 'id',
+                    nonUnique: 0,
+                    seqInIndex: 1,
+                    indexType: 'BTREE',
+                }],
+            };
+        },
         DBGetColumns: async (_config: any, _dbName: string, tableName: string) => ({
             success: true,
             data: cloneBrowserMockValue(

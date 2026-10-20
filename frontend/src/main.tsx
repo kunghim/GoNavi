@@ -128,6 +128,11 @@ const Root = ({ rootComponent }: { rootComponent: React.ReactNode }) => {
 };
 
 const renderRoot = async () => {
+    // 组件画廊是独立入口（frontend/gallery.html），开发态下用 harness 参数直达。
+    if (devHarnessMode === 'component-gallery') {
+        window.location.replace('/gallery.html');
+        return;
+    }
     let rootComponent: React.ReactNode = <App />;
     if (devHarnessMode === 'datagrid-perf') {
         const { default: PerfDataGridHarness } = await import('./dev/PerfDataGridHarness');

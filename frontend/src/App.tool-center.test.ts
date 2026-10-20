@@ -51,6 +51,11 @@ const appSource = APP_SOURCE_MODULES
   .map((file) => readFileSync(fileURLToPath(new globalThis.URL(`./${file}`, import.meta.url)), 'utf8'))
   .join('\n');
 const appCss = readCssWithImports(fileURLToPath(new globalThis.URL('./App.css', import.meta.url)));
+// 首帧前的 body 属性设置已收敛到共享 hook（主应用与组件画廊共用同一份实现）。
+const bodyAppearanceSource = readFileSync(
+  fileURLToPath(new globalThis.URL('./hooks/useBodyAppearanceAttributes.ts', import.meta.url)),
+  'utf8',
+);
 // Sidebar.tsx 已拆成 components/sidebar/ 下的 hook 与子组件，源码扫描需一并聚合。
 const SIDEBAR_COMPONENT_PARTS = [
   'sidebarProps.ts',
@@ -121,9 +126,11 @@ describe('settings center tool entries', () => {
     expect(appearanceEffectStart).toBeGreaterThanOrEqual(0);
     expect(appearanceEffectEnd).toBeGreaterThan(appearanceEffectStart);
 
+    // 布局副作用委托给共享 hook，属性写入发生在该 hook 的 layout effect 里。
     const appearanceEffectSource = appSource.slice(appearanceEffectStart, appearanceEffectEnd);
-    expect(appearanceEffectSource).toContain('useLayoutEffect(() => {');
-    expect(appearanceEffectSource).toContain("document.body.setAttribute('data-ui-version', 'v2');");
+    expect(appearanceEffectSource).toContain('useBodyAppearanceAttributes({');
+    expect(bodyAppearanceSource).toContain('useLayoutEffect(() => {');
+    expect(bodyAppearanceSource).toContain("document.body.setAttribute('data-ui-version', 'v2');");
   });
 
   it('exposes toolbar button overrides from the theme settings pane', () => {

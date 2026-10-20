@@ -1,8 +1,7 @@
 import React, { useMemo, useCallback } from 'react';
-import { theme } from 'antd';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
-import { APP_OVERLAY_Z_INDEX_BASE } from '../../utils/overlayZIndex';
+import { buildAntdTheme, resolveAntdPrimaryBgColor, resolveAntdPrimaryColor } from '../antdThemeBuilder';
 import { useStore } from '../../store';
 import {
   detectRuntimeCapabilityCached,
@@ -61,25 +60,9 @@ export const useAppAntdTheme = ({
   const showLinuxResizeHandles = isLinuxRuntime;
   const resizeGuideColor = 'var(--gn-accent, #16a34a)';
   // Navicat 布局模式与 classic 共用品牌绿主色；用户选了自定义主题时以自定义为准。
-  const v2AntPrimaryColor = customThemeAntTokens.primary ?? (darkMode ? '#22c55e' : '#16a34a');
-  const v2AntPrimaryContrastColor = customThemeAntTokens.primaryContrast ?? '#ffffff';
-  const v2AntPrimaryHoverColor = customThemeAntTokens.primaryHover ?? (darkMode ? '#4ade80' : '#15803d');
-  const v2AntPrimaryActiveColor = customThemeAntTokens.primaryActive ?? (darkMode ? '#16a34a' : '#166534');
-  const v2AntPrimaryBgColor = customThemeAntTokens.primaryBg ?? (darkMode ? 'rgba(34, 197, 94, 0.20)' : '#dcfce7');
-  const v2AntPrimaryBgHoverColor = customThemeAntTokens.primaryBgHover ?? (darkMode ? 'rgba(34, 197, 94, 0.28)' : '#bbf7d0');
-  const v2AntPrimaryBorderColor = customThemeAntTokens.primaryBorder ?? (darkMode ? 'rgba(34, 197, 94, 0.42)' : '#86efac');
-  const v2AntPrimaryBorderHoverColor = customThemeAntTokens.primaryBorderHover ?? (darkMode ? 'rgba(74, 222, 128, 0.58)' : '#4ade80');
-  const v2AntControlActiveBg = customThemeAntTokens.controlActiveBg ?? (darkMode ? 'rgba(34, 197, 94, 0.16)' : 'rgba(34, 197, 94, 0.10)');
-  const v2AntControlActiveHoverBg = customThemeAntTokens.controlActiveHoverBg ?? (darkMode ? 'rgba(34, 197, 94, 0.24)' : 'rgba(34, 197, 94, 0.16)');
-  const v2AntControlOutline = customThemeAntTokens.controlOutline ?? (darkMode ? 'rgba(34, 197, 94, 0.42)' : 'rgba(22, 163, 74, 0.22)');
-  const v2AntBgContainer = customThemeAntTokens.bgContainer;
-  const v2AntBgElevated = customThemeAntTokens.bgElevated;
-  const v2AntFillAlter = customThemeAntTokens.fillAlter;
-  const v2AntTextPrimary = customThemeAntTokens.textPrimary;
-  const v2AntTextSecondary = customThemeAntTokens.textSecondary;
-  const v2AntBorder = customThemeAntTokens.border;
-  const v2AntRowHoverBg = customThemeAntTokens.rowHoverBg;
-  const v2AntInfoColor = customThemeAntTokens.info ?? v2AntPrimaryColor;
+  // 回退口径与 antdThemeBuilder 共用同一份，避免两处各写一套后漂移。
+  const v2AntPrimaryColor = resolveAntdPrimaryColor(customThemeAntTokens, darkMode);
+  const v2AntPrimaryBgColor = resolveAntdPrimaryBgColor(customThemeAntTokens, darkMode);
   // 低配档位 / 减少动画：antd 组件动画（Modal / Drawer / Dropdown / Select 等）的总开关。
   // 与 useAppLayoutEffects 的 body 类同源同判定，避免 antd 动与自定义 CSS 动画出现两套口径。
   const lowSpecModePreference = useStore((state) => state.appearance.lowSpecMode);
@@ -88,96 +71,25 @@ export const useAppAntdTheme = ({
       reduceMotionPreference,
       resolveLowSpecModeActive(lowSpecModePreference, detectRuntimeCapabilityCached().lowSpec),
   );
-  const antdTheme = useMemo(() => ({
-      algorithm: darkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
-      token: {
-          fontSize: tokenFontSize,
-          fontSizeSM: tokenFontSizeSM,
-          fontSizeLG: tokenFontSizeLG,
-          fontFamily: resolvedUiFontFamily,
-          fontFamilyCode: resolvedMonoFontFamily,
-          zIndexPopupBase: APP_OVERLAY_Z_INDEX_BASE,
-          controlHeight: tokenControlHeight,
-          controlHeightSM: tokenControlHeightSM,
-          controlHeightLG: tokenControlHeightLG,
-          colorBgLayout: 'transparent',
-          colorBgContainer: v2AntBgContainer ?? (darkMode
-              ? `rgba(29, 29, 29, ${effectiveOpacity})`
-              : `rgba(255, 255, 255, ${effectiveOpacity})`),
-          colorBgElevated: v2AntBgElevated ?? (darkMode
-              ? '#1f1f1f'
-              : '#ffffff'),
-          colorFillAlter: v2AntFillAlter ?? (darkMode
-              ? `rgba(38, 38, 38, ${effectiveOpacity})`
-              : `rgba(250, 250, 250, ${effectiveOpacity})`),
-          ...(v2AntTextPrimary ? { colorText: v2AntTextPrimary } : {}),
-          ...(v2AntTextSecondary ? { colorTextSecondary: v2AntTextSecondary } : {}),
-          ...(v2AntBorder ? {
-              colorBorder: v2AntBorder,
-              colorBorderSecondary: v2AntBorder,
-          } : {}),
-          colorPrimary: v2AntPrimaryColor,
-          colorTextLightSolid: v2AntPrimaryContrastColor,
-          colorPrimaryHover: v2AntPrimaryHoverColor,
-          colorPrimaryActive: v2AntPrimaryActiveColor,
-          colorInfo: v2AntInfoColor,
-          colorLink: v2AntPrimaryColor,
-          colorLinkHover: v2AntPrimaryHoverColor,
-          colorLinkActive: v2AntPrimaryActiveColor,
-          // antd v5 SeedToken：motion=false 关闭全部过渡/动画。低配档位与减少动画都置 false，
-          // 与 CSS 的 0.001ms 中和互补（antd 内部依赖 motionDeadline 兜底，不会卡在中间态）。
-          motion: antdMotionEnabled,
-          colorPrimaryBg: v2AntPrimaryBgColor,
-          colorPrimaryBgHover: v2AntPrimaryBgHoverColor,
-          colorPrimaryBorder: v2AntPrimaryBorderColor,
-          colorPrimaryBorderHover: v2AntPrimaryBorderHoverColor,
-          controlItemBgActive: v2AntControlActiveBg,
-          controlItemBgActiveHover: v2AntControlActiveHoverBg,
-          controlOutline: v2AntControlOutline,
-      },
-      components: {
-          Layout: {
-              bodyBg: 'transparent',
-              headerBg: 'transparent',
-              siderBg: 'transparent',
-              triggerBg: 'transparent'
-          },
-          Table: {
-              headerBg: 'transparent',
-              rowHoverBg: v2AntRowHoverBg
-                  ?? (darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.02)'),
-          },
-          Tabs: {
-              cardBg: 'transparent',
-              itemActiveColor: v2AntPrimaryHoverColor,
-              itemHoverColor: v2AntPrimaryHoverColor,
-              itemSelectedColor: v2AntPrimaryColor,
-              inkBarColor: v2AntPrimaryColor,
-          }
-      }
+  // token 映射集中在 appShell/antdThemeBuilder，主应用与组件画廊共用同一份推导。
+  const antdTheme = useMemo(() => buildAntdTheme({
+    darkMode,
+    customThemeAntTokens,
+    effectiveOpacity,
+    fontFamily: resolvedUiFontFamily,
+    fontFamilyCode: resolvedMonoFontFamily,
+    fontSize: tokenFontSize,
+    fontSizeSM: tokenFontSizeSM,
+    fontSizeLG: tokenFontSizeLG,
+    controlHeight: tokenControlHeight,
+    controlHeightSM: tokenControlHeightSM,
+    controlHeightLG: tokenControlHeightLG,
+    motionEnabled: antdMotionEnabled,
   }), [
       darkMode,
+      customThemeAntTokens,
       effectiveOpacity,
       antdMotionEnabled,
-      v2AntBgContainer,
-      v2AntBgElevated,
-      v2AntBorder,
-      v2AntControlActiveBg,
-      v2AntControlActiveHoverBg,
-      v2AntControlOutline,
-      v2AntFillAlter,
-      v2AntInfoColor,
-      v2AntPrimaryActiveColor,
-      v2AntPrimaryBgColor,
-      v2AntPrimaryBgHoverColor,
-      v2AntPrimaryBorderColor,
-      v2AntPrimaryBorderHoverColor,
-      v2AntPrimaryColor,
-      v2AntPrimaryContrastColor,
-      v2AntPrimaryHoverColor,
-      v2AntRowHoverBg,
-      v2AntTextPrimary,
-      v2AntTextSecondary,
       tokenControlHeight,
       tokenControlHeightLG,
       tokenControlHeightSM,

@@ -107,6 +107,7 @@ export const installBrowserMockRuntime = () => {
         { tableName: 'videos', name: 'id', type: 'bigint', comment: 'primary key' },
         { tableName: 'videos', name: 'code', type: 'varchar', comment: 'video code' },
         { tableName: 'videos', name: 'title', type: 'varchar', comment: 'video title' },
+        { tableName: 'videos', name: 'user_id', type: 'bigint', comment: 'owner user id' },
         { tableName: 'users', name: 'id', type: 'bigint', comment: 'primary key' },
         { tableName: 'users', name: 'name', type: 'varchar', comment: 'display name' },
         ...(isPerfDataGridHarness ? [

@@ -22,6 +22,12 @@ type CustomThemeStyleHostProps = {
   onAntTokensChange: (snapshot: CustomThemeAntTokenSnapshot | null) => void;
   /** Optional host-owned theme for detached WebViews; undefined keeps local-store behavior. */
   themeOverride?: CustomThemeDefinition | null;
+  /**
+   * 受控模式下的“撤销主题”回调。传入时，恢复快捷键（Ctrl/Cmd + Shift + D）改调此回调，
+   * 而不是操作全局自定义主题 store。组件画廊据此把自己的局部选择复位，
+   * 不会误伤用户在主应用里选中的主题。
+   */
+  onDeactivate?: () => void;
 };
 
 type CustomThemeRecoveryKeyboardEvent = Pick<
@@ -91,6 +97,7 @@ export default function CustomThemeStyleHost({
   contextKey,
   onAntTokensChange,
   themeOverride,
+  onDeactivate,
 }: CustomThemeStyleHostProps) {
   const themes = useCustomThemeStore((state) => state.themes);
   const activeThemeId = useCustomThemeStore((state) => state.activeThemeId);
@@ -119,8 +126,12 @@ export default function CustomThemeStyleHost({
   useEffect(() => {
     if (!activeTheme) return undefined;
     // 恢复快捷键同时忘掉该主题，避免之后一键切换明暗又把出问题的主题套回来。
+    // 受控模式（组件画廊）下改调宿主的撤销回调，保留宿主自己的选择复位逻辑。
+    if (onDeactivate) {
+      return installCustomThemeRecoveryShortcut(() => { onDeactivate(); });
+    }
     return installCustomThemeRecoveryShortcut(() => { deactivateCustomTheme(); });
-  }, [activeTheme, deactivateCustomTheme]);
+  }, [activeTheme, deactivateCustomTheme, onDeactivate]);
 
   useEffect(() => {
     if (!activeTheme || typeof window === 'undefined') {

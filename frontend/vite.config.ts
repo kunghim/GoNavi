@@ -93,6 +93,9 @@ export default defineConfig({
     outDir: 'dist', // Standard Wails output directory
     emptyOutDir: true,
     rollupOptions: {
+      // 显式钉死主应用的构建入口。组件画廊是独立入口（frontend/gallery.html），
+      // 由 vite.gallery.config.ts 单独构建，绝不会混进 Wails 包。
+      input: fileURLToPath(new URL('./index.html', import.meta.url)),
       output: {
         // 拆分大体积三方依赖到独立 chunk，避免主 bundle 过大
         // reactflow + dagre 约 130KB gzipped，单独成 chunk 可按需加载
@@ -105,4 +108,4 @@ export default defineConfig({
       },
     },
   }
-})
+});

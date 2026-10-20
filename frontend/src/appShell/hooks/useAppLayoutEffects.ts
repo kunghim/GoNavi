@@ -3,6 +3,7 @@ import { message } from 'antd';
 import { withAISettingsLeaveGuard } from '../../utils/aiSettingsLeaveGuard';
 import { shouldSuppressMacNativeEscapeExit } from '../../utils/macWindow';
 import { useStore } from '../../store';
+import { useBodyAppearanceAttributes } from '../../hooks/useBodyAppearanceAttributes';
 import { useFontGalleryFaces } from '../../fontGallery/useFontGalleryFaces';
 // 低配/减少动画的降级样式；由本 hook 负责挂 body 类，故样式随本 hook 一起引入。
 import '../../styles/low-spec-runtime.css';
@@ -103,51 +104,23 @@ export const useAppLayoutEffects = ({
   // scoped by data-ui-version; a passive effect leaves one unstyled titlebar
   // frame where the centered context and its marker collapse into the legacy
   // flex layout.
-  useLayoutEffect(() => {
-    document.body.style.backgroundColor = 'transparent';
-    document.body.style.color = darkMode ? '#ffffff' : '#000000';
-    document.documentElement.style.colorScheme = darkMode ? 'dark' : 'light';
-    document.body.setAttribute('data-theme', darkMode ? 'dark' : 'light');
-    document.body.setAttribute('data-ui-version', 'v2');
-    document.body.setAttribute('data-ui-layout', uiLayoutMode === 'navicat' ? 'navicat' : 'classic');
-    document.body.setAttribute('data-grid-selection-checkbox',
-      showDataTableCheckboxColumn === true ? 'true'
-        : showDataTableCheckboxColumn === false ? 'false' : 'layout');
-    document.body.setAttribute('data-platform', documentPlatform);
-    document.body.style.fontSize = `${effectiveFontSize}px`;
-    document.body.style.setProperty('--gn-font-sans', resolvedUiFontFamily);
-    document.body.style.setProperty('--gn-font-mono', resolvedMonoFontFamily);
-    document.documentElement.style.setProperty('--gonavi-font-size', `${effectiveFontSize}px`);
-    document.documentElement.style.setProperty('--gn-font-sans', resolvedUiFontFamily);
-    document.documentElement.style.setProperty('--gn-font-mono', resolvedMonoFontFamily);
-    document.documentElement.style.setProperty('--gn-ui-scale', `${effectiveUiScale}`);
-    document.documentElement.style.setProperty('--gn-window-opacity', `${effectiveOpacity}`);
-    document.documentElement.style.setProperty('--gn-window-opacity-percent', `${effectiveOpacity * 100}%`);
-    document.documentElement.style.setProperty('--gn-font-size', `${effectiveFontSize}px`);
-    document.documentElement.style.setProperty('--gn-font-size-sm', `${Math.max(10, Math.round(effectiveFontSize * 0.86))}px`);
-    document.documentElement.style.setProperty('--gn-font-size-xs', `${Math.max(9, Math.round(effectiveFontSize * 0.76))}px`);
-    document.documentElement.style.setProperty('--gn-font-size-mono', `${Math.max(10, Math.round(effectiveDataTableFontSize * 0.92))}px`);
-    document.documentElement.style.setProperty('--gn-data-table-font-size', `${effectiveDataTableFontSize}px`);
-    document.documentElement.style.setProperty('--gn-sidebar-tree-font-size', `${effectiveSidebarTreeFontSize}px`);
-    document.documentElement.style.setProperty('--gn-sidebar-rail-scale', `${effectiveSidebarRailScale}`);
-    document.documentElement.style.setProperty('--gn-control-height', `${tokenControlHeight}px`);
-    document.documentElement.style.setProperty('--gn-control-height-sm', `${tokenControlHeightSM}px`);
-  }, [
+  // 实现收敛到 hooks/useBodyAppearanceAttributes，组件画廊共用同一份，避免两处漂移。
+  useBodyAppearanceAttributes({
     darkMode,
-    showDataTableCheckboxColumn,
-    effectiveDataTableFontSize,
-    effectiveFontSize,
-    effectiveOpacity,
-    resolvedMonoFontFamily,
-    resolvedUiFontFamily,
     documentPlatform,
-    effectiveSidebarRailScale,
-    effectiveSidebarTreeFontSize,
-    effectiveUiScale,
-    tokenControlHeight,
-    tokenControlHeightSM,
     uiLayoutMode,
-  ]);
+    showDataTableCheckboxColumn,
+    fontSize: effectiveFontSize,
+    uiFontFamily: resolvedUiFontFamily,
+    monoFontFamily: resolvedMonoFontFamily,
+    uiScale: effectiveUiScale,
+    opacity: effectiveOpacity,
+    dataTableFontSize: effectiveDataTableFontSize,
+    sidebarTreeFontSize: effectiveSidebarTreeFontSize,
+    sidebarRailScale: effectiveSidebarRailScale,
+    controlHeight: tokenControlHeight,
+    controlHeightSM: tokenControlHeightSM,
+  });
 
   // 低配档位 / 减少动画：单字段 selector 订阅，避免外观对象其它字段变化时连带重渲染整个根组件。
   const lowSpecModePreference = useStore((state) => state.appearance.lowSpecMode);

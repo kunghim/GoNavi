@@ -6,6 +6,7 @@ import type { TitlebarActionsDisplay, TitlebarActionsPlacement } from '../../uti
 import TitleBarPrimaryActions from '../TitleBarPrimaryActions';
 import TitleBarToolBar from './TitleBarToolBar';
 import TitleBarToolBarAiAction from './TitleBarToolBarAiAction';
+import TitleBarGalleryAction from './TitleBarGalleryAction';
 
 import './titleBarActionRow.css';
 
@@ -80,6 +81,7 @@ export default function TitleBarActionRow({
         active={aiActive}
         onClick={onToggleAI}
       />
+      {import.meta.env.DEV ? <TitleBarGalleryAction /> : null}
       {trailingSlot}
     </>
   );

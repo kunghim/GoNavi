@@ -88,7 +88,9 @@ describe('TitleBarActionRow', () => {
     expect(toolbar).not.toBeNull();
     expect(container.querySelector('[data-titlebar-actions-placement="titlebar"]')).toBeNull();
     expect(toolbar?.querySelector('#gonavi-titlebar-quick-actions')).not.toBeNull();
-    expect(toolbar?.querySelectorAll('[data-titlebar-toolbar-icon]').length).toBe(4);
+    // 4 个产品动作；组件画廊入口只在开发态额外挂载，单独计数。
+    expect(toolbar?.querySelectorAll('[data-titlebar-toolbar-icon]:not([data-titlebar-toolbar-icon="gallery"])').length).toBe(4);
+    expect(toolbar?.querySelector('[data-gonavi-component-gallery-action="true"]')).not.toBeNull();
     // 工具条不受标题栏显示方式影响，也不带精简名称。
     expect(toolbar?.querySelectorAll('.gn-titlebar-toolbar-item-short-label').length).toBe(0);
     expect(button('[data-gonavi-new-query-action="true"]').title).toBe('New Query · Ctrl+T');

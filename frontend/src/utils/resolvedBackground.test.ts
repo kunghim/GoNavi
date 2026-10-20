@@ -1,6 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { resolvedBackground } from './resolvedBackground';
 import { BUILTIN_BACKGROUNDS } from './builtinBackgrounds';
 import { galleryInstalled } from '../backgroundGallery/testFixtures';
@@ -26,8 +24,12 @@ describe('trusted background resolution', () => {
     expect(resolvedBackground({ builtinId: url, image: null })).toBeNull();
     expect(resolvedBackground({ image: { ...image, dataUrl: url } })).toBeNull();
   });
-  it('contains no static image imports or inline artwork in the legacy catalog', () => {
-    const source = readFileSync(resolve(process.cwd(), 'src/utils/builtinBackgrounds.ts'), 'utf8');
-    expect(source).not.toMatch(/import .*\.(webp|png|jpe?g)|data:image/);
+  it('keeps the legacy catalog free of inline artwork', () => {
+    // 行为级断言：目录项只带 id 与文案键，不携带任何图片字段，
+    // 且在没有本地安装时解析不出任何字节。
+    for (const builtin of BUILTIN_BACKGROUNDS) {
+      expect(Object.keys(builtin).filter((key) => ['url', 'src', 'dataUrl', 'image', 'data'].includes(key))).toEqual([]);
+      expect(resolvedBackground({ builtinId: builtin.id, image: null })).toBeNull();
+    }
   });
 });
