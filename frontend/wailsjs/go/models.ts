@@ -1346,6 +1346,7 @@ export namespace app {
 	
 	
 	export class ExportFileOptions {
+	    pluginExporter?: dataexport.PluginExportSelection;
 	    format: string;
 	    csvEncoding?: string;
 	    columns?: string[];
@@ -1368,6 +1369,7 @@ export namespace app {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pluginExporter = this.convertValues(source["pluginExporter"], dataexport.PluginExportSelection);
 	        this.format = source["format"];
 	        this.csvEncoding = source["csvEncoding"];
 	        this.columns = source["columns"];
@@ -1384,6 +1386,24 @@ export namespace app {
 	        this.insertSQLTargetColumns = source["insertSQLTargetColumns"];
 	        this.insertSQLAllowEmptyTargetTable = source["insertSQLAllowEmptyTargetTable"];
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class ImportFileOptions {
 	    columnMappings?: Record<string, string>;
@@ -2490,6 +2510,7 @@ export namespace connection {
 	    savePassword?: boolean;
 	    database: string;
 	    readOnly?: boolean;
+	    pluginWritable?: boolean;
 	    protection?: ConnectionProtectionConfig;
 	    useSSL?: boolean;
 	    sslMode?: string;
@@ -2547,6 +2568,7 @@ export namespace connection {
 	        this.savePassword = source["savePassword"];
 	        this.database = source["database"];
 	        this.readOnly = source["readOnly"];
+	        this.pluginWritable = source["pluginWritable"];
 	        this.protection = this.convertValues(source["protection"], ConnectionProtectionConfig);
 	        this.useSSL = source["useSSL"];
 	        this.sslMode = source["sslMode"];
@@ -3433,6 +3455,25 @@ export namespace connection {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace dataexport {
+	
+	export class PluginExportSelection {
+	    digest: string;
+	    generation: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginExportSelection(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.digest = source["digest"];
+	        this.generation = source["generation"];
+	    }
 	}
 
 }
@@ -5038,6 +5079,8 @@ export namespace sqlaudit {
 	    source: string;
 	    fromTimestamp: number;
 	    toTimestamp: number;
+	    mcpRequestId: string;
+	    includeMcp: boolean;
 	    executionHistory: boolean;
 	    page: number;
 	    pageSize: number;
@@ -5058,6 +5101,8 @@ export namespace sqlaudit {
 	        this.source = source["source"];
 	        this.fromTimestamp = source["fromTimestamp"];
 	        this.toTimestamp = source["toTimestamp"];
+	        this.mcpRequestId = source["mcpRequestId"];
+	        this.includeMcp = source["includeMcp"];
 	        this.executionHistory = source["executionHistory"];
 	        this.page = source["page"];
 	        this.pageSize = source["pageSize"];
@@ -5285,6 +5330,7 @@ export namespace sync {
 	    mappings?: SyncObjectMapping[];
 	    batchSize?: number;
 	    rowErrorPolicy?: string;
+	    existingTargetInsertWithoutKey?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new SyncConfig(source);
@@ -5310,6 +5356,7 @@ export namespace sync {
 	        this.mappings = this.convertValues(source["mappings"], SyncObjectMapping);
 	        this.batchSize = source["batchSize"];
 	        this.rowErrorPolicy = source["rowErrorPolicy"];
+	        this.existingTargetInsertWithoutKey = source["existingTargetInsertWithoutKey"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
