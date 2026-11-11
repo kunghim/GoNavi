@@ -1,19 +1,65 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildToolCenterGroups } from './toolCenterGroups';
 import type { BuildToolCenterGroupsInput } from './toolCenterGroups';
-import { isToolCenterGroupKey } from '../settingsCenterPanes';
+import { SETTINGS_CENTER_MENU_CATALOG } from '../../components/settings/settingsCenterMenuCatalog';
+import { SETTINGS_WORKBENCH_TAB_BUILDERS } from '../../components/settings/settingsCenterNavigationTargets';
+import { buildTitlebarTrailingActions } from '../../components/sidebar/titlebarTrailingActions';
+import { t } from '../../i18n';
+import { buildPluginManagerWorkbenchTab, PLUGIN_MANAGER_WORKBENCH_TAB_ID } from '../../utils/pluginManagerTab';
+
+const baseInput: BuildToolCenterGroupsInput = {
+  t: (key: string) => key,
+  handleOpenToolCenterPane: vi.fn(),
+  securityUpdateEntryVisibility: { showDetailEntry: false, showIntro: false, showBanner: false },
+  securityUpdateHasLegacySensitiveItems: false,
+  securityUpdateStatusMeta: { label: '', description: '', tone: 'default' },
+};
 
 describe('appShell plugin settings entry', () => {
-  it('routes the navigation entry to the plugin tool pane without root App wiring', () => {
-    const navigate = vi.fn();
-    const input: BuildToolCenterGroupsInput = { t: (key: string) => key, handleOpenToolCenterPane: navigate,
-      securityUpdateEntryVisibility: { showDetailEntry: false, showIntro: false, showBanner: false }, securityUpdateHasLegacySensitiveItems: false,
-      securityUpdateStatusMeta: { label: '', description: '', tone: 'default' } };
-    const groups = buildToolCenterGroups(input).toolCenterGroups;
-    const entry = groups.flatMap((group) => group.items).find((item) => item.key === 'plugins');
-    expect(entry?.title).toBe('plugin.manager.title');
-    entry?.onClick();
-    expect(navigate).toHaveBeenCalledWith('config', 'plugins');
-    expect(isToolCenterGroupKey('config')).toBe(true);
+  it('keeps 插件 out of the settings-center tree and menu catalog', () => {
+    const groups = buildToolCenterGroups(baseInput).toolCenterGroups;
+    expect(groups.map((group) => group.key)).toEqual(['config']);
+    expect(groups[0].items.map((item) => item.key)).toEqual(['data-root', 'security-update']);
+
+    expect(
+      SETTINGS_CENTER_MENU_CATALOG.filter((node) => node.titleKey === 'plugin.manager.title'),
+    ).toEqual([]);
+  });
+
+  it('opens the plugin manager as its own workbench tab from the titlebar action', () => {
+    const onOpenSettingsNavigation = vi.fn();
+    const plugins = buildTitlebarTrailingActions({
+      t: (key: string) => key,
+      onOpenSettingsNavigation,
+      hideAbout: true,
+      hideDrivers: true,
+    }).find((action) => action.key === 'plugins');
+
+    expect(plugins?.label).toBe('plugin.manager.title');
+    plugins?.onClick?.();
+    expect(onOpenSettingsNavigation).toHaveBeenCalledWith({ group: 'workspace', action: 'plugins' });
+
+    // 处理器按 action 分发到工作台 Tab 构建器；独立 Tab 与设置中心并存。
+    expect(SETTINGS_WORKBENCH_TAB_BUILDERS.plugins).toBeDefined();
+    expect(SETTINGS_WORKBENCH_TAB_BUILDERS.plugins!()).toEqual({
+      id: PLUGIN_MANAGER_WORKBENCH_TAB_ID,
+      title: t('plugin.manager.title'),
+      type: 'plugin-manager',
+      connectionId: '',
+    });
+  });
+
+  it('lights the titlebar entry only while the plugin manager tab is active', () => {
+    const build = (pluginManagerTabActive?: boolean) => buildTitlebarTrailingActions({
+      t: (key: string) => key,
+      hideAbout: true,
+      hideDrivers: true,
+      pluginManagerTabActive,
+    }).find((action) => action.key === 'plugins')!;
+
+    expect(build(true).active).toBe(true);
+    expect(build(false).active).toBe(false);
+    expect(build().active).toBe(false);
+    expect(buildPluginManagerWorkbenchTab().type).toBe('plugin-manager');
   });
 });

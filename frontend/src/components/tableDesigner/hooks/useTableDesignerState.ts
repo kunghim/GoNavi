@@ -69,6 +69,9 @@ export const useTableDesignerState = ({ tab }: UseTableDesignerStateInput) => {
     const [schemaLoading, setSchemaLoading] = useState(false);
     const [charset, setCharset] = useState('utf8mb4');
     const [collation, setCollation] = useState('utf8mb4_unicode_ci');
+    // 表当前生效的排序规则：只有它与编辑值不同时才生成 CONVERT TO。
+    const [originalCollation, setOriginalCollation] = useState('');
+    const [tableOptionsOpen, setTableOptionsOpen] = useState(false);
     const [starRocksTableKind, setStarRocksTableKind] = useState<StarRocksTableKind>('olap');
     const [starRocksKeyModel, setStarRocksKeyModel] = useState<StarRocksKeyModel>('DUPLICATE');
     const [starRocksKeyColumns, setStarRocksKeyColumns] = useState<string[]>([]);
@@ -174,10 +177,13 @@ export const useTableDesignerState = ({ tab }: UseTableDesignerStateInput) => {
 
     const isMysqlLikeDialect = (dbType: string): boolean => isMysqlFamilySqlDialect(dbType);
 
-    const isNonRelationalDialect = (dbType: string): boolean => dbType === 'redis' || dbType === 'mongodb' || isElasticsearchFamilyType(dbType);
+    const isNonRelationalDialect = (dbType: string): boolean => dbType === 'hive' || dbType === 'redis' || dbType === 'mongodb' || isElasticsearchFamilyType(dbType);
 
     const lacksAlterForeignKeySupport = (dbType: string): boolean => dbType === 'sqlite' || dbType === 'duckdb' || dbType === 'tdengine';
 
+    // 这两个封装是表设计器里所有标识符引用的唯一出口。dbType 已经由
+    // getDbType() 按连接协议归一（OceanBase Oracle 协议 → oracle），
+    // 因此这里只需把归一后的方言继续传给引用函数即可。
     const quoteIdentifierPartByDialect = (part: string, dbType: string): string => {
         return quoteSqlIdentifierPart(dbType, part);
     };
@@ -412,7 +418,8 @@ export const useTableDesignerState = ({ tab }: UseTableDesignerStateInput) => {
         fks, setFks, triggers, setTriggers, ddl, setDdl, newTableName, setNewTableName,
         schemaOptions, setSchemaOptions, selectedSchema, setSelectedSchema, schemaSelectionOverride,
         setSchemaSelectionOverride, schemaReady, setSchemaReady, schemaLoading, setSchemaLoading,
-        charset, setCharset, collation, setCollation, starRocksTableKind, setStarRocksTableKind,
+        charset, setCharset, collation, setCollation, originalCollation, setOriginalCollation,
+        tableOptionsOpen, setTableOptionsOpen, starRocksTableKind, setStarRocksTableKind,
         starRocksKeyModel, setStarRocksKeyModel, starRocksKeyColumns, setStarRocksKeyColumns,
         starRocksPartitionClause, setStarRocksPartitionClause, starRocksDistributionType,
         setStarRocksDistributionType, starRocksDistributionColumns, setStarRocksDistributionColumns,

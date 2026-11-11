@@ -10,6 +10,7 @@ func runtimeBridgeScript() string {
   var existingRuntime = window.runtime || {};
   var listeners = new Map();
   var eventSource = null;
+  var reconnectDelayMs = 1000;
 
   var dispatch = function (eventName, args) {
     var callbacks = listeners.get(eventName);
@@ -38,6 +39,9 @@ func runtimeBridgeScript() string {
       return;
     }
     eventSource = new EventSource(apiBase + '/events');
+    eventSource.onopen = function () {
+      reconnectDelayMs = 1000;
+    };
     eventSource.addEventListener('gonavi', function (event) {
       try {
         var payload = JSON.parse(event.data || '{}');
@@ -54,7 +58,9 @@ func runtimeBridgeScript() string {
         eventSource.close();
       } catch (_) {}
       eventSource = null;
-      window.setTimeout(ensureEventSource, 1500);
+      var delay = reconnectDelayMs;
+      reconnectDelayMs = Math.min(reconnectDelayMs * 2, 30000);
+      window.setTimeout(ensureEventSource, delay + Math.floor(Math.random() * 250));
     };
   };
 
@@ -113,19 +119,33 @@ func runtimeBridgeScript() string {
     var response;
     var payload;
     try {
+      var body = JSON.stringify({
+        namespace: namespace,
+        receiver: receiver,
+        method: method,
+        args: Array.isArray(args) ? args : []
+      });
+      var headers = { 'Content-Type': 'application/json' };
+      // Result-page exports carry materialized rows; compress large payloads so
+      // the transport stays under the invoke body limit while the server bounds
+      // the inflated size separately.
+      if (body.length > 262144 && typeof CompressionStream === 'function') {
+        try {
+          var compressed = await new Response(
+            new Blob([body]).stream().pipeThrough(new CompressionStream('gzip'))
+          ).arrayBuffer();
+          if (compressed.byteLength < body.length) {
+            body = compressed;
+            headers['Content-Encoding'] = 'gzip';
+          }
+        } catch (_) {}
+      }
       response = await fetch(apiBase + '/api/invoke', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: headers,
         credentials: 'same-origin',
         signal: signal,
-        body: JSON.stringify({
-          namespace: namespace,
-          receiver: receiver,
-          method: method,
-          args: Array.isArray(args) ? args : []
-        })
+        body: body
       });
       payload = await response.json().catch(function (error) {
         if ((signal && signal.aborted) || (error && error.name === 'AbortError')) {

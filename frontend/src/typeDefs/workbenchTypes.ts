@@ -1,6 +1,7 @@
 import type { WorkbenchTabType } from '../tabTypes';
 import type { DatabaseJobKind } from './databaseJobTypes';
 import type { JVMDiagnosticTransport } from './jvmTypes';
+import type { PluginPageLaunch } from '../pluginPages/launch';
 
 export interface ColumnDefinition {
   name: string;
@@ -78,18 +79,26 @@ export interface TableExportHistoryEntry {
   message: string;
 }
 
+/** XXL-JOB 调度中心的三种工作台面板。 */
+export type XxlJobPanel = "groups" | "jobs" | "logs";
+
 export interface TabData {
   id: string;
   title: string;
   type: WorkbenchTabType;
   connectionId: string;
+  agentIntegrationId?: string; // 智能体集成 ID：agent-assets 页签定位唯一管理工作台
   dbName?: string;
   tableName?: string;
   query?: string;
   resultPanelVisible?: boolean;
-  queryMode?: "standard" | "object-edit";
+  // object-edit：修改已有对象的定义；object-create：侧栏「创建函数/存储过程/
+  // 视图/事件」等入口打开的建对象脚本页，保存动作执行 DDL 而不是存成查询。
+  queryMode?: "standard" | "object-edit" | "object-create";
   returnToTabId?: string;
   filePath?: string;
+  /** Plugin page identity; the page host resolves the declaration and bridge from here. */
+  pluginPage?: { pluginID: string; pageID: string; title: string; launch?: PluginPageLaunch };
   initialTab?: string;
   initialViewMode?: "table" | "json" | "text" | "fields" | "ddl" | "er" | "sqlLog";
   initialViewModeRequestId?: string;
@@ -101,6 +110,7 @@ export interface TabData {
   nacosNamespaceId?: string; // Nacos namespace id (empty string means public)
   nacosNamespaceName?: string; // Nacos namespace display name
   nacosGroup?: string; // Nacos group filter for config or service workbenches
+  xxlJobPanel?: XxlJobPanel; // XXL-JOB 调度中心面板（执行器 / 任务 / 调度日志）
   triggerName?: string; // Trigger name for trigger tabs
   triggerTableName?: string; // Trigger target table for trigger tabs
   triggerRollbackSql?: string; // Original trigger definition used after a failed replacement

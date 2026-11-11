@@ -2,6 +2,7 @@ import { t } from '../../i18n';
 import React, { useCallback } from 'react';
 import { useSidebarWorkbenchLaunchers } from './useSidebarWorkbenchLaunchers';
 import { useSidebarMockDataLauncher } from './useSidebarMockDataLauncher';
+import { usePluginWindowTools } from './usePluginWindowTools';
 import type { TitleBarQuickAction } from '../TitleBarQuickActions';
 import { TitlebarConnectionToolsIcon, TitlebarGraphIcon, TitlebarSqlToolIcon } from '../titlebar/gonaviTitlebarIcons';
 import {
@@ -22,6 +23,8 @@ import {
   CloudUploadOutlined,
 } from '@ant-design/icons';
 import { buildTitlebarTrailingActions } from './titlebarTrailingActions';
+import { DRIVER_MANAGER_WORKBENCH_TAB_ID } from '../../utils/driverManagerTab';
+import { PLUGIN_MANAGER_WORKBENCH_TAB_ID } from '../../utils/pluginManagerTab';
 import { useSidebarCommandSearchCopy } from './useSidebarCommandSearchCopy';
 import type { SidebarSearchPanelProps } from './SidebarSearchPanel';
 import type { V2CommandSearchItem } from '../sidebarV2Utils';
@@ -196,6 +199,7 @@ export const useSidebarToolbarModel = ({
     activeTab, activeTabHasConnection, activeConnection, addTab,
   });
 
+  const pluginWindowTools = usePluginWindowTools();
   const v2TitlebarQuickActions: TitleBarQuickAction[] = [
     {
       key: 'connection-tools',
@@ -322,6 +326,7 @@ export const useSidebarToolbarModel = ({
         },
       ],
     },
+    ...pluginWindowTools,
     sessionWorkbenchAction,
     userManagementAction,
   ];
@@ -329,10 +334,12 @@ export const useSidebarToolbarModel = ({
   const v2TitlebarVisibleTrailingActions = buildTitlebarTrailingActions({
     t,
     activeSettingsCenterPaneKey,
+    driverManagerTabActive: activeTabId === DRIVER_MANAGER_WORKBENCH_TAB_ID,
     onOpenSettingsNavigation,
     onCheckUpdate,
     hideAbout: hideTitlebarAboutAction,
     hideDrivers: hideTitlebarDriverAction,
+    pluginManagerTabActive: activeTabId === PLUGIN_MANAGER_WORKBENCH_TAB_ID,
   });
 
   const { getCommandSearchCopyOptions, handleCopyCommandSearchItem } = useSidebarCommandSearchCopy({ connections, connectionIds });

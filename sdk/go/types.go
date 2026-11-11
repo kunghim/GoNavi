@@ -6,6 +6,9 @@ import "encoding/json"
 const APIVersion = 1
 
 // Manifest describes an immutable plugin package; the host validates it.
+// Icon optionally names the installed-plugin logo: a package-relative raster path
+// the host reads without starting the plugin. A plugin without one falls back to
+// its first AI provider icon.
 type Manifest struct {
 	SchemaVersion   int               `json:"schemaVersion"`
 	APIVersion      int               `json:"apiVersion"`
@@ -15,6 +18,7 @@ type Manifest struct {
 	Description     string            `json:"description,omitempty"`
 	Author          string            `json:"author,omitempty"`
 	License         string            `json:"license,omitempty"`
+	Icon            string            `json:"icon,omitempty"`
 	MinHostVersion  string            `json:"minHostVersion,omitempty"`
 	Permissions     []string          `json:"permissions"`
 	PermissionNotes map[string]string `json:"permissionNotes,omitempty"`
@@ -22,7 +26,6 @@ type Manifest struct {
 	Backend         *Backend          `json:"backend,omitempty"`
 	Contributes     *Contributions    `json:"contributes,omitempty"`
 	Window          *Window           `json:"window,omitempty"`
-	ConfigSchema    json.RawMessage   `json:"configSchema,omitempty"`
 }
 
 // Requirement declares a plugin dependency rather than an implicit install.
@@ -46,13 +49,85 @@ type Entry struct {
 }
 
 // Contributions contains only supported declarative extension points.
+// Pages and Navigation are host-rendered surfaces that require the ui.pages permission.
 type Contributions struct {
-	Commands    []Command    `json:"commands,omitempty"`
-	Panels      []Panel      `json:"panels,omitempty"`
-	DataSources []DataSource `json:"dataSources,omitempty"`
-	Skills      []Skill      `json:"skills,omitempty"`
-	AIProviders []AIProvider `json:"aiProviders,omitempty"`
-	Exporters   []Exporter   `json:"exporters,omitempty"`
+	Commands          []Command          `json:"commands,omitempty"`
+	Panels            []Panel            `json:"panels,omitempty"`
+	DataSources       []DataSource       `json:"dataSources,omitempty"`
+	Skills            []Skill            `json:"skills,omitempty"`
+	AIProviders       []AIProvider       `json:"aiProviders,omitempty"`
+	Exporters         []Exporter         `json:"exporters,omitempty"`
+	Pages             []Page             `json:"pages,omitempty"`
+	Navigation        []Navigation       `json:"navigation,omitempty"`
+	ConnectionActions []ConnectionAction `json:"connectionActions,omitempty"`
+	Sidebar           []SidebarGroup     `json:"sidebar,omitempty"`
+	Views             []View             `json:"views,omitempty"`
+	Keybindings       []Keybinding       `json:"keybindings,omitempty"`
+	SettingsSections  []SettingsSection  `json:"settingsSections,omitempty"`
+}
+
+// SettingsSection declares a plugin page embedded in a host-owned settings slot.
+// The host keeps the slot position and fallback entry, so the setting stays in the
+// same place whether or not a plugin provides it.
+type SettingsSection struct {
+	ID          string `json:"id"`
+	Slot        string `json:"slot"`
+	Page        string `json:"page"`
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	Order       int    `json:"order,omitempty"`
+}
+
+// Keybinding opens a declared page or window from a host-wide shortcut.
+// Keys use CmdOrCtrl/Ctrl/Cmd/Alt/Shift plus one main key, e.g.
+// "CmdOrCtrl+Shift+T".
+type Keybinding struct {
+	ID     string       `json:"id"`
+	Title  string       `json:"title"`
+	Keys   string       `json:"keys"`
+	Target LaunchTarget `json:"target"`
+}
+
+// View docks one declared page to a host surface. Version one supports the
+// right-hand workbench dock ("right"); the page keeps the page bridge.
+type View struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Page     string `json:"page"`
+	Location string `json:"location"`
+	Icon     string `json:"icon,omitempty"`
+	Order    int    `json:"order,omitempty"`
+}
+
+// SidebarGroup declares one expandable group in the host's left connection
+// tree. The group's children come from ListCommand at runtime; the manifest
+// itself declares no node content. Requires the ui.sidebar permission.
+type SidebarGroup struct {
+	ID          string        `json:"id"`
+	Title       string        `json:"title"`
+	Icon        string        `json:"icon,omitempty"`
+	ListCommand string        `json:"listCommand"`
+	EmptyText   string        `json:"emptyText,omitempty"`
+	Open        *LaunchTarget `json:"open,omitempty"`
+	Order       int           `json:"order,omitempty"`
+}
+
+// ConnectionAction is a generic connection/database/collection context-menu
+// contribution. The host renders the target surface and owns the launch context.
+type ConnectionAction struct {
+	ID              string       `json:"id"`
+	Title           string       `json:"title"`
+	Description     string       `json:"description,omitempty"`
+	ConnectionTypes []string     `json:"connectionTypes"`
+	Scopes          []string     `json:"scopes,omitempty"`
+	Target          LaunchTarget `json:"target"`
+}
+
+// LaunchTarget selects the window, page or docked view opened for a contribution.
+type LaunchTarget struct {
+	Type string `json:"type"`
+	Page string `json:"page,omitempty"`
+	View string `json:"view,omitempty"`
 }
 
 // Skill declares an immutable UTF-8 SKILL.md document loaded only on explicit use.
@@ -100,11 +175,13 @@ type Command struct {
 	Effect      string          `json:"effect,omitempty"`
 }
 
-// Panel is host-rendered data, never executable HTML or JavaScript.
+// Panel declares exactly one body: a host-rendered tree or a sandboxed custom HTML
+// document that the host only shows in an opaque-origin frame.
 type Panel struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-	Body  UINode `json:"body"`
+	ID    string    `json:"id"`
+	Title string    `json:"title"`
+	Body  UINode    `json:"body"`
+	HTML  *PageHTML `json:"html,omitempty"`
 }
 
 // UINode uses text, alert, column, row, button or table as Type.

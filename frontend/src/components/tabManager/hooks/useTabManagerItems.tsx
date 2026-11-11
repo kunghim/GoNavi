@@ -13,6 +13,7 @@ import {
 import {
   buildTabDisplayModel,
   getConnectionGroupName,
+  isDoubleLineTabDisplay,
   resolveConnectionHostSummary,
 } from '../../../utils/tabDisplay';
 import { t } from '../../../i18n';
@@ -24,9 +25,10 @@ import {
   resolveNativeDetachPreferredBounds,
   shouldDetachAfterNativePointerCancel,
 } from '../../../utils/detachedWindow';
-import { installTabDetachDragGuards, DraggableTabNode } from '../tabDragGuards';
+import { installTabDetachDragGuards } from '../tabDragGuards';
 import { buildDetachDragPreviewState } from '../../DetachDragPreview';
-import { QueryEditorRunningTabsDock } from '../../queryEditor/QueryEditorRunningTabsDock';
+import { renderWorkbenchTabBar } from '../TabOverflowMenu';
+import { closeWorkbenchTabOverflowPopup } from '../tabOverflowModel';
 import { resolveConnectionEnvironmentPresentation } from '../../../utils/connectionEnvironment';
 import {
   resolveQueryTabRenameMenuState,
@@ -303,24 +305,37 @@ export const useTabManagerItems = ({
   }, [tabs, activeTabId, addTab, setActiveTab, connections]);
 
   const tabIds = useMemo(() => dockedTabs.map((tab) => tab.id), [dockedTabs]);
+  // 布局是全局设置；即使副行当前没有内容，页签条也保持双行高度。
   const hasDoubleLineTabLabel = useMemo(() => (
-    dockedTabs.some((tab) => {
-      const connection = connections.find((conn) => conn.id === tab.connectionId);
-      const displayModel = buildTabDisplayModel(tab, connection, appearance.tabDisplay, t, getConnectionGroupName(connectionGroupNameById, tab.connectionId));
-      return displayModel.layout === 'double' && Boolean(displayModel.secondaryText);
-    })
-  ), [appearance.tabDisplay, connections, connectionGroupNameById, dockedTabs]);
+    dockedTabs.length > 0 && isDoubleLineTabDisplay(appearance.tabDisplay)
+  ), [appearance.tabDisplay, dockedTabs.length]);
 
   const tabCloseButtonPosition = sanitizeTabCloseButtonPosition(appearance.tabCloseButtonPosition);
 
-  const renderTabBar: TabsProps['renderTabBar'] = (tabBarProps, DefaultTabBar) => (
-    // 探针子树计时（默认关闭时空操作）：标签条自身的渲染成本独立成一段归因。
-    <TabSwitchPhaseProfiler phase="tab-bar">
-      <DefaultTabBar {...tabBarProps} extra={<QueryEditorRunningTabsDock />}>
-        {(node) => <DraggableTabNode key={node.key} node={node} />}
-      </DefaultTabBar>
-    </TabSwitchPhaseProfiler>
-  );
+  const renderTabBar: TabsProps['renderTabBar'] = useMemo(() => renderWorkbenchTabBar({
+    tabs: dockedTabs,
+    activeTabId,
+    connections,
+    tabDisplay: appearance.tabDisplay,
+    connectionGroupNameById,
+    onActivate: (tabId) => {
+      setActiveTab(tabId);
+      closeWorkbenchTabOverflowPopup();
+    },
+    onClose: (tabId) => {
+      closeTabsWithSQLFilePrompt([tabId], () => closeTab(tabId));
+    },
+  }, t('tab_manager.overflow.more_aria')), [
+    activeTabId,
+    appearance.tabDisplay,
+    closeTab,
+    closeTabsWithSQLFilePrompt,
+    connectionGroupNameById,
+    connections,
+    dockedTabs,
+    languagePreference,
+    setActiveTab,
+  ]);
 
   const items = useMemo(() => dockedTabs.map((tab, index) => {
     const connection = connections.find((conn) => conn.id === tab.connectionId);

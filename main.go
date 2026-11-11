@@ -1,4 +1,4 @@
-//go:build !bindings
+//go:build !bindings && !wails3
 
 package main
 
@@ -16,15 +16,17 @@ import (
 	"sync"
 	"syscall"
 
+	"GoNavi-Wails/internal/agenttools"
 	aiservice "GoNavi-Wails/internal/ai/service"
 	"GoNavi-Wails/internal/app"
+	"GoNavi-Wails/internal/appdata"
 	"GoNavi-Wails/internal/logger"
 	"GoNavi-Wails/internal/mcpserver"
 	"GoNavi-Wails/internal/nativewindow"
-	"GoNavi-Wails/internal/plugin"
 	"GoNavi-Wails/internal/webserver"
 	"GoNavi-Wails/shared/i18n"
 
+	wailsRuntime "GoNavi-Wails/internal/desktop"
 	"github.com/wailsapp/wails/v2"
 	wailslogger "github.com/wailsapp/wails/v2/pkg/logger"
 	"github.com/wailsapp/wails/v2/pkg/menu"
@@ -32,7 +34,6 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 const nativeSelectCurrentLineEvent = "gonavi:native-select-current-line"
@@ -153,7 +154,7 @@ func main() {
 			defer releaseSingleInstance()
 		}
 	}
-	deepLinks := &deepLinkWaker{activator: primaryActivator}
+	deepLinks := &deepLinkWaker{activator: primaryActivator, exePath: executablePath}
 	defer startDeepLinks(executablePath, deepLinks)()
 	// Clear WebView2 processes left behind by an earlier exit before this
 	// process creates its own browser, then arm a reaper for the next exit.
@@ -162,6 +163,21 @@ func main() {
 	// Create an instance of the app structure
 	application := app.NewApp()
 	configureDesktopPlugins(application)
+	// Serve the built-in MCP HTTP endpoint in-process: enabling it no longer
+	// costs a second GoNavi process. The child-process mode stays as a fallback
+	// when the in-process server cannot start.
+	aiservice.SetMCPHTTPProcessStarter(func(ctx context.Context, options aiservice.MCPHTTPStartOptions) (aiservice.MCPHTTPProcess, error) {
+		mcpBackend, err := mcpserver.NewAppBackendFromApp(application)
+		if err != nil {
+			return nil, err
+		}
+		return mcpserver.StartStreamableHTTPServer(ctx, mcpBackend, mcpserver.HTTPServerOptions{
+			Addr:       options.Addr,
+			Path:       options.Path,
+			Token:      options.Token,
+			SchemaOnly: options.SchemaOnly,
+		})
+	})
 	aiService := aiservice.NewServiceWithConfigChangeHandler(app.NewCloudBackupChangeHandler(application))
 	if err := configureDesktopPluginAIProvider(application, aiService); err != nil {
 		reportFatalError(err, "初始化插件 AI 供应商失败")
@@ -172,6 +188,8 @@ func main() {
 	// OnStartup in a goroutine, so the AI panel can read the provider list before
 	// InitializeLifecycle has run and would otherwise be told nothing is configured.
 	aiservice.PreloadConfig(aiService)
+	// models.dev 公共目录在后台预热：设置页第一次打开模型区时不必等网络。
+	aiservice.WarmModelCatalog(aiService)
 	agentTools, agentToolsErr := newDesktopAgentToolCatalog(application, aiService)
 	if agentToolsErr != nil {
 		logger.Warnf("初始化 AI Agent 工具目录失败：%v", agentToolsErr)
@@ -187,7 +205,7 @@ func main() {
 	bindings := collectWailsBindings(application, aiService, nativeWindowManager)
 	lowMemoryMode := isLowMemoryMode()
 	backgroundColour, windowsOptions := resolveWindowVisualOptions(runtime.GOOS, lowMemoryMode)
-	windowsOptions.WebviewUserDataPath = resolveWindowsWebviewUserDataPath()
+	windowsOptions.WebviewUserDataPath = appdata.ResolveWindowsWebviewUserDataPath()
 	windowChrome := resolveMainWindowChrome(runtime.GOOS)
 	var runtimeCtx context.Context
 	var appMenu *menu.Menu
@@ -265,6 +283,8 @@ func main() {
 				// emit gonavi:frontend-ready into an empty event bus.
 				wailsRuntime.EventsOn(ctx, startupFrontendReadyEvent, func(...interface{}) {
 					startupGate.markFrontendReady()
+					// 市场网站唤起的冷启动链接：前端就绪后补发给插件安装面板。
+					go deepLinks.dispatchPendingLink()
 				})
 				// 显示回调与兜底定时器都在 OnStartup 绑定：OnDomReady 依赖 WebView
 				// 成功导航，页面加载失败时不会触发，绑定放在那里会让窗口一直隐藏。
@@ -366,21 +386,9 @@ func reportFatalError(err error, message string) {
 // inspection. The catalog itself owns no desktop lifecycle; AppBackend merely
 // borrows the already-created application instance.
 func newDesktopAgentToolCatalog(application *app.App, aiService *aiservice.Service) (*mcpserver.CompositeToolCatalog, error) {
-	backend, err := mcpserver.NewAppBackendFromApp(application)
-	if err != nil {
-		return nil, err
-	}
-	ordinary := mcpserver.NewCompositeToolCatalog(
-		mcpserver.NewAgentToolCatalogWithDynamicSource(backend, mcpserver.NewServiceMCPSource(aiService)),
-		mcpserver.NewWorkspaceSnapshotToolCatalog(),
-		mcpserver.NewAppPluginToolCatalog(func(ctx context.Context) (*plugin.Manager, error) {
-			return app.PluginManagerForIntegration(ctx, application)
-		}),
-	)
-	skills := mcpserver.NewAppPluginSkillCatalog(func(ctx context.Context) (*plugin.Manager, error) {
-		return app.PluginSkillManagerForIntegration(ctx, application)
-	})
-	return mcpserver.NewCompositeToolCatalog(mcpserver.NewPluginSkillAugmentedCatalog(ordinary, skills)), nil
+	// The catalog lives in its own package so the Wails v3 entry point can
+	// assemble the same tools instead of silently running with an empty harness.
+	return agenttools.NewDesktopToolCatalog(application, aiService)
 }
 
 // buildMacApplicationMenu 组装 macOS 菜单栏；extraMenus 按顺序追加在 SQL 之后。
@@ -435,7 +443,11 @@ func runSpecialMode(args []string) (bool, error) {
 	case "web-server", "--web-server":
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
-		return true, webserver.Run(ctx, assets, args[1:])
+		// 前端资产解到临时目录用 page cache 承载，省去约 27 MB 常驻堆；
+		// 失败时内部回退内存 FS，release 在服务退出后清理临时目录。
+		assetFS, releaseWebAssets := webServerAssets()
+		defer releaseWebAssets()
+		return true, webserver.Run(ctx, assetFS, args[1:])
 	case "detached-window", nativewindow.DetachedWindowArgument:
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()

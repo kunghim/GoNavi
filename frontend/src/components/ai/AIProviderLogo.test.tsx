@@ -13,9 +13,6 @@ describe('AIProviderLogo', () => {
     expect(PRESET_ICON_SLUG.grok).toBe('grok');
     expect(PRESET_ICON_SLUG['claude-subscription']).toBe('claudecode');
     expect(PRESET_ICON_SLUG['qwen-bailian']).toBe('alibabacloud');
-    expect(PRESET_ICON_SLUG.atlascloud).toBe('atlascloud');
-    expect(PRESET_ICON_SLUG.orcarouter).toBe('orcarouter');
-    expect(PRESET_ICON_SLUG.cheaperinference).toBe('cheaperinference');
     expect(PRESET_ICON_SLUG.zhipu).toBe('zhipu');
     expect(PRESET_ICON_SLUG.moonshot).toBe('moonshot');
     expect(PRESET_ICON_SLUG['xiaomi-mimo']).toBe('xiaomimimo');
@@ -62,10 +59,10 @@ describe('AIProviderLogo', () => {
     expect(markup).not.toContain('/icons/ai/');
   });
 
-  it('adapts the monochrome Atlas mark in dark mode without recoloring Kimi', () => {
-    const atlas = renderToStaticMarkup(<AIProviderLogo presetKey="atlascloud" label="Atlas Cloud" dark />);
+  it('adapts the monochrome OpenAI mark in dark mode without recoloring Kimi', () => {
+    const openai = renderToStaticMarkup(<AIProviderLogo presetKey="openai" label="OpenAI" dark />);
     const kimi = renderToStaticMarkup(<AIProviderLogo presetKey="moonshot" label="Kimi" dark />);
-    expect(atlas).toContain('filter:invert(1)');
+    expect(openai).toContain('filter:invert(1)');
     expect(kimi).not.toContain('filter:invert(1)');
   });
 

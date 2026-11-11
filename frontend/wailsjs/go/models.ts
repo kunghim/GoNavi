@@ -560,6 +560,24 @@ export namespace aiservice {
 
 export namespace app {
 	
+	export class AgentIntegration {
+	    kind: string;
+	    dataDir: string;
+	    displayName: string;
+	    addedAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AgentIntegration(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.dataDir = source["dataDir"];
+	        this.displayName = source["displayName"];
+	        this.addedAt = source["addedAt"];
+	    }
+	}
 	export class CloudBackupConnectionSummary {
 	    id: string;
 	    name: string;
@@ -1346,6 +1364,7 @@ export namespace app {
 	
 	
 	export class ExportFileOptions {
+	    losslessHive?: boolean;
 	    pluginExporter?: dataexport.PluginExportSelection;
 	    format: string;
 	    csvEncoding?: string;
@@ -1359,6 +1378,8 @@ export namespace app {
 	    includeDatabaseContext?: boolean;
 	    insertSQLDialect?: string;
 	    insertSQLTargetTable?: string;
+	    insertSQLColumnOrder?: string[];
+	    insertSQLPartitionColumns?: string[];
 	    insertSQLColumnTypes?: Record<string, string>;
 	    insertSQLTargetColumns?: Record<string, string>;
 	    insertSQLAllowEmptyTargetTable?: boolean;
@@ -1369,6 +1390,7 @@ export namespace app {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.losslessHive = source["losslessHive"];
 	        this.pluginExporter = this.convertValues(source["pluginExporter"], dataexport.PluginExportSelection);
 	        this.format = source["format"];
 	        this.csvEncoding = source["csvEncoding"];
@@ -1382,6 +1404,8 @@ export namespace app {
 	        this.includeDatabaseContext = source["includeDatabaseContext"];
 	        this.insertSQLDialect = source["insertSQLDialect"];
 	        this.insertSQLTargetTable = source["insertSQLTargetTable"];
+	        this.insertSQLColumnOrder = source["insertSQLColumnOrder"];
+	        this.insertSQLPartitionColumns = source["insertSQLPartitionColumns"];
 	        this.insertSQLColumnTypes = source["insertSQLColumnTypes"];
 	        this.insertSQLTargetColumns = source["insertSQLTargetColumns"];
 	        this.insertSQLAllowEmptyTargetTable = source["insertSQLAllowEmptyTargetTable"];
@@ -1406,6 +1430,7 @@ export namespace app {
 		}
 	}
 	export class ImportFileOptions {
+	    losslessHive?: boolean;
 	    columnMappings?: Record<string, string>;
 	    jobId?: string;
 	    continueOnError?: boolean;
@@ -1426,6 +1451,7 @@ export namespace app {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.losslessHive = source["losslessHive"];
 	        this.columnMappings = source["columnMappings"];
 	        this.jobId = source["jobId"];
 	        this.continueOnError = source["continueOnError"];
@@ -2165,6 +2191,108 @@ export namespace app {
 		    }
 		    return a;
 		}
+	}
+	export class XxlJobGroupMutation {
+	    id: number;
+	    appName: string;
+	    title: string;
+	    addressType: number;
+	    addressList: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new XxlJobGroupMutation(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.appName = source["appName"];
+	        this.title = source["title"];
+	        this.addressType = source["addressType"];
+	        this.addressList = source["addressList"];
+	    }
+	}
+	export class XxlJobJobMutation {
+	    id: number;
+	    jobGroup: number;
+	    name: string;
+	    author: string;
+	    alarmEmail: string;
+	    scheduleType: string;
+	    scheduleConf: string;
+	    misfireStrategy: string;
+	    executorRouteStrategy: string;
+	    executorHandler: string;
+	    executorParam: string;
+	    executorBlockStrategy: string;
+	    executorTimeout: number;
+	    executorFailRetryCount: number;
+	    glueType: string;
+	    glueSource: string;
+	    glueRemark: string;
+	    childJobId: string;
+	    triggerStatus: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new XxlJobJobMutation(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.jobGroup = source["jobGroup"];
+	        this.name = source["name"];
+	        this.author = source["author"];
+	        this.alarmEmail = source["alarmEmail"];
+	        this.scheduleType = source["scheduleType"];
+	        this.scheduleConf = source["scheduleConf"];
+	        this.misfireStrategy = source["misfireStrategy"];
+	        this.executorRouteStrategy = source["executorRouteStrategy"];
+	        this.executorHandler = source["executorHandler"];
+	        this.executorParam = source["executorParam"];
+	        this.executorBlockStrategy = source["executorBlockStrategy"];
+	        this.executorTimeout = source["executorTimeout"];
+	        this.executorFailRetryCount = source["executorFailRetryCount"];
+	        this.glueType = source["glueType"];
+	        this.glueSource = source["glueSource"];
+	        this.glueRemark = source["glueRemark"];
+	        this.childJobId = source["childJobId"];
+	        this.triggerStatus = source["triggerStatus"];
+	    }
+	}
+	export class XxlJobListQuery {
+	    page: number;
+	    size: number;
+	    jobGroup: number;
+	    triggerStatus: number;
+	    logStatus: number;
+	    jobId: number;
+	    appName: string;
+	    title: string;
+	    name: string;
+	    executorHandler: string;
+	    author: string;
+	    filterTime: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new XxlJobListQuery(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.page = source["page"];
+	        this.size = source["size"];
+	        this.jobGroup = source["jobGroup"];
+	        this.triggerStatus = source["triggerStatus"];
+	        this.logStatus = source["logStatus"];
+	        this.jobId = source["jobId"];
+	        this.appName = source["appName"];
+	        this.title = source["title"];
+	        this.name = source["name"];
+	        this.executorHandler = source["executorHandler"];
+	        this.author = source["author"];
+	        this.filterTime = source["filterTime"];
+	    }
 	}
 
 }
@@ -3791,6 +3919,29 @@ export namespace jvm {
 
 }
 
+export namespace marketfilter {
+	
+	export class Filters {
+	    categories: string[];
+	    platforms: string[];
+	    official: string;
+	    author: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Filters(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.categories = source["categories"];
+	        this.platforms = source["platforms"];
+	        this.official = source["official"];
+	        this.author = source["author"];
+	    }
+	}
+
+}
+
 export namespace mockdata {
 	
 	export class Generator {
@@ -4046,6 +4197,25 @@ export namespace nativewindow {
 	        this.ready = source["ready"];
 	        this.closeSent = source["closeSent"];
 	        this.hidden = source["hidden"];
+	    }
+	}
+
+}
+
+export namespace pluginmarket {
+	
+	export class SourceConfig {
+	    baseUrl: string;
+	    enabled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SourceConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.baseUrl = source["baseUrl"];
+	        this.enabled = source["enabled"];
 	    }
 	}
 
@@ -5062,6 +5232,31 @@ export namespace runharness {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace sessionagent {
+	
+	export class ContentRef {
+	    kind: string;
+	    offset?: number;
+	    len?: number;
+	    relPath?: string;
+	    pointer?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ContentRef(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.offset = source["offset"];
+	        this.len = source["len"];
+	        this.relPath = source["relPath"];
+	        this.pointer = source["pointer"];
+	    }
 	}
 
 }

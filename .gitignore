@@ -66,3 +66,6 @@ docs/superpowers/specs/*
 # 本地开发助手与构建残留（个人 dev 维护，不入上游）
 /.zcodeignore
 frontend/dist.zip
+
+# Wails v3 local build output
+bin/

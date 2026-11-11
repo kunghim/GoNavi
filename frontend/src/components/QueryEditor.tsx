@@ -150,6 +150,10 @@ const QueryEditor: React.FC<QueryEditorProps> = ({ tab, isActive = true }) => {
       triggerAiInlineCompletionRef, tab, restoredResultSessionRef, isResultPanelVisibleRef,
       setIsResultPanelVisible,
   });
+  const setShowSqlExecutionLog = React.useCallback(
+      (enabled: boolean) => setQueryOptions({ showSqlExecutionLog: enabled }),
+      [setQueryOptions],
+  );
   const {
       updateResultPanelVisibility, executionLifecycle, executionLifecycleRef, executionStatusText,
       toggleResultPanelVisibility, handleOpenEditorFind, handleShowSqlExecutionLog,
@@ -163,6 +167,8 @@ const QueryEditor: React.FC<QueryEditorProps> = ({ tab, isActive = true }) => {
       setResultSets, currentQueryId, loading, isActive, executionAwaitingDriverRef,
       executionTimingActive, editorRef, isResultPanelVisible, activeResultKey, setActiveResultKey,
       sqlEditorTransactionOptions,
+      showSqlExecutionLog: queryOptions?.showSqlExecutionLog !== false,
+      setShowSqlExecutionLog,
   });
 
   const {
@@ -432,7 +438,7 @@ const QueryEditor: React.FC<QueryEditorProps> = ({ tab, isActive = true }) => {
       tab, getCurrentQuery, lastLocalQueryRef, savedQueries, currentConnectionId, currentDb,
       runQueuedSaveOperation, saveQuery, queryEditorMountedRef, currentConnectionIdRef,
       currentDbRef, addTab, setQuery, currentSavedQuery, setSaveModalMode, saveForm,
-      setIsSaveModalOpen,
+      setIsSaveModalOpen, executeObjectCreateDefinition: () => handleRun('all'),
   });
 
   const { elasticsearchTemplateMenuItems, saveMoreMenuItems, analysisMenuItems } = useQueryEditorToolbarMenus({

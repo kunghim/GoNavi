@@ -162,6 +162,53 @@ func TestCodeBuddyCLIProvider_ChatPreservesExecutionFailureDetails(t *testing.T)
 	}
 }
 
+func TestCodeBuddyCLIProviderChatSurfacesStderrWhenStdoutIsEmpty(t *testing.T) {
+	// 非认证类失败（stdout 为空、退出码 0、原因只写在 stderr）仍要暴露摘要，便于诊断。
+	// 认证失败单独走 ErrCodeBuddyCLIAuthRequired，由 service 层渲染本地化文案，不回显 CLI 原文。
+	fakeCodeBuddy := writeFakeCodeBuddyScript(t, "#!/bin/sh\necho 'CodeBuddy upstream unreachable: dial tcp 10.0.0.1:443: i/o timeout' >&2\nexit 0\n")
+	restore := overrideCodeBuddyCLIForTest(t, fakeCodeBuddy)
+	defer restore()
+
+	provider, err := NewCodeBuddyCLIProvider(ai.ProviderConfig{APIKey: "cb-test"})
+	if err != nil {
+		t.Fatalf("unexpected provider error: %v", err)
+	}
+
+	resp, err := provider.Chat(context.Background(), ai.ChatRequest{
+		Messages: []ai.Message{{Role: "user", Content: "ping"}},
+	})
+	if err == nil {
+		t.Fatalf("expected chat to fail, got response %#v", resp)
+	}
+	for _, want := range []string{"no output", "upstream unreachable"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("expected error to contain %q, got %q", want, err.Error())
+		}
+	}
+}
+
+func TestCodeBuddyCLIProviderChatKeepsEmptyResponseWithoutStderr(t *testing.T) {
+	// stderr 也为空时不能凭空造错：保持原有的空响应语义，由上层决定如何提示。
+	fakeCodeBuddy := writeFakeCodeBuddyScript(t, "#!/bin/sh\nexit 0\n")
+	restore := overrideCodeBuddyCLIForTest(t, fakeCodeBuddy)
+	defer restore()
+
+	provider, err := NewCodeBuddyCLIProvider(ai.ProviderConfig{APIKey: "cb-test"})
+	if err != nil {
+		t.Fatalf("unexpected provider error: %v", err)
+	}
+
+	resp, err := provider.Chat(context.Background(), ai.ChatRequest{
+		Messages: []ai.Message{{Role: "user", Content: "ping"}},
+	})
+	if err != nil {
+		t.Fatalf("expected chat to succeed without stderr detail, got %v", err)
+	}
+	if resp == nil || strings.TrimSpace(resp.Content) != "" {
+		t.Fatalf("expected empty response, got %#v", resp)
+	}
+}
+
 func TestCodeBuddyCLIProviderChatOmitsDeprecatedSessionTrackingFlag(t *testing.T) {
 	fakeCodeBuddy := writeFakeCodeBuddyScript(t, "#!/bin/sh\nfor arg in \"$@\"; do\n  if [ \"$arg\" = \"--enable-session-tracking\" ]; then\n    echo \"error: unknown option '--enable-session-tracking'\" >&2\n    exit 2\n  fi\ndone\necho '[{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"connected\"}]'\n")
 	restore := overrideCodeBuddyCLIForTest(t, fakeCodeBuddy)
@@ -523,18 +570,31 @@ printf '%s\n' "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tex
 	}
 }
 
+// writeFakeCodeBuddyScript 造一个假的 codebuddy 可执行文件。
+//
+// POSIX 上直接放带执行位的脚本；Windows 上必须经 Git Bash 运行，因此写一个 .cmd
+// 包装。这里有两处平台差异：cmd.exe 按 OEM 代码页读 .cmd，非 ASCII 目录会被读成
+// 乱码，所以 Windows 只用带空格的 ASCII 目录；bash 也不认反斜杠，脚本路径要转成
+// POSIX 形式。
 func writeFakeCodeBuddyScript(t *testing.T, content string) string {
 	t.Helper()
 	tempRoot := t.TempDir()
-	dir := filepath.Join(tempRoot, "包含 空格")
+	dirName := "包含 空格"
+	if runtime.GOOS == "windows" {
+		dirName = "with space"
+	}
+	dir := filepath.Join(tempRoot, dirName)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("failed to create fake CodeBuddy directory: %v", err)
 	}
 
 	if runtime.GOOS == "windows" {
-		bashPath, err := resolveClaudeCodeGitBashPath(os.Environ(), runtime.GOOS, exec.LookPath, fileExists)
+		bashPath, err := resolveCodeBuddyGitBashPath(os.Environ(), runtime.GOOS, exec.LookPath, fileExists)
 		if err != nil {
 			t.Fatalf("failed to resolve git bash for fake codebuddy command: %v", err)
+		}
+		if bashPath == "" {
+			t.Skip("fake CodeBuddy CLI needs Git Bash on Windows; none detected")
 		}
 
 		scriptPath := filepath.Join(dir, "codebuddy.sh")
@@ -543,7 +603,7 @@ func writeFakeCodeBuddyScript(t *testing.T, content string) string {
 		}
 
 		wrapperPath := filepath.Join(tempRoot, "codebuddy.cmd")
-		wrapper := "@echo off\r\n\"" + bashPath + "\" \"" + scriptPath + "\" %*\r\n"
+		wrapper := "@echo off\r\n\"" + bashPath + "\" \"" + filepath.ToSlash(scriptPath) + "\" %*\r\n"
 		if err := os.WriteFile(wrapperPath, []byte(wrapper), 0o755); err != nil {
 			t.Fatalf("failed to write fake codebuddy wrapper: %v", err)
 		}
@@ -636,4 +696,122 @@ func hasArgSequence(args []string, key string, value string) bool {
 		}
 	}
 	return false
+}
+
+func TestCodeBuddyCLIProviderChatReportsAuthRequiredWithoutRawStderr(t *testing.T) {
+	// 实测未登录行为：stdout 为空、退出码 0、401 只写在 stderr。
+	// 必须返回哨兵错误，不能把 CLI 原文（含 trace id / target）抛给界面。
+	fakeCodeBuddy := writeFakeCodeBuddyScript(t, "#!/bin/sh\necho '401 Authentication required. Please use /login command to sign in (target: https://copilot.tencent.com) (traceid: abc123)' >&2\nexit 0\n")
+	restore := overrideCodeBuddyCLIForTest(t, fakeCodeBuddy)
+	defer restore()
+
+	cliProvider, err := NewCodeBuddyCLIProvider(ai.ProviderConfig{APIKey: "cb-test"})
+	if err != nil {
+		t.Fatalf("unexpected provider error: %v", err)
+	}
+
+	_, err = cliProvider.Chat(context.Background(), ai.ChatRequest{
+		Messages: []ai.Message{{Role: "user", Content: "ping"}},
+	})
+	if !errors.Is(err, ErrCodeBuddyCLIAuthRequired) {
+		t.Fatalf("err = %v, want ErrCodeBuddyCLIAuthRequired", err)
+	}
+	if strings.Contains(err.Error(), "traceid") || strings.Contains(err.Error(), "copilot.tencent.com") {
+		t.Fatalf("认证错误不应回显 CLI 原文：%q", err.Error())
+	}
+}
+
+func TestCodeBuddyCLIProviderChatStreamReportsAuthRequired(t *testing.T) {
+	// 流式路径与 Chat 同源：未登录时 exit 0、stdout 没有 result 事件、401 只在 stderr。
+	// 修复前这里会静默 Done，上层只能报「CLI 没有返回模型响应」。
+	fakeCodeBuddy := writeFakeCodeBuddyScript(t, "#!/bin/sh\necho '401 Authentication required. Please use /login command to sign in (target: https://copilot.tencent.com) (traceid: abc123)' >&2\nexit 0\n")
+	restore := overrideCodeBuddyCLIForTest(t, fakeCodeBuddy)
+	defer restore()
+
+	cliProvider, err := NewCodeBuddyCLIProvider(ai.ProviderConfig{APIKey: "cb-test"})
+	if err != nil {
+		t.Fatalf("unexpected provider error: %v", err)
+	}
+
+	var chunks []ai.StreamChunk
+	_, err = cliProvider.(SessionStreamProvider).ChatStreamWithState(
+		context.Background(),
+		nil,
+		ai.ChatRequest{Messages: []ai.Message{{Role: "user", Content: "ping"}}},
+		func(chunk ai.StreamChunk) { chunks = append(chunks, chunk) },
+	)
+	// 认证失败保留哨兵类型，让 service 层与连接测试使用同一本地化提示。
+	if !errors.Is(err, ErrCodeBuddyCLIAuthRequired) {
+		t.Fatalf("err = %v, want ErrCodeBuddyCLIAuthRequired", err)
+	}
+	for _, chunk := range chunks {
+		if chunk.Error != "" {
+			t.Fatalf("authentication should be returned as a typed error, got callback error %q", chunk.Error)
+		}
+	}
+	if strings.Contains(err.Error(), "traceid") || strings.Contains(err.Error(), "copilot.tencent.com") {
+		t.Fatalf("authentication error must omit raw diagnostics: %q", err.Error())
+	}
+}
+
+func TestCodeBuddyCLIProviderChatStreamSurfacesStderrDetail(t *testing.T) {
+	// 流式的非认证失败同样要把 stderr 摘要带出来，而不是静默 Done。
+	fakeCodeBuddy := writeFakeCodeBuddyScript(t, "#!/bin/sh\necho 'CodeBuddy upstream unreachable: dial tcp 10.0.0.1:443: i/o timeout' >&2\nexit 0\n")
+	restore := overrideCodeBuddyCLIForTest(t, fakeCodeBuddy)
+	defer restore()
+
+	cliProvider, err := NewCodeBuddyCLIProvider(ai.ProviderConfig{APIKey: "cb-test"})
+	if err != nil {
+		t.Fatalf("unexpected provider error: %v", err)
+	}
+
+	var chunks []ai.StreamChunk
+	_, err = cliProvider.(SessionStreamProvider).ChatStreamWithState(
+		context.Background(),
+		nil,
+		ai.ChatRequest{Messages: []ai.Message{{Role: "user", Content: "ping"}}},
+		func(chunk ai.StreamChunk) { chunks = append(chunks, chunk) },
+	)
+	if err != nil {
+		t.Fatalf("stream should report the failure through the callback, got %v", err)
+	}
+	var detail string
+	for _, chunk := range chunks {
+		if chunk.Error != "" {
+			detail = chunk.Error
+		}
+	}
+	for _, want := range []string{"no output", "upstream unreachable"} {
+		if !strings.Contains(detail, want) {
+			t.Fatalf("expected error to contain %q, got %q", want, detail)
+		}
+	}
+}
+
+func TestCodeBuddyCLIProviderChatStreamKeepsDoneWithoutStderr(t *testing.T) {
+	// stderr 也为空时不能凭空造错：保持既有的 Done 语义。
+	fakeCodeBuddy := writeFakeCodeBuddyScript(t, "#!/bin/sh\nexit 0\n")
+	restore := overrideCodeBuddyCLIForTest(t, fakeCodeBuddy)
+	defer restore()
+
+	cliProvider, err := NewCodeBuddyCLIProvider(ai.ProviderConfig{APIKey: "cb-test"})
+	if err != nil {
+		t.Fatalf("unexpected provider error: %v", err)
+	}
+
+	var chunks []ai.StreamChunk
+	_, err = cliProvider.(SessionStreamProvider).ChatStreamWithState(
+		context.Background(),
+		nil,
+		ai.ChatRequest{Messages: []ai.Message{{Role: "user", Content: "ping"}}},
+		func(chunk ai.StreamChunk) { chunks = append(chunks, chunk) },
+	)
+	if err != nil {
+		t.Fatalf("expected the stream to finish quietly, got %v", err)
+	}
+	for _, chunk := range chunks {
+		if chunk.Error != "" {
+			t.Fatalf("stderr 为空时不应报错，实际 %q", chunk.Error)
+		}
+	}
 }

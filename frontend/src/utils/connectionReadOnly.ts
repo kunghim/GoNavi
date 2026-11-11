@@ -1,3 +1,4 @@
+import { hasUnsafeHiveReadOnlyOperation, isHiveReadOnlySet } from './hiveProtectedSql';
 import type { ConnectionConfig } from "../types";
 import { pluginDataSourceConfigType, parsePluginDataSourceType } from "../plugins/dataSource/identity";
 import { convertMongoShellToJsonCommand } from "./mongodb";
@@ -7,6 +8,10 @@ import { hasJobMutationSQL } from "./databaseJobs/jobMutationClassifier";
 import { findSqlStatementRanges } from "./sqlStatementSelection";
 import { listDataSourceSpecs } from "./dataSourceRegistry";
 import { resolveRegistryReadOnlyClassifier } from "./dataSourceRegistry/commandReadOnly";
+import {
+  isSqlEditorNonDataStatement,
+  isSqlEditorSessionScopedNonDataStatement,
+} from "./sqlEditorTransaction";
 
 export type ConnectionProtectionKey =
   | "restrictDataEdit"
@@ -96,7 +101,14 @@ const SQL_READ_ONLY_KEYWORDS = new Set([
   "consume",
 ]);
 
-const SQL_MUTATING_WITH_KEYWORDS = /\b(insert|update|delete|merge|upsert)\b/i;
+// `INSERT()` / `REPLACE()` 是 MySQL 的字符串函数，常出现在 SELECT 列表里
+// （如 INSERT(str, pos, len, newstr)）。只按关键字匹配会把它们误判成写语句，
+// 使只读连接和安全策略直接拒绝执行一条纯读 SQL。
+//
+// 只对这两个确实存在同名函数的动词排除「紧跟左括号」的形态；UPDATE / DELETE /
+// MERGE / UPSERT 在 SQL 里没有同名函数，保持原样以免漏判真实写入。
+const SQL_MUTATING_WITH_KEYWORDS = /\b(update|delete|merge|upsert)\b/i;
+const SQL_INSERT_STATEMENT_PATTERN = /\binsert\b(?!\s*\()/i;
 const SQL_REPLACE_INTO_PATTERN = /\breplace\s+into\b/i;
 
 /**
@@ -149,9 +161,16 @@ const hasSelectInto = (statement: string, dbType: string): boolean =>
     stripSqlLiteralsAndComments(statement, dbType),
   );
 
+/** 行锁子句本身不是数据写入：`FOR UPDATE` / `FOR NO KEY UPDATE`。 */
+const SQL_ROW_LOCK_CLAUSE = /\bfor\s+(?:no\s+key\s+)?update\b/gi;
+
 const hasMutatingWithKeyword = (statement: string, dbType: string): boolean => {
-  const code = stripSqlLiteralsAndComments(statement, dbType);
-  return SQL_MUTATING_WITH_KEYWORDS.test(code) || SQL_REPLACE_INTO_PATTERN.test(code);
+  const code = stripSqlLiteralsAndComments(statement, dbType)
+    // `WITH ... SELECT ... FOR UPDATE` 是只读行锁查询，其中的 update 不是 DML。
+    .replace(SQL_ROW_LOCK_CLAUSE, " ");
+  return SQL_MUTATING_WITH_KEYWORDS.test(code)
+    || SQL_INSERT_STATEMENT_PATTERN.test(code)
+    || SQL_REPLACE_INTO_PATTERN.test(code);
 };
 
 const MONGO_READ_ONLY_COMMANDS = new Set([
@@ -278,6 +297,8 @@ const resolveConnectionReadOnlyType = (
 };
 
 const isReadOnlySqlStatement = (statement: string, dbType: string): boolean => {
+  if (dbType === 'hive' && hasUnsafeHiveReadOnlyOperation(statement)) return false;
+  if (dbType === 'hive' && isHiveReadOnlySet(statement)) return true;
   const text = stripLeadingSqlComments(statement, dbType);
   if (!text) return true;
   if (hasJobMutationSQL(text, dbType)) return false;
@@ -680,4 +701,50 @@ export const findPotentiallyMutatingConnectionStatements = (
     .map((range) => range.text.trim())
     .filter((statement) => statement.length > 0)
     .filter((statement) => !isConnectionReadOnlyStatement(config, statement));
+};
+
+/**
+ * 该方言是否按 SQL 语法解析语句。
+ *
+ * Redis / MongoDB 等命令语言里 `SET key value` 是数据写入，不能套用 SQL 的
+ * 会话/事务白名单；注册表里带自定义分类器的方言同样交给各自的判定。
+ */
+export const supportsSqlStatementClassification = (dbType: string): boolean => {
+  const normalized = String(dbType || "").trim().toLowerCase();
+  if (normalized === "redis" || normalized === "mongodb") return false;
+  return !resolveRegistryReadOnlyClassifier(normalized);
+};
+
+/**
+ * 生产环境风险确认用投影：只排除明确无害的会话级命令（`SET SESSION`、`USE`）。
+ *
+ * 事务控制、维护命令、DDL/DML 与无法静态判定的语句全部保留——生产确认的
+ * 语义是「可能改变数据、结构或服务器状态」，不能按数据写粒度收紧。
+ */
+export const findPotentiallyStateChangingConnectionStatements = (
+  config: ConnectionReadOnlyLike,
+  sql: string,
+): string[] => {
+  const dbType = resolveConnectionReadOnlyType(config);
+  if (!supportsSqlStatementClassification(dbType)) {
+    return findPotentiallyMutatingConnectionStatements(config, sql);
+  }
+  return findPotentiallyMutatingConnectionStatements(config, sql)
+    .filter((statement) => !isSqlEditorSessionScopedNonDataStatement(statement, dbType));
+};
+
+/**
+ * 侧栏刷新用投影：排除会话命令、事务控制与纯统计维护，
+ * 保留 DML、DDL、TRUNCATE、CALL 等会改变数据或结构的语句。
+ */
+export const findPotentiallyDataOrSchemaChangingConnectionStatements = (
+  config: ConnectionReadOnlyLike,
+  sql: string,
+): string[] => {
+  const dbType = resolveConnectionReadOnlyType(config);
+  if (!supportsSqlStatementClassification(dbType)) {
+    return findPotentiallyMutatingConnectionStatements(config, sql);
+  }
+  return findPotentiallyMutatingConnectionStatements(config, sql)
+    .filter((statement) => !isSqlEditorNonDataStatement(statement, dbType));
 };

@@ -346,6 +346,30 @@ export function TitlebarDriverIcon({ size, className }: GonaviTitlebarIconProps)
   );
 }
 
+/**
+ * 插件（插件管理）：2×2 圆角色块，零件和「新建查询」表格格、「数据工作流」节点一样——
+ * 主体色实心块 + 亮点色一块，铺满 24×24。不用拼图榫头，那套剪贴画和左侧象形标不是一家。
+ */
+export function TitlebarPluginIcon({ size, className }: GonaviTitlebarIconProps) {
+  const primary = GONAVI_TITLEBAR_ICON_COLORS.primary;
+  const highlight = GONAVI_TITLEBAR_ICON_COLORS.highlight;
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={resolveSize(size)}
+      height={resolveSize(size)}
+      className={className}
+      aria-hidden="true"
+      focusable="false"
+    >
+      <rect x="2.6" y="3.4" width="8.8" height="8.8" rx="2.4" style={{ fill: primary }} />
+      <rect x="13" y="3.4" width="8.8" height="8.8" rx="2.4" style={{ fill: primary }} />
+      <rect x="2.6" y="13.8" width="8.8" height="8.8" rx="2.4" style={{ fill: primary }} />
+      <rect x="13" y="13.8" width="8.8" height="8.8" rx="2.4" style={{ fill: highlight }} />
+    </svg>
+  );
+}
+
 /** 关于：紫色实心圆 + 白色 i。 */
 export function TitlebarInfoIcon({ size, className }: GonaviTitlebarIconProps) {
   return (

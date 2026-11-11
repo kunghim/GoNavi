@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"GoNavi-Wails/internal/logger"
 )
 
 func (c *PluginController) serveHTTP(w http.ResponseWriter, r *http.Request) {
@@ -17,6 +19,7 @@ func (c *PluginController) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	// No CORS: the credential stays in the child Go proxy, never in plugin JS.
 	entry := c.authorize(r)
 	if entry == nil {
+		logger.Warnf("plugin bridge unauthorized: path=%s host=%q want=%q idLen=%d tokenLen=%d", r.URL.Path, r.Host, strings.TrimPrefix(c.endpoint, "http://"), len(r.Header.Get(pluginWindowHeader)), len(r.Header.Get(pluginTokenHeader)))
 		pluginHTTPError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
@@ -28,12 +31,18 @@ func (c *PluginController) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := c.entryStatus(entry); err != nil {
+		logger.Warnf("plugin bridge generation revoked: id=%s err=%v", entry.info.PluginID, err)
 		c.revokeEntry(entry)
 		pluginHTTPError(w, http.StatusGone, "generation_revoked")
 		return
 	}
 	if entry.life.Err() != nil {
+		logger.Warnf("plugin bridge window revoked: id=%s err=%v path=%s", entry.info.PluginID, entry.life.Err(), r.URL.Path)
 		pluginHTTPError(w, http.StatusGone, "window_revoked")
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, pluginBridgePrefix+"ui/") {
+		c.serveUIAsset(w, r)
 		return
 	}
 	switch r.URL.Path {
@@ -44,8 +53,9 @@ func (c *PluginController) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		// A document reload starts a fresh JavaScript sequence, not a new process.
 		c.mu.Lock()
 		entry.heartbeatSequence = 0
+		preferences, revision := c.preferencesLocked(entry)
 		c.mu.Unlock()
-		writePluginJSON(w, pluginBootstrap{PluginID: entry.info.PluginID, Generation: entry.info.Generation, Title: entry.title})
+		writePluginJSON(w, pluginBootstrap{PluginID: entry.info.PluginID, Generation: entry.info.Generation, Title: entry.title, Context: entry.context, Preferences: preferences, PreferencesRevision: revision})
 	case pluginBridgePrefix + "runtime.js":
 		if !pluginMethod(w, r, http.MethodGet) {
 			return
@@ -56,6 +66,8 @@ func (c *PluginController) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		c.serveHeartbeat(w, r, entry)
 	case pluginBridgePrefix + "invoke":
 		c.serveInvoke(w, r, entry)
+	case pluginBridgePrefix + "capability":
+		c.serveCapability(w, r, entry)
 	case pluginBridgePrefix + "cancel":
 		c.serveCancel(w, r, entry)
 	case pluginBridgePrefix + "close":
@@ -68,7 +80,11 @@ func (c *PluginController) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		if !pluginMethod(w, r, http.MethodGet) {
 			return
 		}
-		http.Redirect(w, r, pluginAssetPrefix+entry.entry, http.StatusTemporaryRedirect)
+		// The Wails child consumes this handler's response as the window document,
+		// so a redirect is never followed: the WebView renders the redirect body
+		// ("Temporary Redirect.") instead. Serve the entry document in one response.
+		r.URL.Path = pluginAssetPrefix + entry.entry
+		c.serveAsset(w, r, entry)
 	default:
 		if !strings.HasPrefix(r.URL.Path, pluginAssetPrefix) {
 			http.NotFound(w, r)
@@ -85,7 +101,7 @@ func (c *PluginController) authorize(r *http.Request) *pluginWindowEntry {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	entry := c.windows[r.Header.Get(pluginWindowHeader)]
+	entry := c.windowIDs[r.Header.Get(pluginWindowHeader)]
 	if entry == nil || subtle.ConstantTimeCompare([]byte(entry.token), []byte(r.Header.Get(pluginTokenHeader))) != 1 {
 		return nil
 	}
@@ -109,12 +125,13 @@ func (c *PluginController) serveHeartbeat(w http.ResponseWriter, r *http.Request
 		entry.heartbeat = time.Now()
 		entry.heartbeatSequence = heartbeat.Sequence
 	}
+	preferences, revision := c.preferencesLocked(entry)
 	c.mu.Unlock()
 	if !accepted {
 		pluginHTTPError(w, http.StatusConflict, "stale_heartbeat")
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	writePluginJSON(w, pluginBootstrap{PluginID: entry.info.PluginID, Generation: entry.info.Generation, Title: entry.title, Preferences: preferences, PreferencesRevision: revision})
 }
 
 func pluginMethod(w http.ResponseWriter, r *http.Request, method string) bool {

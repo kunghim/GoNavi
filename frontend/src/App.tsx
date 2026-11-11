@@ -28,6 +28,7 @@ import { useAppSettingsNavigation } from './appShell/hooks/useAppSettingsNavigat
 import { useAppDirectorySettingsRender } from './appShell/hooks/useAppDirectorySettingsRender';
 import { useAppWorkbenchActions } from './appShell/hooks/useAppWorkbenchActions';
 import { useAppLayoutEffects } from './appShell/hooks/useAppLayoutEffects';
+import { useSavedConnectionsChangeSync } from './appShell/hooks/useSavedConnectionsChangeSync';
 import { useAppAntdTheme } from './appShell/hooks/useAppAntdTheme';
 import { useAppSettingsPanesRender } from './appShell/hooks/useAppSettingsPanesRender';
 import { useAppAboutSettingsRender } from './appShell/hooks/useAppAboutSettingsRender';
@@ -179,7 +180,8 @@ function App() {
   const {
     useNativeMacWindowControls, activeShortcutPlatform, titleBarNewQueryShortcut,
     titleBarNewConnectionShortcut, updateCenterBridgeRef, openReleaseNotesOnManualCheckRef,
-    aboutDisplayVersion, aboutInfo, aboutLoading, aboutUpdateStatus, changeUpdateChannel,
+    aboutDisplayVersion, aboutInfo, aboutLoading, aboutUpdateStatus, cancelUpdate,
+    changeUpdateChannel,
     checkForUpdates, formatBytes, handleInstallFromProgress, hideUpdateDownloadProgress,
     isBackgroundProgressForLatestUpdate, isCheckingForUpdates, isLatestUpdateDownloaded,
     isUpdateChannelLoading, isUpdateChannelSaving, installMode, lastUpdateInfo,
@@ -258,6 +260,7 @@ function App() {
     setSecurityUpdateRepairSource, aiSettingsLeaveGuardRef, setToolCenterBackGroupKey,
     setActiveSettingsCenterGroupKey, openSettingsCenterWorkbenchTab, securityUpdateRepairSource,
     openSecurityUpdateSettings, activeSettingsCenterPane, closeSettingsCenterWorkbenchTab, addTab,
+    handleOpenDriverManagerWorkbench,
     isSettingsModalOpen, updateCenterBridgeRef, openReleaseNotesOnManualCheckRef,
     setReleaseNotesModalOpen, prepareAboutSurface, handleExportConnectionsRef,
     handleImportConnectionsRef, setThemeModalSection,
@@ -300,6 +303,8 @@ function App() {
     setAiSettingsRenderNonce, emitWindowDiagnostic, useNativeMacWindowControls, isMacRuntime,
     captureMainWindowStateRef, effectiveUiScale, setSidebarWidth, sidebarWidth, isSidebarCollapsed,
   });
+
+  useSavedConnectionsChangeSync();
 
   useAppLayoutEffects({
     darkMode, documentPlatform, effectiveFontSize, resolvedUiFontFamily, resolvedMonoFontFamily,
@@ -604,6 +609,7 @@ function App() {
             openDownloadedUpdateDirectory={openDownloadedUpdateDirectory}
             handleInstallUpdateRequest={handleInstallUpdateRequest}
             updateInstallActionLabel={updateInstallActionLabel}
+            cancelUpdate={cancelUpdate}
             isThemeModalOpen={isThemeModalOpen} themeModalSection={themeModalSection}
             setIsThemeModalOpen={setIsThemeModalOpen}
             renderThemeSettingsContent={renderThemeSettingsContent}

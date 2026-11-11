@@ -1,6 +1,6 @@
 import type { Manifest } from './types.js';
 
-const topLevel = ['schemaVersion', 'apiVersion', 'id', 'name', 'version', 'description', 'author', 'license', 'minHostVersion', 'permissions', 'permissionNotes', 'requires', 'backend', 'contributes', 'window', 'configSchema'];
+const topLevel = ['schemaVersion', 'apiVersion', 'id', 'name', 'version', 'description', 'author', 'license', 'icon', 'minHostVersion', 'permissions', 'permissionNotes', 'requires', 'backend', 'contributes', 'window'];
 const entryKeys = ['executable', 'args', 'runtime'];
 const nodeKeys = ['type', 'text', 'title', 'children', 'command', 'arguments', 'columns', 'rows'];
 
@@ -51,15 +51,52 @@ export function parseManifest(data: unknown): Manifest {
   }
   if (record(data.contributes)) {
     const contributes = data.contributes;
-    only(contributes, ['commands', 'panels', 'dataSources', 'skills', 'aiProviders', 'exporters']);
+    only(contributes, ['commands', 'panels', 'dataSources', 'skills', 'aiProviders', 'exporters', 'pages', 'navigation', 'connectionActions', 'sidebar', 'views', 'keybindings', 'settingsSections']);
+    if (contributes.settingsSections != null) list(contributes.settingsSections, (item) => only(item, ['id', 'slot', 'page', 'title', 'description', 'order']));
     if (contributes.commands != null) list(contributes.commands, (item) => only(item, ['id', 'title', 'description', 'inputSchema', 'effect']));
-    if (contributes.panels != null) list(contributes.panels, (item) => { only(item, ['id', 'title', 'body']); if (item.body != null) node(item.body); });
+    if (contributes.panels != null) list(contributes.panels, (item) => {
+      only(item, ['id', 'title', 'body', 'html']);
+      if (item.body != null) node(item.body);
+      if (item.html != null) {
+        if (!record(item.html)) throw new Error('invalid manifest JSON');
+        only(item.html, ['source']);
+      }
+    });
     if (contributes.dataSources != null) list(contributes.dataSources, (item) => only(item, ['id', 'name', 'dialect', 'command', 'defaultPort', 'readOnly']));
+    if (contributes.views != null) list(contributes.views, (item) => only(item, ['id', 'title', 'page', 'location', 'icon', 'order']));
+    if (contributes.keybindings != null) list(contributes.keybindings, (item) => {
+      only(item, ['id', 'title', 'keys', 'target']);
+      if (item.target != null) {
+        if (!record(item.target)) throw new Error('invalid manifest JSON');
+        only(item.target, ['type', 'page', 'view']);
+      }
+    });
+    if (contributes.sidebar != null) list(contributes.sidebar, (item) => {
+      only(item, ['id', 'title', 'icon', 'listCommand', 'emptyText', 'open', 'order']);
+      if (item.open != null) {
+        if (!record(item.open)) throw new Error('invalid manifest JSON');
+        only(item.open, ['type', 'page', 'view']);
+      }
+    });
     if (contributes.skills != null) list(contributes.skills, (item) => only(item, ['id', 'name', 'description', 'entry', 'resources']));
     if (contributes.exporters != null) list(contributes.exporters, (item) => only(item, ['id', 'name', 'command', 'extension', 'contentType', 'streaming']));
     if (contributes.aiProviders != null) list(contributes.aiProviders, (item) => {
-      only(item, ['id', 'name', 'command', 'models', 'supportsTools', 'supportsImages']);
+      only(item, ['id', 'name', 'command', 'icon', 'models', 'supportsTools', 'supportsImages']);
       if (item.models != null) list(item.models, (model) => only(model, ['id', 'name', 'contextWindow', 'maxOutputTokens']));
+    });
+    if (contributes.pages != null) list(contributes.pages, (item) => {
+      only(item, ['id', 'title', 'body', 'html']);
+      if (item.body != null) node(item.body);
+      if (item.html != null) {
+        if (!record(item.html)) throw new Error('invalid manifest JSON');
+        only(item.html, ['source']);
+      }
+    });
+    if (contributes.navigation != null) list(contributes.navigation, (item) => only(item, ['id', 'title', 'target', 'page', 'location', 'order']));
+    if (contributes.connectionActions != null) list(contributes.connectionActions, (item) => {
+      only(item, ['id', 'title', 'description', 'connectionTypes', 'scopes', 'target']);
+      if (!record(item.target)) throw new Error('invalid manifest JSON');
+      only(item.target, ['type', 'page']);
     });
   }
   if (record(data.window)) only(data.window, ['entry', 'title', 'width', 'height']);

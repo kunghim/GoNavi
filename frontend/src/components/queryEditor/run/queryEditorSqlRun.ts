@@ -7,6 +7,7 @@ import {
     resolveOracleExactCaseTableReference, rewriteLeadingSelectTableReference,
     type QueryStatementPlan, resolveQueryLocatorPlan,
 } from '../QueryEditorHelpers';
+import { backfillQueryEditorStatementPlans } from './queryEditorSqlRunMetadata';
 import { t as translate } from '../../../i18n';
 import {
     isQueryEditorTriggerDropStatement, hasSqlExecutionOutcomeUnknown, type QueryEditorRunScope,
@@ -37,13 +38,17 @@ import { resolveReportedQueryDurationMs } from '../queryEditorExecutionTimer';
 import {
     collectOracleCompileTargets, loadOracleCompileErrors, formatOracleCompileErrors,
 } from '../../sidebar/oracleObjectCompilation';
-import { findPotentiallyMutatingConnectionStatements } from '../../../utils/connectionReadOnly';
+import { findPotentiallyDataOrSchemaChangingConnectionStatements } from '../../../utils/connectionReadOnly';
 import { dispatchSidebarSqlDataRefresh } from '../queryEditorSidebarRefresh';
 import { handleQueryEditorRunFailure } from './queryEditorRunFailure';
 import { collectQueryEditorRunResultSets } from './queryEditorRunResultSets';
 import {
     finalizeQueryEditorSqlServerResultSets, resolveQueryEditorExecutionSuccessToast,
 } from '../queryEditorSqlServerResultMessages';
+import {
+    aggregateQueryEditorStatementResults, collectQueryEditorStatementSummaryEntries,
+    countQueryEditorAffectedRowResults, collectQueryEditorUnmanagedRollbackableStatements,
+} from './queryEditorRunStatementSummary';
 import type { QueryEditorResultSet } from '../../QueryEditorResultsPanel';
 import type { TabData, ConnectionConfig } from '../../../types';
 import type { useSqlEditorTransactionController } from '../../useSqlEditorTransactionController';
@@ -285,6 +290,8 @@ export const runQueryEditorSqlStatements = async ({
                 config: executionConfig,
                 forceReadOnly: forceReadOnlyResult,
                 allowOracleRowID: allowOracleRowIDByStatement[index],
+                schemaName: executionSchemaName,
+                deferColumnMetaBackfill: true,
             });
             if (!isCurrentRun()) return;
             statementPlans.push(statementPlan);
@@ -299,6 +306,13 @@ export const runQueryEditorSqlStatements = async ({
             });
         }
     }
+
+    await backfillQueryEditorStatementPlans({
+        statementPlans, executedSourceStatements, sourceStatements,
+        dbType: normalizedDbType, currentDb: executionDbName, schemaName: executionSchemaName,
+        config: executionConfig, isCurrentRun,
+    });
+    if (!isCurrentRun()) return;
 
     // 自动给 SELECT 语句注入行数限制（防止大结果集卡死）
     const maxRowsForLimit = Number(queryOptions?.maxRows) || 0;
@@ -496,7 +510,7 @@ export const runQueryEditorSqlStatements = async ({
         ? sourceStatements
         : sourceStatements.slice(0, confirmedStatementCount);
     const dataChanged = !res.transactionPending && (!useManagedTransaction || res.success)
-        && findPotentiallyMutatingConnectionStatements(config, committedStatements.join(';\n')).length > 0;
+        && findPotentiallyDataOrSchemaChangingConnectionStatements(config, committedStatements.join(';\n')).length > 0;
     if (schemaChanged || dataChanged) {
         dispatchSidebarSqlDataRefresh({
             connectionId: conn.id,
@@ -519,7 +533,14 @@ export const runQueryEditorSqlStatements = async ({
     // （DDL / TRUNCATE / CALL / 存储过程 / 非事务数据源，见后端 shouldUseManagedSQLTransaction）。
     // 前端自己的 useManagedTransaction 判定比后端宽松，直接采信它会把 DDL 误报成"已托管"，
     // 所以这里以后端的实际响应为准。必须显式告知，不能静默假装已保护（§3.2 验收 3）。
-    if (res.success && mutatingStatements.length > 0 && !res.transactionPending) {
+    //
+    // 只对「可回滚却被跳过事务」的写语句告警：DDL / TRUNCATE 本身没有回滚语义
+    // （MySQL 隐式提交），SET / USE 这类会话级命令也不修改业务数据；一次几百条
+    // ALTER 或每次 SET SESSION 都弹一次告警只会变成噪音。
+    const unmanagedRollbackableStatements = collectQueryEditorUnmanagedRollbackableStatements(
+        mutatingStatements, normalizedDbType,
+    );
+    if (res.success && unmanagedRollbackableStatements.length > 0 && !res.transactionPending) {
         message.warning(translate('query_editor.transaction.message.executed_without_transaction'), 6);
     }
 
@@ -572,9 +593,26 @@ export const runQueryEditorSqlStatements = async ({
             readOnly: true,
         });
     }
-    const visibleResultSets = finalizeQueryEditorSqlServerResultSets(normalizedDbType, nextResultSets);
+    // 批量脚本（典型是几百条 ALTER TABLE）每条语句都会产出一个 affectedRows 结果，
+    // 一个「结果 N」标签对应一条语句，既看不出整体结果又会撑爆历史预算；
+    // DDL 的受影响行数在 MySQL 等库里恒为 0，单条 DDL 显示「影响行数：0」容易被误读成没执行。
+    // 因此把本次执行的受影响行数结果汇总成一个「执行摘要」，SELECT 等真实结果集保持不变。
+    const affectedResultCount = countQueryEditorAffectedRowResults(nextResultSets);
+    const statementSummaryEntries = collectQueryEditorStatementSummaryEntries({
+        resultSets: nextResultSets,
+        statementAt: (statementIndex) => sourceStatements[statementIndex - 1] || '',
+        dbType: normalizedDbType,
+    });
+    const aggregatedResultSets = aggregateQueryEditorStatementResults({
+        resultSets: nextResultSets,
+        entries: statementSummaryEntries,
+        affectedResultCount,
+        exportSql: sourceStatements.join(';\n'),
+        executionDbName,
+    });
+    const visibleResultSets = finalizeQueryEditorSqlServerResultSets(normalizedDbType, aggregatedResultSets);
 
-    if (visibleResultSets.length > 0 || queryOptions.autoShowSqlExecutionLog !== false) {
+    if (visibleResultSets.length > 0 || queryOptions.showSqlExecutionLog !== false) {
         updateResultPanelVisibility(true);
     }
     const shouldReplaceAllResults = didExecuteWholeEditor;

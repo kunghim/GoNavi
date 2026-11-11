@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -154,6 +155,48 @@ func TestRealProcessInvocationAndGeneration(t *testing.T) {
 		t.Fatalf("undeclared command: %v", err)
 	}
 }
+func TestQuarantineRetriesAfterConcurrentGenerationBump(t *testing.T) {
+	m := testManager(t)
+	status := installFixture(t, m, "test.echo", "echo")
+	enableFixture(t, m, status.Manifest.ID)
+	if err := m.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	waitState(t, m, status.Manifest.ID, StateRunning)
+	m.mu.Lock()
+	inst := m.instances[status.Manifest.ID]
+	m.mu.Unlock()
+	if inst == nil {
+		t.Fatal("instance missing")
+	}
+	cause := errors.New("plugin process exited: exit status 23")
+	// A concurrent external write moves the record generation after start; the quarantine
+	// used to drop silently on the stale generation, and the next reconcile restart turned
+	// one fault into a restart loop that ended in a bogus disabled state.
+	if _, err := m.mutate(context.Background(), func(state *diskState) (bool, error) {
+		r, ok := state.Records[status.Manifest.ID]
+		if !ok {
+			return false, ErrNotFound
+		}
+		r.Generation = state.Generation
+		state.Records[status.Manifest.ID] = r
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	m.quarantine(inst, cause)
+	state, err := m.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := state.Records[status.Manifest.ID]
+	if !record.Quarantined || record.State != StateFaulted {
+		t.Fatalf("quarantine dropped after generation bump: quarantined=%v state=%s", record.Quarantined, record.State)
+	}
+	if !strings.Contains(record.LastError, "exit status 23") {
+		t.Fatalf("quarantine lost the cause: %q", record.LastError)
+	}
+}
 func TestRealProcessFaultsAreQuarantined(t *testing.T) {
 	for _, mode := range []string{"crash", "hang-init", "hang-heartbeat", "malformed", "flood", "stderr"} {
 		t.Run(mode, func(t *testing.T) {
@@ -215,7 +258,10 @@ func TestDisableNeverWaitsForBusyPlugin(t *testing.T) {
 	if _, err := m.SetEnabled(context.Background(), status.Manifest.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	if elapsed := time.Since(started); elapsed > 300*time.Millisecond {
+	// 这个断言要证明的是「disable 没有等待插件里的长任务」，不是测调度精度。
+	// Windows CI 上 300ms 会被正常的进程启动/调度抖动打穿（实测 315ms），
+	// 而真正的「等待」会等满插件的阻塞时长（秒级），两者相差一个数量级。
+	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Fatalf("disable waited on plugin: %s", elapsed)
 	}
 	if _, err := m.AssetPath(status.Manifest.ID, "asset.txt"); !errors.Is(err, ErrDisabled) {

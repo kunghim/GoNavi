@@ -80,11 +80,11 @@ git diff --cached --check
 
 ## 0. 项目是什么
 
-GoNavi 是 **Wails v2 + Go + React 18** 的跨平台数据源工作台，不是 Electron 应用，也不是普通前后端分离 Web。
+GoNavi 是 **Wails v3 + Go + React 18** 的跨平台数据源工作台，不是 Electron 应用，也不是普通前后端分离 Web。v3 是默认构建与发版路径，v2 代码仅保留回退构建（`GONAVI_WAILS3=0`）与插件窗口进程隔离。
 
 | 层 | 位置 | 职责 |
 |---|---|---|
-| 桌面壳 | `main.go` | Wails 启动、窗口、菜单 |
+| 桌面壳 | `cmd/wails3app`（`main.go` 为 v2 回退） | Wails 启动、窗口、菜单 |
 | Wails 绑定 | `internal/app` | 给前端/MCP/Web RPC 的 `App` 方法，保持薄 |
 | 领域实现 | `internal/db`、`internal/ai`、`internal/sync`、`internal/connection` 等 | 驱动、AI、同步、类型 |
 | UI | `frontend/src` | React + Ant Design 5 + Zustand + Monaco |
@@ -94,6 +94,16 @@ GoNavi 是 **Wails v2 + Go + React 18** 的跨平台数据源工作台，不是 
 | Java | `tools/jmx-helper`、`internal/jvm/testdata` | 小工具/夹具，跟《阿里巴巴 Java 开发手册》 |
 
 Go module：`GoNavi-Wails`。默认集成分支：`dev`。
+构建：v3 走 `wails3 task build` / `node scripts/build-wails3.mjs`，开发用 `wails3 task dev`；v2 回退仍用 `wails build`。
+
+### 0.1 官方插件仓库约定
+
+GoNavi 官方插件（作者自己把宿主能力拆出来做的插件）**一律不新建仓库，全部落在 `GoNavi-Plugin-Market` 一个仓里**（市场官网 + 上架目录 + 官方插件源码同仓，本地 `D:\Work\CodeRepos\GoNavi-Plugin-Market`）：
+
+- **【强制】** 官方插件源码写该仓 `plugins/<name>/` 目录，复用仓根 `cmd/buildtool` 打包（产物进 `plugin-dist/`，已 gitignore，**禁止提交构建产物与运行态**）。收到"把 X 做成插件"类需求时直接在该仓增目录，禁止 `git init` 任何新插件仓库。
+- **【强制】** 发布 tag 格式 `<插件名>-v<semver>`（如 `nginx-inspector-v1.0.0`），一 Release 一 ZIP；安装引用 `github:Syngnat/GoNavi-Plugin-Market@<tag>` **必须带 tag**（无 tag 解析的是仓库 latest release，会拿到其他插件）。
+- **【强制】** 市场上架条目写该仓 `public/catalog.json`，且必须等 GitHub Release 已建立、artifact 直链可下载后再写（真实 SHA-256 与内容摘要，禁止占位死链）。
+- **【参考】** 第三方插件作者不受此约束：一仓一插件或一仓多插件均可，`github:owner/repo`（latest）是他们的默认模式。
 
 ---
 
@@ -225,3 +235,72 @@ export function QueryEditor() {
 4. 提交信息遵循 `CONTRIBUTING.md`：`emoji type(scope): 中文描述`。未要求时不要 commit、不要 push。
 
 **【推荐】** PR 保持单一主题；UI 变更附截图或录屏说明。
+
+**【推荐】同步代码工作流**：用户要求「更新/拉取最新代码」而未指定分支时，默认流程为——
+1. `git fetch origin dev` 拉取 **origin 的 dev 分支**最新；
+2. 基于最新 `origin/dev` **新建工作分支**（命名延续现有 `dev-<主题>` 系列）；
+3. 把本地改动合到新分支：未提交的修改随工作区带过去；已提交的用 cherry-pick。
+不主动 push；推送目标为用户的 fork 远端，由用户自行执行或明确要求时再操作。
+
+---
+
+## 7. 本机工具链（macOS 开发机）
+
+> 本节记录**开发机环境**，不是代码规约。只在 macOS 构建失败时查阅。
+
+### 7.1 当前配置：`xcode-select` 指向 CommandLineTools
+
+```
+xcode-select -p   →  /Library/Developer/CommandLineTools
+clang / ld        →  CLT 自带的 clang 与 ld
+默认 sysroot      →  /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
+                     （即 MacOSX27.0.sdk 的别名，版本 27.0）
+```
+
+**为什么这么配**：宿主是 macOS 27，clang 据此选择 **27.0 版本的 SDK**；而该 SDK 的 `.tbd`
+声明了 `arm64e.x1-macos` 架构标记，**Xcode 的 `ld` 不认识它**，导致链接失败：
+
+```
+ld: tapi error: malformed file
+.../MacOSX27.0.sdk/usr/lib/libSystem.B.tbd:4:20: error: unknown architecture
+```
+
+即「新 SDK + 旧 linker」错配。CLT 是 27.0 全套（clang + ld + SDK 同源同版本），与宿主匹配。
+
+**触发条件**：`xcode-select` 指回 Xcode，且该 Xcode 的 `ld` 版本早于 macOS 27 时复现。
+纯编译（`go build ./internal/...`）不受影响，**只有需要链接的目标会失败**
+（`go build ./...` 含 main 的包、`go test` 的 cgo 路径、`wails3 build` / `wails3 dev`、`wails build`、直接 `cc`）。
+
+### 7.2 禁止再加 `SDKROOT` workaround
+
+历史上曾用 `export SDKROOT=<Xcode 的 26.5 SDK>` 绕过该问题，**现已移除，不要再加回来**：
+
+- 放在 `~/.zshrc` 只在**交互式** shell 生效，脚本 / CI / 编辑器 task / agent 工具走的
+  非交互式 shell 读不到，那些场景照旧失败（这正是它先前"看起来没用"的原因）；
+- 它会把 SDK 钉在比宿主更旧的 26.5 上，掩盖真实的版本配对问题。
+
+若确实需要临时指定，用 `SDKROOT=... <命令>` 前缀，不要写进任何 rc 文件。
+
+### 7.3 需要 `xcodebuild` 时
+
+切回 Xcode（会让上述链接问题复现，除非 Xcode 已升到与 CLT 匹配的版本）：
+
+```bash
+sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+```
+
+`codesign` 不受影响：它是系统自带的 `/usr/bin/codesign`（三种架构齐全），
+不随 `xcode-select` 变化，`build-release.sh` / `scripts/codesign-dev-app.sh` 正常可用。
+
+### 7.4 排查顺序
+
+1. `xcode-select -p` → 确认指向 CLT
+2. `xcrun --show-sdk-path` 与 `xcrun --show-sdk-version` → 确认 SDK 版本与宿主一致
+3. `env -i PATH=/usr/bin:/bin xcrun --show-sdk-path` → **排除 rc 文件干扰**，看真实默认值
+4. 对照实验：同一份 C 代码分别用 CLT 与 Xcode 的工具链编译，定位是「工具链旧」还是「SDK 坏」
+
+> 注：`SDKs/MacOSX.sdk` 这个**别名会参与解析**，但它是"默认名候选人"，不是版本来源。
+> clang 的 SDK 版本取自**宿主系统版本**（macOS 27 → 找 27.0 的 SDK）；
+> 当别名的目标版本与宿主不符时（例如被手动指向 `MacOSX26.5.sdk`），
+> 解析会**回落到带版本号的目录**（`MacOSX27.0.sdk`），所以改别名**改变不了实际使用的 SDK**
+> —— 这才是"改链接没用"的原因，不是"不读链接"。别再在这上面浪费时间。

@@ -9,7 +9,6 @@ import { buildExternalSqlRootMenuItems } from './sidebarNodeMenuExternalSql';
 import { buildSavedQueryMenuItems } from './sidebarNodeMenuSavedQueries';
 import { buildSavedQueryManualGroupMenuItems } from './sidebarNodeMenuSavedQueries';
 import { buildAllSavedQueriesMenuItems } from './sidebarNodeMenuSavedQueries';
-import { buildTableNodeMenuItems } from './sidebarNodeMenuObjects';
 import { buildMessageObjectMenuItems } from './sidebarNodeMenuObjects';
 import { buildMessageNamespaceMenuItems } from './sidebarNodeMenuObjects';
 import { buildDbEventMenuItems } from './sidebarNodeMenuObjects';
@@ -27,6 +26,7 @@ import { buildNacosConfigGroupMenuItems } from './sidebarNodeMenuNacos';
 import { buildNacosEntryMenuItems } from './sidebarNodeMenuNacos';
 import { buildNacosNamespaceMenuItems } from './sidebarNodeMenuNacos';
 import { buildConnectionNodeMenuItems } from './sidebarNodeMenuConnection';
+import { buildXxlJobConnectionMenuItems } from './xxlJobNodeMenuItems';
 import { buildTagNodeMenuItems } from './sidebarNodeMenuObjectGroups';
 import { buildEventsGroupMenuItems } from './sidebarNodeMenuObjectGroups';
 import { buildRoutinesGroupMenuItems } from './sidebarNodeMenuObjectGroups';
@@ -34,6 +34,7 @@ import { buildMaterializedViewsGroupMenuItems } from './sidebarNodeMenuObjectGro
 import { buildViewsGroupMenuItems } from './sidebarNodeMenuObjectGroups';
 import { buildTablesGroupMenuItems } from './sidebarNodeMenuObjectGroups';
 import { buildSchemaGroupMenuItems } from './sidebarNodeMenuObjectGroups';
+import { buildAgentIntegrationMenuItems } from './sidebarNodeMenuAgent';
 export type { SidebarNodeMenuContext } from './sidebarNodeMenuHelpers';
 
 export const buildSidebarNodeMenuItems = (
@@ -51,6 +52,7 @@ export const buildSidebarNodeMenuItems = (
     const conn = node.dataRef as SavedConnection;
     const isRedis = conn?.config?.type === 'redis';
     const isNacos = conn?.config?.type === 'nacos';
+    const isXxlJob = conn?.config?.type === 'xxljob';
 
     if (node.type === 'object-group' && node.dataRef?.groupKey === 'schema') {
         return buildSchemaGroupMenuItems({ node, context });
@@ -82,6 +84,10 @@ export const buildSidebarNodeMenuItems = (
     // Connection Tag Menu — must be BEFORE the connection check
     if (node.type === 'tag') {
         return buildTagNodeMenuItems({ node, context });
+    }
+
+    if (node.type === 'connection' && isXxlJob) {
+        return buildXxlJobConnectionMenuItems(conn, node, context);
     }
 
     if (node.type === 'connection') {
@@ -118,8 +124,6 @@ export const buildSidebarNodeMenuItems = (
         return buildMessageNamespaceMenuItems({ node, context });
     } else if (node.type === 'message-object') {
         return buildMessageObjectMenuItems({ node, context });
-    } else if (node.type === 'table') {
-        return buildTableNodeMenuItems({ node, context });
     }
 
     if (node.type === 'all-saved-queries') {
@@ -149,6 +153,11 @@ export const buildSidebarNodeMenuItems = (
 
     if (node.type === 'external-sql-file') {
         return buildExternalSqlFileMenuItems({ node, context });
+    }
+
+    // 智能体节点（与数据连接同级）：打开会话管理 / 编辑 / 移除。
+    if (node.type === 'agent-integration') {
+        return buildAgentIntegrationMenuItems({ node, context });
     }
 
     return [];

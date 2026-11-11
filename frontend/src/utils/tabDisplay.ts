@@ -206,6 +206,10 @@ export const sanitizeTabDisplaySettings = (value: unknown): TabDisplaySettings =
   return result;
 };
 
+export const isDoubleLineTabDisplay = (settings?: Partial<TabDisplaySettings> | null): boolean => (
+  sanitizeTabDisplaySettings(settings).layout === 'double'
+);
+
 export const resolveTabDisplayElementOrder = (settings?: Partial<TabDisplaySettings> | null): TabDisplayElementKey[] => {
   const sanitized = sanitizeTabDisplaySettings(settings);
   const visible = [...sanitized.primaryElements, ...sanitized.secondaryElements];
@@ -493,6 +497,9 @@ const buildCompactObjectTabTitle = (tab: TabData, translate: TabDisplayTranslate
   if (tab.type === 'driver-manager') {
     return translate('app.tools.entry.drivers.title');
   }
+  if (tab.type === 'plugin-manager') {
+    return translate('plugin.manager.title');
+  }
   if (tab.type === 'cloud-backup') {
     return translate('app.settings.entry.cloud_backup.title');
   }
@@ -562,6 +569,7 @@ export const getTabDisplayKindLabel = (tab: TabData): string => {
   if (tab.type === 'dml-snapshot') return 'SNAPSHOT';
   if (tab.type === 'user-management') return 'USERS';
   if (tab.type === 'driver-manager') return 'DRIVER';
+  if (tab.type === 'plugin-manager') return 'PLUGIN';
   if (tab.type === 'cloud-backup') return 'BACKUP';
   if (tab.type === 'settings-center') return 'SETTINGS';
   if (tab.type === 'request-diagnostics') return 'TRACE';
@@ -594,6 +602,7 @@ const getTabRawObjectLabel = (tab: TabData, translate: TabDisplayTranslate = def
   if (tab.type.startsWith('redis')) return `db${tab.redisDB ?? 0}`;
   if (tab.type === 'sql-audit' || tab.type === 'dml-snapshot') return tab.title;
   if (tab.type === 'driver-manager') return translate('app.tools.entry.drivers.title');
+  if (tab.type === 'plugin-manager') return translate('plugin.manager.title');
   if (tab.type === 'cloud-backup') return translate('app.settings.entry.cloud_backup.title');
   if (tab.type === 'settings-center') return translate('app.settings.title');
   if (tab.type === 'request-diagnostics') return translate('app.tools.entry.request_diagnostics.title');

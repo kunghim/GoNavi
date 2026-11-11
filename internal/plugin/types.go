@@ -3,6 +3,7 @@
 package plugin
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"time"
@@ -18,6 +19,7 @@ type Manifest struct {
 	Description     string            `json:"description,omitempty"`
 	Author          string            `json:"author,omitempty"`
 	License         string            `json:"license,omitempty"`
+	Icon            string            `json:"icon,omitempty"`
 	MinHostVersion  string            `json:"minHostVersion,omitempty"`
 	Permissions     []string          `json:"permissions"`
 	PermissionNotes map[string]string `json:"permissionNotes,omitempty"`
@@ -25,7 +27,6 @@ type Manifest struct {
 	Backend         *Backend          `json:"backend,omitempty"`
 	Contributes     Contributions     `json:"contributes,omitempty"`
 	Window          *Window           `json:"window,omitempty"`
-	ConfigSchema    json.RawMessage   `json:"configSchema,omitempty"`
 }
 
 // Dependency declares an installed dependency; dependencies are never downloaded implicitly.
@@ -50,12 +51,49 @@ type Entry struct {
 
 // Contributions are bounded declarations; backend extensions use declared commands.
 type Contributions struct {
-	Commands    []Command    `json:"commands,omitempty"`
-	Panels      []Panel      `json:"panels,omitempty"`
-	DataSources []DataSource `json:"dataSources,omitempty"`
-	Skills      []Skill      `json:"skills,omitempty"`
-	AIProviders []AIProvider `json:"aiProviders,omitempty"`
-	Exporters   []Exporter   `json:"exporters,omitempty"`
+	Commands          []Command          `json:"commands,omitempty"`
+	Panels            []Panel            `json:"panels,omitempty"`
+	DataSources       []DataSource       `json:"dataSources,omitempty"`
+	Skills            []Skill            `json:"skills,omitempty"`
+	AIProviders       []AIProvider       `json:"aiProviders,omitempty"`
+	Exporters         []Exporter         `json:"exporters,omitempty"`
+	Pages             []Page             `json:"pages,omitempty"`
+	Navigation        []Navigation       `json:"navigation,omitempty"`
+	ConnectionActions []ConnectionAction `json:"connectionActions,omitempty"`
+	Sidebar           []SidebarGroup     `json:"sidebar,omitempty"`
+	Views             []View             `json:"views,omitempty"`
+	Keybindings       []Keybinding       `json:"keybindings,omitempty"`
+	SettingsSections  []SettingsSection  `json:"settingsSections,omitempty"`
+}
+
+// SettingsSection declares a plugin page embedded in a host-owned settings slot.
+// The host keeps the slot position, title and fallback entry so the setting stays
+// in the same place whether or not a plugin provides it.
+type SettingsSection struct {
+	ID          string `json:"id"`
+	Slot        string `json:"slot"`
+	Page        string `json:"page"`
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	Order       int    `json:"order,omitempty"`
+}
+
+// ConnectionAction is a generic host surface entry rendered in connection, database
+// or collection context menus. The host owns the click target and launch context.
+type ConnectionAction struct {
+	ID              string       `json:"id"`
+	Title           string       `json:"title"`
+	Description     string       `json:"description,omitempty"`
+	ConnectionTypes []string     `json:"connectionTypes"`
+	Scopes          []string     `json:"scopes,omitempty"`
+	Target          LaunchTarget `json:"target"`
+}
+
+// LaunchTarget selects the host surface opened for one contribution.
+type LaunchTarget struct {
+	Type string `json:"type"`
+	Page string `json:"page,omitempty"`
+	View string `json:"view,omitempty"`
 }
 
 // Command declares one backend invocation and its claimed effect.
@@ -72,7 +110,7 @@ type Command struct {
 type Panel struct {
 	ID    string     `json:"id"`
 	Title string     `json:"title"`
-	Body  UINode     `json:"body,omitempty"`
+	Body  UINode     `json:"body,omitzero"`
 	HTML  *HTMLPanel `json:"html,omitempty"`
 }
 
@@ -81,6 +119,61 @@ type Panel struct {
 // renders it, without host filesystem, network, storage or bindings access.
 type HTMLPanel struct {
 	Source string `json:"source"`
+}
+
+// Page declares one host-rendered surface: a bounded declarative tree or a
+// sandboxed custom HTML document. Exactly one body is present. Body is a
+// pointer so an html page omits the key instead of echoing an empty tree.
+type Page struct {
+	ID    string     `json:"id"`
+	Title string     `json:"title"`
+	Body  *UINode    `json:"body,omitempty"`
+	HTML  *HTMLPanel `json:"html,omitempty"`
+}
+
+// Navigation attaches a declared page or the plugin's own window to a host
+// location. Target stays an enumeration: "page" (the default) opens the page in
+// a workbench tab, "window" opens the window declared by the manifest. Location
+// stays an enumeration, and order only reorders entries of the same plugin.
+type Navigation struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Target   string `json:"target,omitempty"`
+	Page     string `json:"page,omitempty"`
+	Location string `json:"location"`
+	Order    int    `json:"order,omitempty"`
+}
+
+// SidebarGroup declares one expandable group in the host's left connection tree.
+// The group's children are produced at runtime by ListCommand and validated by
+// the host; the manifest itself declares no node data.
+type SidebarGroup struct {
+	ID          string        `json:"id"`
+	Title       string        `json:"title"`
+	Icon        string        `json:"icon,omitempty"`
+	ListCommand string        `json:"listCommand"`
+	EmptyText   string        `json:"emptyText,omitempty"`
+	Open        *LaunchTarget `json:"open,omitempty"`
+	Order       int           `json:"order,omitempty"`
+}
+
+// Keybinding opens a declared page or window from a host-wide shortcut.
+type Keybinding struct {
+	ID     string       `json:"id"`
+	Title  string       `json:"title"`
+	Keys   string       `json:"keys"`
+	Target LaunchTarget `json:"target"`
+}
+
+// View docks one declared page to a host surface. Version one supports the
+// right-hand workbench dock; the page keeps the page bridge.
+type View struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Page     string `json:"page"`
+	Location string `json:"location"`
+	Icon     string `json:"icon,omitempty"`
+	Order    int    `json:"order,omitempty"`
 }
 
 // UINode is a declarative element; HTML, scripts, expressions and styles are unsupported.
@@ -162,6 +255,18 @@ type Options struct {
 	InvocationTimeout        time.Duration
 	ReconcileInterval        time.Duration
 	MaxConcurrentInvocations int
+	// HostCapability forwards a caller-bound host capability request to the
+	// embedding application. A nil callback disables host.capability without
+	// affecting host.log or host.describe.
+	HostCapability func(ctx context.Context, pluginID string, generation uint64, params json.RawMessage) (json.RawMessage, error)
+	// ProxyEnvironment reports extra proxy variables ("NAME=value") for every
+	// backend process this manager launches. The embedding host returns its
+	// configured proxy while the global proxy is enabled and nil otherwise, so a
+	// disabled proxy leaves the child on the host environment. It is evaluated at
+	// each launch, so a later change applies to plugins started afterwards. Only
+	// proxy variable names are accepted, so the callback cannot widen what a
+	// plugin process reads.
+	ProxyEnvironment func() []string
 }
 
 // ErrLocked means another runtime owner or a busy state writer holds the OS lock.
@@ -173,6 +278,10 @@ var ErrDisabled = errors.New("plugin is not enabled and running")
 // ErrNotFound means an installed package or declared command does not exist.
 var ErrNotFound = errors.New("plugin or command not found")
 
+// ErrEnabled rejects removal while the record still wants to run: the caller must stop the
+// plugin first so no live process keeps executing a package that is being deleted.
+var ErrEnabled = errors.New("plugin is still enabled; disable it before removal")
+
 // ErrBusy means the bounded invocation budget is exhausted.
 var ErrBusy = errors.New("plugin invocation capacity exhausted")
 
@@ -181,3 +290,8 @@ var ErrClosed = errors.New("plugin manager is closed")
 
 // ErrDigestMismatch rejects changed packages after inspection.
 var ErrDigestMismatch = errors.New("plugin package digest mismatch")
+
+// ErrHostTooOld rejects a package whose declared minimum host version this build
+// does not satisfy. Installing it anyway leaves a record the runtime can only
+// quarantine: the user gets a plugin that never runs and has to remove it again.
+var ErrHostTooOld = errors.New("plugin requires a newer host version")

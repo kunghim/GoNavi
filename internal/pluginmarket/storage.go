@@ -12,6 +12,7 @@ import (
 )
 
 type diskState struct {
+	Sources  []SourceConfig             `json:"sources"`
 	Version  int                        `json:"version"`
 	BaseURL  string                     `json:"baseUrl"`
 	Installs map[string]installedSource `json:"installs"`
@@ -96,7 +97,7 @@ func atomicJSON(path string, value any, limit int) error {
 	if err = file.Close(); err != nil {
 		return fmt.Errorf("close marketplace state: %w", err)
 	}
-	if err = os.Rename(name, path); err != nil {
+	if err = replaceFileAtomic(name, path); err != nil {
 		return fmt.Errorf("replace marketplace state: %w", err)
 	}
 	return nil

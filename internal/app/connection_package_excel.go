@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	runtime "GoNavi-Wails/internal/desktop"
 	"github.com/xuri/excelize/v2"
 
 	"GoNavi-Wails/internal/connection"
@@ -64,14 +64,14 @@ var connectionExcelColumns = []connectionExcelColumnSpec{
 }
 
 var connectionExcelTypeValues = []string{
-	"mysql", "mariadb", "diros", "starrocks", "sphinx", "clickhouse", "trino",
+	"mysql", "mariadb", "diros", "starrocks", "sphinx", "clickhouse", "trino", "hive",
 	"postgres", "sqlserver", "iris", "cache", "sqlite", "duckdb", "oracle",
 	"oceanbase", "dameng", "kingbase", "highgo", "vastbase", "opengauss", "gaussdb", "goldendb",
 	"mongodb", "redis", "elasticsearch",
 	"chroma", "qdrant", "milvus",
 	"tdengine", "iotdb",
 	"rocketmq", "mqtt", "kafka", "rabbitmq", "pulsar",
-	"nacos", "jvm", "custom",
+	"nacos", "jvm", "custom", "xxljob",
 }
 
 var connectionExcelExportColumns []string
@@ -510,6 +510,7 @@ func (a *App) ImportConnectionsExcelFileBase64(base64Content string) connection.
 	if err != nil {
 		return connection.QueryResult{Success: false, Message: localizedExcelImportError(a.appText, err)}
 	}
+	a.notifySavedConnectionsChanged()
 	return connection.QueryResult{Success: true, Data: result}
 }
 

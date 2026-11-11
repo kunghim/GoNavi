@@ -191,11 +191,16 @@ export const QueryEditorEditorPane = ({
     onRunAll={() => void handleElasticsearchRun(true)}
     onCancel={handleCancel}
     onQuickSave={handleQuickSave}
+    quickSaveTitle={tab.queryMode === 'object-create'
+      ? translate('query_editor.action.save_to_database')
+      : undefined}
     onFindInEditor={handleOpenEditorFind}
     onToggleWordWrap={() => setQueryOptions({ wordWrap: !wordWrapEnabled })}
     onFormat={handleFormat}
     onTriggerSqlAiCompletion={() => triggerAiInlineCompletionRef.current?.()}
     onToggleResultPanelVisibility={toggleResultPanelVisibility}
+    showSqlExecutionLog={queryOptions?.showSqlExecutionLog !== false}
+    onToggleSqlExecutionLog={() => setQueryOptions({ showSqlExecutionLog: queryOptions?.showSqlExecutionLog === false })}
     onAIAction={handleAIAction}
     showViewDataVerify={
       isObjectEditQueryTab
@@ -223,6 +228,7 @@ export const QueryEditorEditorPane = ({
   <div
     ref={editorStageRef}
     className="gn-v2-query-monaco-stage gn-query-monaco-stage"
+    data-file-drop-target="true"
     style={editorFullscreen.stageStyle}
   >
     <div
@@ -239,7 +245,7 @@ export const QueryEditorEditorPane = ({
         onChange={(val) => {
             const nextValue = val || '';
             syncQueryDraft(nextValue);
-            paramsState.requestAnalysis();
+            paramsState.requestAnalysis(nextValue);
         }}
         beforeMount={handleEditorBeforeMount}
         onMount={handleEditorDidMount}

@@ -31,6 +31,15 @@ export interface BuildAlterTablePreviewInput {
   tableName: string;
   originalColumns: EditableColumnSnapshot[];
   columns: EditableColumnSnapshot[];
+  /**
+   * 表级默认字符集/排序规则。只有 MySQL 系支持原地修改，且改动会重写整表，
+   * 因此仅在显式给出且与当前值不同时才生成 CONVERT TO。
+   */
+  charset?: string;
+  collation?: string;
+  /** 表当前生效的字符集/排序规则，用于判断是否真的变了。 */
+  originalCharset?: string;
+  originalCollation?: string;
   translate?: SchemaSqlTranslator;
 }
 
@@ -193,7 +202,14 @@ const isKnownDefaultExpression = (trimmed: string, dbType: string): boolean => {
   if (/^-?\d+(\.\d+)?$/.test(trimmed)) return true;
   if (/^(true|false|null)$/i.test(trimmed)) return true;
   if (/^(current_timestamp|current_date|current_time|localtimestamp|sysdate|systimestamp)(?:\s*\(\s*\d+\s*\))?$/i.test(trimmed)) return true;
-  if (/^(now|uuid|newid|sysdatetime)\s*\(\s*\)$/i.test(trimmed)) return true;
+  // 任意函数调用都按表达式处理：SYS_GUID()、EMPTY_CLOB()、gen_random_uuid()、
+  // datetime('now')、JSON_OBJECT() 等下拉项都带括号，不能再被当成字符串字面量加引号。
+  if (/^[A-Za-z_][A-Za-z0-9_.$]*\s*\([\s\S]*\)$/.test(trimmed)) return true;
+  // Oracle 序列引用：seq_name.NEXTVAL / seq_name.CURRVAL。
+  if (/^[A-Za-z_][A-Za-z0-9_$]*(?:\.[A-Za-z_][A-Za-z0-9_$]*)*$/.test(trimmed)
+    && /(?:^|\.)n(?:ext|curr)val$/i.test(trimmed)) return true;
+  // 无括号的 SQL 标准函数。
+  if (/^(current_user|session_user|current_schema|current_role|system_user|user)$/i.test(trimmed)) return true;
   if (dbType === 'mysql' && /^\([\s\S]+\)$/.test(trimmed)) return true;
   if (/^nextval\s*\(/i.test(trimmed) || /::/.test(trimmed)) return true;
   return false;

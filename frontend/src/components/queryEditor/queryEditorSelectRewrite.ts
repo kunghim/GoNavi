@@ -6,9 +6,11 @@ import {
     QUERY_LOCATOR_ALIAS_PREFIX,
 } from './queryEditorResultMessages';
 import { maskQueryEditorSqlLiteralsAndComments } from './queryEditorSqlScan';
+import { supportsSqlHashLineComment } from '../../utils/sqlStatementSelection';
+import { isQueryResultBareValueKeyword } from '../../utils/queryResultValueKeywords';
 import { QUERY_EDITOR_SQL_IDENTIFIER_PATH_PATTERN } from './queryEditorIdentifierPaths';
 
-export const splitTopLevelComma = (text: string): string[] => {
+export const splitTopLevelComma = (text: string, dbType = ''): string[] => {
     const parts: string[] = [];
     let current = '';
     let parenDepth = 0;
@@ -89,7 +91,7 @@ export const splitTopLevelComma = (text: string): string[] => {
                 inLineComment = true;
                 continue;
             }
-            if (ch === '#' && next !== '>' && next !== '-') {
+            if (ch === '#' && supportsSqlHashLineComment(dbType) && next !== '>' && next !== '-') {
                 current += ch;
                 inLineComment = true;
                 continue;
@@ -109,7 +111,7 @@ export const splitTopLevelComma = (text: string): string[] => {
     return parts;
 };
 
-export const SIMPLE_IDENTIFIER_PATH_RE = /^(?:[`"\[]?[A-Za-z_][\w$]*[`"\]]?\s*\.\s*){0,2}[`"\[]?[A-Za-z_][\w$]*[`"\]]?$/;
+export const SIMPLE_IDENTIFIER_PATH_RE = /^(?:[`"\[]?[A-Za-z_][\w$#]*[`"\]]?\s*\.\s*){0,2}[`"\[]?[A-Za-z_][\w$#]*[`"\]]?$/;
 export const QUERY_ALIAS_RESERVED = new Set([
     'where', 'group', 'order', 'having', 'limit', 'fetch', 'offset', 'join', 'left', 'right', 'inner', 'outer', 'on', 'union',
     'for', 'connect', 'start', 'window', 'sample', 'pivot', 'unpivot', 'qualify', 'model',
@@ -126,7 +128,7 @@ export type SelectItemInfo = {
     sourceName?: string;
 };
 
-export const resolveSelectItemInfo = (item: string): SelectItemInfo | 'all' | undefined => {
+export const resolveSelectItemInfo = (item: string, dbType = ''): SelectItemInfo | 'all' | undefined => {
     const text = String(item || '').trim();
     if (!text) return undefined;
     if (text === '*' || /\.\s*\*$/.test(text)) return 'all';
@@ -149,23 +151,23 @@ export const resolveSelectItemInfo = (item: string): SelectItemInfo | 'all' | un
     }
 
     if (!alias && !SIMPLE_IDENTIFIER_PATH_RE.test(expr)) return undefined;
-    const sourceName = SIMPLE_IDENTIFIER_PATH_RE.test(expr) ? getLastIdentifierPart(expr) : '';
+    const sourceName = SIMPLE_IDENTIFIER_PATH_RE.test(expr) && !isQueryResultBareValueKeyword(expr, dbType) ? getLastIdentifierPart(expr) : '';
     const resultName = alias || sourceName;
     return resultName ? { expression: expr, resultName, sourceName: sourceName || undefined } : undefined;
 };
 
-export const resolveSimpleSelectItemColumn = (item: string): { resultName: string; sourceName: string } | 'all' | undefined => {
-    const resolved = resolveSelectItemInfo(item);
+export const resolveSimpleSelectItemColumn = (item: string, dbType = ''): { resultName: string; sourceName: string } | 'all' | undefined => {
+    const resolved = resolveSelectItemInfo(item, dbType);
     if (!resolved || resolved === 'all' || !resolved.sourceName) return resolved === 'all' ? 'all' : undefined;
     return { resultName: resolved.resultName, sourceName: resolved.sourceName };
 };
 
-export const parseSimpleSelectInfo = (sql: string): SimpleSelectInfo | undefined => {
+export const parseSimpleSelectInfo = (sql: string, dbType = ''): SimpleSelectInfo | undefined => {
     const text = String(sql || '');
     // Keep offsets identical to the original SQL while hiding comments and
     // string literals from the SELECT/FROM structure matcher. A comment before
     // SELECT must not make an otherwise writable result look read-only.
-    const structuralText = maskQueryEditorSqlLiteralsAndComments(text);
+    const structuralText = maskQueryEditorSqlLiteralsAndComments(text, dbType);
     const match = structuralText.match(/^\s*SELECT\s+([\s\S]+?)\s+FROM\s+/i);
     if (!match) return undefined;
     const selectList = match[1].trim();
@@ -174,9 +176,9 @@ export const parseSimpleSelectInfo = (sql: string): SimpleSelectInfo | undefined
     const writableColumns: Record<string, string> = {};
     let selectsAll = false;
     let selectsBareAll = false;
-    for (const item of splitTopLevelComma(selectList)) {
+    for (const item of splitTopLevelComma(selectList, dbType)) {
         const trimmedItem = String(item || '').trim();
-        const resolved = resolveSimpleSelectItemColumn(item);
+        const resolved = resolveSimpleSelectItemColumn(item, dbType);
         if (!resolved) continue;
         if (resolved === 'all') {
             selectsAll = true;
@@ -190,10 +192,10 @@ export const parseSimpleSelectInfo = (sql: string): SimpleSelectInfo | undefined
     return { selectsAll, selectsBareAll, writableColumns };
 };
 
-export const appendQuerySelectExpressions = (sql: string, expressions: string[]): string => {
+export const appendQuerySelectExpressions = (sql: string, expressions: string[], dbType = ''): string => {
     if (expressions.length === 0) return sql;
     const text = String(sql || '');
-    const structuralText = maskQueryEditorSqlLiteralsAndComments(text);
+    const structuralText = maskQueryEditorSqlLiteralsAndComments(text, dbType);
     const match = structuralText.match(/^(\s*SELECT\s+)([\s\S]+?)(\s+FROM\s+[\s\S]*)$/i);
     if (!match) return text;
     const prefixLength = match[1].length;
@@ -209,11 +211,11 @@ export const appendQuerySelectExpressions = (sql: string, expressions: string[])
 
 export const QUERY_LOCATOR_SOURCE_ALIAS = 'gonavi_query_source';
 
-export const rewriteOracleSelectAllWithExpressions = (sql: string, expressions: string[]): string | undefined => {
+export const rewriteOracleSelectAllWithExpressions = (sql: string, expressions: string[], dbType = ''): string | undefined => {
     if (expressions.length === 0) return undefined;
 
     const text = String(sql || '');
-    const structuralText = maskQueryEditorSqlLiteralsAndComments(text);
+    const structuralText = maskQueryEditorSqlLiteralsAndComments(text, dbType);
     const match = structuralText.match(/^(\s*SELECT\s+)([\s\S]+?)(\s+FROM\s+)([\s\S]*)$/i);
     if (!match) return undefined;
 
@@ -222,12 +224,12 @@ export const rewriteOracleSelectAllWithExpressions = (sql: string, expressions: 
     const fromSeparatorStart = prefix.length + match[2].length;
     const fromSeparator = text.slice(fromSeparatorStart, fromSeparatorStart + match[3].length);
     const fromTailStart = fromSeparatorStart + match[3].length;
-    const selectItems = splitTopLevelComma(selectList);
+    const selectItems = splitTopLevelComma(selectList, dbType);
     if (selectItems.length === 0) return undefined;
 
     let selectAllFound = false;
     for (const item of selectItems) {
-        if (maskQueryEditorSqlLiteralsAndComments(item).trim() === '*') {
+        if (maskQueryEditorSqlLiteralsAndComments(item, dbType).trim() === '*') {
             selectAllFound = true;
             break;
         }
@@ -297,7 +299,7 @@ export const rewriteOracleSelectAllWithExpressions = (sql: string, expressions: 
     return `${text.slice(0, prefix.length)}${finalSelectItems.join(', ')}${fromSeparator}${text.slice(fromTailStart, tableStart)}${tableText}${aliasClause}${parsedAlias.remainder}`;
 };
 
-export const rewriteOracleDuplicateSelectColumns = (sql: string, tableColumnNames: string[]): string | undefined => {
+export const rewriteOracleDuplicateSelectColumns = (sql: string, tableColumnNames: string[], dbType = ''): string | undefined => {
     const metadataNames = new Set(
         tableColumnNames
             .map((name) => String(name || '').trim().toLowerCase())
@@ -306,19 +308,19 @@ export const rewriteOracleDuplicateSelectColumns = (sql: string, tableColumnName
     if (metadataNames.size === 0) return undefined;
 
     const text = String(sql || '');
-    const structuralText = maskQueryEditorSqlLiteralsAndComments(text);
+    const structuralText = maskQueryEditorSqlLiteralsAndComments(text, dbType);
     const match = structuralText.match(/^(\s*SELECT\s+)([\s\S]+?)(\s+FROM\s+[\s\S]*)$/i);
     if (!match) return undefined;
 
     const prefix = match[1];
     const selectList = text.slice(prefix.length, prefix.length + match[2].length).trim();
     const rest = text.slice(prefix.length + match[2].length);
-    const selectItems = splitTopLevelComma(selectList);
+    const selectItems = splitTopLevelComma(selectList, dbType);
     if (selectItems.length === 0) return undefined;
 
     const parsedItems = selectItems.map((item) => ({
         raw: String(item || '').trimEnd(),
-        info: resolveSelectItemInfo(item),
+        info: resolveSelectItemInfo(item, dbType),
     }));
     const hasWildcard = parsedItems.some(({ info }) => info === 'all');
     if (!hasWildcard) return undefined;

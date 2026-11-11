@@ -10,6 +10,10 @@ import type {
   DataSyncScheduleSummary,
   DataSyncTaskDefinition,
   DataSyncCdcSourceStatus,
+  DataSyncColumnAttributeDiff,
+  DataSyncColumnDefinitionView,
+  DataSyncCompareDiffStats,
+  DataSyncIndexStructureDiff,
 } from './model';
 import {
   isRecord,
@@ -26,7 +30,12 @@ import {
   boolean,
   optionalMetadataNumber,
 } from './wailsDtoPrimitives';
-import { COLUMN_STRUCTURE_DIFF_KINDS, COMPARE_MODES } from './wailsDtoJobDecode';
+import {
+  ATTRIBUTE_DIFF_KINDS,
+  COLUMN_STRUCTURE_DIFF_KINDS,
+  COMPARE_MODES,
+  INDEX_STRUCTURE_DIFF_KINDS,
+} from './wailsDtoJobDecode';
 
 const RUN_STATUSES = [
   'queued',
@@ -175,6 +184,108 @@ export const decodeErrorRow = (value: unknown): DataSyncErrorRow => {
   };
 };
 
+const decodeIndexDiffs = (
+  value: unknown,
+  path: string,
+): DataSyncIndexStructureDiff[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  return value
+    .map((entry, diffIndex) => {
+      const diffPath = `${path}[${diffIndex}]`;
+      const diff = record(entry, diffPath);
+      const rawKind = optionalString(diff.kind, `${diffPath}.kind`);
+      // 同列差异一样丢弃未知 kind：新后端加类型不应让旧界面整体解码失败。
+      const kind = INDEX_STRUCTURE_DIFF_KINDS.find((candidate) => candidate === rawKind);
+      if (!kind) return null;
+      return {
+        name: string(diff.name, `${diffPath}.name`),
+        kind,
+        source: optionalString(diff.source, `${diffPath}.source`) || undefined,
+        target: optionalString(diff.target, `${diffPath}.target`) || undefined,
+        columns: Array.isArray(diff.columns)
+          ? diff.columns.map((column, columnIndex) =>
+            string(column, `${diffPath}.columns[${columnIndex}]`))
+          : undefined,
+        unique: diff.unique === undefined
+          ? undefined
+          : boolean(diff.unique, `${diffPath}.unique`),
+        indexType: optionalString(diff.indexType, `${diffPath}.indexType`) || undefined,
+      };
+    })
+    .filter((diff): diff is NonNullable<typeof diff> => diff !== null);
+};
+
+// 结构化列定义是可选的：旧后端不下发时保持 undefined，界面据此退回纯文本展示，
+// 而不是凭空造一个空定义（那会生成丢默认值的 DDL）。
+const decodeColumnDefinitionView = (
+  value: unknown,
+  path: string,
+): DataSyncColumnDefinitionView | undefined => {
+  if (!isRecord(value)) return undefined;
+  const view = record(value, path);
+  return {
+    name: string(view.name, `${path}.name`),
+    type: string(view.type, `${path}.type`),
+    nullable: boolean(view.nullable, `${path}.nullable`),
+    hasDefault: boolean(view.hasDefault, `${path}.hasDefault`),
+    default: optionalString(view.default, `${path}.default`) || undefined,
+    extra: optionalString(view.extra, `${path}.extra`) || undefined,
+    comment: optionalString(view.comment, `${path}.comment`) || undefined,
+  };
+};
+
+const decodeAttributeDiffs = (
+  value: unknown,
+  path: string,
+): DataSyncColumnAttributeDiff[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  return value
+    .map((entry, diffIndex) => {
+      const diffPath = `${path}[${diffIndex}]`;
+      const diff = record(entry, diffPath);
+      const rawKind = optionalString(diff.kind, `${diffPath}.kind`);
+      const kind = ATTRIBUTE_DIFF_KINDS.find((candidate) => candidate === rawKind);
+      if (!kind) return null;
+      return {
+        column: string(diff.column, `${diffPath}.column`),
+        kind,
+        source: optionalString(diff.source, `${diffPath}.source`) || undefined,
+        target: optionalString(diff.target, `${diffPath}.target`) || undefined,
+      };
+    })
+    .filter((diff): diff is NonNullable<typeof diff> => diff !== null);
+};
+
+const decodeDiffStats = (
+  value: unknown,
+  path: string,
+): DataSyncCompareDiffStats | undefined => {
+  if (!isRecord(value)) return undefined;
+  const stats = record(value, path);
+  const columns = isRecord(stats.columns) ? record(stats.columns, `${path}.columns`) : {};
+  const indexes = isRecord(stats.indexes) ? record(stats.indexes, `${path}.indexes`) : {};
+  return {
+    columns: {
+      missingInTarget: number(columns.missingInTarget ?? 0, `${path}.columns.missingInTarget`),
+      extraInTarget: number(columns.extraInTarget ?? 0, `${path}.columns.extraInTarget`),
+      typeChanged: number(columns.typeChanged ?? 0, `${path}.columns.typeChanged`),
+      nullableChanged: number(columns.nullableChanged ?? 0, `${path}.columns.nullableChanged`),
+      renamed: number(columns.renamed ?? 0, `${path}.columns.renamed`),
+      capacityDegraded: number(
+        columns.capacityDegraded ?? 0,
+        `${path}.columns.capacityDegraded`,
+      ),
+    },
+    indexes: {
+      missingInTarget: number(indexes.missingInTarget ?? 0, `${path}.indexes.missingInTarget`),
+      extraInTarget: number(indexes.extraInTarget ?? 0, `${path}.indexes.extraInTarget`),
+      changed: number(indexes.changed ?? 0, `${path}.indexes.changed`),
+      renamed: number(indexes.renamed ?? 0, `${path}.indexes.renamed`),
+    },
+    targetTableMissing: stats.targetTableMissing === true ? true : undefined,
+  };
+};
+
 export const decodeCompareResult = (
   value: unknown,
   path: string,
@@ -234,12 +345,26 @@ export const decodeCompareResult = (
                       optionalString(diff.source, `${diffPath}.source`) || undefined,
                     target:
                       optionalString(diff.target, `${diffPath}.target`) || undefined,
+                    sourceDefinition: decodeColumnDefinitionView(
+                      diff.sourceDefinition,
+                      `${diffPath}.sourceDefinition`,
+                    ),
+                    targetDefinition: decodeColumnDefinitionView(
+                      diff.targetDefinition,
+                      `${diffPath}.targetDefinition`,
+                    ),
                   };
                 })
                 .filter(
                   (diff): diff is NonNullable<typeof diff> => diff !== null,
                 )
             : undefined,
+          indexDiffs: decodeIndexDiffs(summary.indexDiffs, `${path}.tables[${index}].indexDiffs`),
+          attributeDiffs: decodeAttributeDiffs(
+            summary.attributeDiffs,
+            `${path}.tables[${index}].attributeDiffs`,
+          ),
+          diffStats: decodeDiffStats(summary.diffStats, `${path}.tables[${index}].diffStats`),
           hasSchema: summary.hasSchema === undefined
             ? undefined
             : boolean(summary.hasSchema, `${path}.tables[${index}].hasSchema`),

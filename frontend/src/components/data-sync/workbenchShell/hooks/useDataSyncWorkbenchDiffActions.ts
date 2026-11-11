@@ -8,6 +8,10 @@ import {
 } from '../../compareRepairSql';
 import { createSyncTaskFromCompare } from '../../dataSyncCompareTaskFactory';
 import { setDataSyncHandoff } from '../../../../utils/dataSyncHandoff';
+import type { DataSyncEndpointRef, DataSyncTableDiffSummary } from '../../model';
+import { ClipboardSetText } from '../../../../../wailsjs/runtime/runtime';
+import { useCompareHtmlExport } from '../../useCompareHtmlExport';
+import type { CompareHtmlExportOutcome } from '../../dataSyncRunHistoryTypes';
 import type { DataSyncWorkbenchTaskLifecycleApi } from './useDataSyncWorkbenchTaskLifecycle';
 import type { DataSyncWorkbenchStateApi } from './useDataSyncWorkbenchState';
 import type { DataSyncWorkbenchShellProps } from '../../DataSyncWorkbenchShell';
@@ -36,12 +40,20 @@ export interface UseDataSyncWorkbenchDiffActionsInput {
   setOperationError: DataSyncWorkbenchStateApi['setOperationError'];
 }
 
+// 连接名 + 库（+ schema）拼成报告头里的端点标识。
+const endpointLabel = (endpoint: DataSyncEndpointRef): string => {
+  const connection = endpoint.connectionName || endpoint.connectionId;
+  const database = [endpoint.database, endpoint.schema].filter(Boolean).join('.');
+  return database ? `${connection} · ${database}` : connection;
+};
+
 export const useDataSyncWorkbenchDiffActions = ({
   actionEnabled, t, selectedTask, dirtyTaskIds, selectedPreflight, preflightStale,
   currentPreflightRequiresApproval, capability, selectedApproval, activeStage, saving, preflighting,
   operationBusy, operationError, workbenchFamily, onOpenQueryTab, compareResult, onAskAi,
   onOpenSyncWorkbench, gatewayRef, setOperationError,
 }: UseDataSyncWorkbenchDiffActionsInput) => {
+  const { exportHtml } = useCompareHtmlExport(t);
   const runActionTitle = actionEnabled
     ? t('workbench.start')
     : !selectedTask
@@ -158,6 +170,67 @@ export const useDataSyncWorkbenchDiffActions = ({
       }),
     );
   };
+  const handleExportCompareHtml = async (): Promise<CompareHtmlExportOutcome> => {
+    if (!selectedTask || !compareResult) return { kind: 'cancelled' };
+    // 报告里的两端标识优先用连接名，退化为 ID 时不至于出现空白表头。
+    const outcome = await exportHtml({
+      result: compareResult,
+      compareMode: compareResult.content || selectedTask.compareMode,
+      meta: {
+        taskName: selectedTask.name || t('task_kind.compare'),
+        // 只写连接名分不清比的是哪个库：同一条连接上可能有多个库。
+        sourceLabel: endpointLabel(selectedTask.source),
+        targetLabel: endpointLabel(selectedTask.target),
+      },
+      save: async (fileName, content) => {
+        const saved = await gatewayRef.current!.exportTextFile(fileName, content, 'html');
+        // 导出后直接打开：用户按下按钮的意图就是看报告，不该再让他自己
+        // 去文件管理器里找。打开失败不影响导出结果本身。
+        if (saved) {
+          void gatewayRef.current?.openExportedFile(saved).catch(() => undefined);
+        }
+        return saved;
+      },
+    });
+    if (outcome.kind === 'failed') setOperationError(outcome.error);
+    return outcome;
+  };
+  // 迁移脚本：按目标端方言渲染调用方可见的那批表。
+  const renderMigrationSql = (tables: DataSyncTableDiffSummary[]): string => {
+    if (!selectedTask || tables.length === 0) return '';
+    return buildCompareRepairSQL(
+      { success: true, message: '', content: compareResult?.content, tables },
+      { dialect: selectedTask.target.type, schema: selectedTask.target.schema },
+    );
+  };
+
+  // 复制整组：只渲染调用方传进来的表（即界面上可见的那一批），
+  // 搜索/筛选后的结果才是用户想分批执行的对象。
+  // 复制统一走一个通道：先试 Wails 剪贴板，失败退回浏览器剪贴板。
+  const copyCompareText = async (text: string): Promise<boolean> => {
+    if (!text) return false;
+    try {
+      if (await ClipboardSetText(text)) return true;
+    } catch {
+      // Wails 运行时不可用时退回浏览器剪贴板。
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const handleCopyCompareSql = async (
+    tables: DataSyncTableDiffSummary[],
+  ): Promise<string> => {
+    if (!selectedTask || tables.length === 0) return '';
+    const sql = buildCompareRepairSQL(
+      { success: true, message: '', content: compareResult?.content, tables },
+      { dialect: selectedTask.target.type, schema: selectedTask.target.schema },
+    );
+    return await copyCompareText(sql) ? sql : '';
+  };
   const handleSyncDiffs = async () => {
     if (!selectedTask || selectedTask.kind !== 'compare') return;
     const tables = (compareResult?.tables || [])
@@ -194,7 +267,7 @@ export const useDataSyncWorkbenchDiffActions = ({
     runActionTitle, saveApprovalReady, nextStage, previousStage, relevantBlockerStage,
     relevantBlocker, blockerInEarlierStage, preflightNeedsRefresh, compareStartEnabled, actionHint,
     actionHintTone, serviceUnavailableError, workbenchChrome, handleGenerateRepairSql,
-    handleAskAiAboutDiffs, handleSyncDiffs,
+    handleAskAiAboutDiffs, handleSyncDiffs, handleExportCompareHtml, handleCopyCompareSql, renderMigrationSql, copyCompareText,
   };
 };
 

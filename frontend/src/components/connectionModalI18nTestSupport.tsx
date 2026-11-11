@@ -53,6 +53,7 @@ export const backendApp = {
   RedisConnect: vi.fn(),
   NacosTestConnection: vi.fn(),
   NacosTestConnectionWithProgress: vi.fn(),
+  XxlJobConnect: vi.fn(),
   CancelConnectionTest: vi.fn(),
   RevealSavedConnectionPrimaryPassword: vi.fn(),
   SelectDatabaseFile: vi.fn(),
@@ -61,6 +62,12 @@ export const backendApp = {
   SelectSSHKnownHostsFile: vi.fn(),
   TestJVMConnection: vi.fn(),
   TrustSSHHostKeyForConnection: vi.fn(),
+  // 智能体类型在弹窗里挂载 AgentSetupPanel，挂载即调这些绑定。
+  SessionAgentListIntegrations: vi.fn(async () => ({ success: true, data: [] })),
+  SessionAgentDetect: vi.fn(async () => ({ success: true, data: { kind: "", status: "not_installed", details: [] } })),
+  SessionAgentAdd: vi.fn(async () => ({ success: true })),
+  SessionAgentRemove: vi.fn(async () => ({ success: true })),
+  SessionAgentUpdate: vi.fn(async () => ({ success: true })),
 };
 
 export const setMockFormValues = (value: typeof mockFormValues) => {
@@ -237,6 +244,9 @@ export const mockModule5 = () => {
     RightOutlined: Icon,
     SearchOutlined: Icon,
     PushpinOutlined: Icon,
+    ExclamationCircleFilled: Icon,
+    ReloadOutlined: Icon,
+    FolderOpenOutlined: Icon,
   };
 };
 
@@ -375,6 +385,7 @@ export const mockModule6 = () => {
     </div>
   );
   Form.useForm = () => [formApi];
+  Form.useFormInstance = () => formApi;
   Form.useWatch = (name: string) => {
     if (mockFormValues[name] !== undefined) {
       return mockFormValues[name];
@@ -442,6 +453,19 @@ export const mockModule6 = () => {
     Text: ({ children }: any) => <span>{children}</span>,
   };
 
+  // 失败详情弹窗用 Tabs 在「错误详情 / 运行日志」之间切换；测试里把
+  // 所有面板一次性渲染出来，断言不受当前激活页签影响。
+  const Tabs = ({ items = [] }: { items: { key: string; label: React.ReactNode; children: React.ReactNode }[] }) => (
+    <div>
+      {items.map((item) => (
+        <div key={item.key} data-tab-key={item.key}>
+          <div>{item.label}</div>
+          <div>{item.children}</div>
+        </div>
+      ))}
+    </div>
+  );
+
   return {
     Modal,
     Form,
@@ -453,7 +477,9 @@ export const mockModule6 = () => {
     Select,
     Radio,
     Alert,
+    Spin: ({ children }: any) => <div>{children}</div>,
     Card,
+    Tabs,
     Collapse: ({ items }: { items: { key: string; children: React.ReactNode }[] }) => <>{items.map((item) => <div key={item.key}>{item.children}</div>)}</>,
     Row,
     Col,

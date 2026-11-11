@@ -6,7 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
+
+	"GoNavi-Wails/internal/logger"
 )
 
 func (m *Manager) prepareOwnerState(ctx context.Context) error {
@@ -60,8 +63,10 @@ func (m *Manager) reconcile(ctx context.Context) {
 			continue
 		}
 		reason := dependencyReason(r, state.Records)
-		if r.Manifest.MinHostVersion != "" && (!validVersion(m.opts.HostVersion) || !versionAtLeast(m.opts.HostVersion, r.Manifest.MinHostVersion)) {
-			reason = "plugin requires a newer compatible host version"
+		// Same rule as installation: a package refused at install time must not be
+		// startable here, and a manifest rejected by this build stays blocked.
+		if hostReason := m.hostCompatibilityReason(r.Manifest); hostReason != "" {
+			reason = hostReason
 		}
 		if reason != "" {
 			if r.State != StateBlocked || r.LastError != reason {
@@ -135,7 +140,9 @@ func (m *Manager) runInstance(inst *instance) {
 	m.mu.Lock()
 	inst.ready = false
 	m.mu.Unlock()
-	if err != nil && inst.ctx.Err() == nil {
+	// ErrDisabled only means this instance was fenced (safe mode, disable, or a newer
+	// generation); quarantining would persist a fault onto that newer record.
+	if err != nil && inst.ctx.Err() == nil && !errors.Is(err, ErrDisabled) {
 		m.quarantine(inst, err)
 	}
 	if inst.process != nil {
@@ -172,7 +179,7 @@ func (m *Manager) activate(inst *instance) error {
 		if err = privateDirectory(dataRoot); err != nil {
 			return err
 		}
-		process, launchErr := launchProcess(r.Manifest, root, dataRoot)
+		process, launchErr := launchProcess(r.Manifest, root, dataRoot, m.opts.ProxyEnvironment)
 		if launchErr != nil {
 			return launchErr
 		}
@@ -224,6 +231,12 @@ func (m *Manager) activate(inst *instance) error {
 	m.notify()
 	return m.monitor(inst)
 }
+// heartbeatConfirmFactor widens the probe that runs after the miss budget is spent.
+// A short stall from system load, antivirus scanning or suspend/resume must not
+// persist a quarantine on a plugin that is still alive, while a wedged process
+// still fails the confirmation and keeps the fault bounded to a few seconds.
+const heartbeatConfirmFactor = 5
+
 func (m *Manager) monitor(inst *instance) error {
 	if inst.process == nil {
 		<-inst.ctx.Done()
@@ -232,6 +245,7 @@ func (m *Manager) monitor(inst *instance) error {
 	ticker := time.NewTicker(m.opts.HeartbeatInterval)
 	defer ticker.Stop()
 	misses := 0
+	var lastErr error
 	for {
 		select {
 		case <-inst.ctx.Done():
@@ -239,32 +253,96 @@ func (m *Manager) monitor(inst *instance) error {
 		case <-inst.process.failed:
 			return inst.process.failure()
 		case <-ticker.C:
-			ctx, cancel := context.WithTimeout(inst.ctx, m.opts.HeartbeatTimeout)
-			_, err := inst.process.call(ctx, "plugin.ping", struct{}{})
-			cancel()
+			err := probeHeartbeat(inst, m.opts.HeartbeatTimeout)
 			if err == nil {
 				misses = 0
+				lastErr = nil
 				continue
 			}
 			misses++
-			if misses >= m.opts.MissedHeartbeats {
-				return fmt.Errorf("plugin heartbeat budget exhausted")
+			lastErr = err
+			logger.Warnf("plugin %s: heartbeat miss %d/%d: %v", inst.record.Manifest.ID, misses, m.opts.MissedHeartbeats, err)
+			if misses < m.opts.MissedHeartbeats {
+				continue
 			}
+			// The miss budget alone cannot tell a transient stall from a wedged
+			// process. Confirm with one probe that allows the plugin much longer to
+			// answer before the fault is persisted; recovery resets the budget so a
+			// plugin that is merely slow under load is not quarantined.
+			confirmErr := probeHeartbeat(inst, m.opts.HeartbeatTimeout*heartbeatConfirmFactor)
+			if ctxErr := inst.ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
+			if confirmErr == nil {
+				logger.Warnf("plugin %s: heartbeat recovered after %d misses: %v", inst.record.Manifest.ID, misses, lastErr)
+				misses = 0
+				lastErr = nil
+				continue
+			}
+			lastErr = confirmErr
+			// The last ping error is the only evidence of why the budget ran out: a
+			// timeout, a saturated transport and a dying process all look identical
+			// once only the counter survives. Keep it in the chain and in the log.
+			logger.Warnf("plugin %s: heartbeat budget exhausted after %d misses: %v", inst.record.Manifest.ID, misses, lastErr)
+			return fmt.Errorf("plugin heartbeat budget exhausted: %w", lastErr)
 		}
 	}
+}
+
+func probeHeartbeat(inst *instance, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(inst.ctx, timeout)
+	defer cancel()
+	_, err := inst.process.call(ctx, "plugin.ping", struct{}{})
+	return err
 }
 func (m *Manager) quarantine(inst *instance, cause error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	message := cause.Error()
 	if len(message) > 1024 {
-		message = message[:1024]
+		// A byte slice can end inside a multi-byte rune; encoding/json would then expand the
+		// invalid bytes to U+FFFD, push LastError past the loadState limit and make the whole
+		// state file unreadable. Trim to a valid prefix before it is persisted.
+		message = strings.ToValidUTF8(message[:1024], "")
 	}
-	// Persist before cleanup: a crash during shutdown must not produce a boot loop.
-	if err := m.updateRecord(ctx, inst.record.Manifest.ID, inst.record.Generation, func(r *record) { r.Quarantined = true; r.State = StateFaulted; r.LastError = message; r.Generation++ }); err != nil && !errors.Is(err, ErrDisabled) {
-		// Failure to record quarantine is fail-closed for this owner's remaining lifetime.
-		m.failClosed()
+	// A quarantined record survives restarts and only the persisted message reaches the card,
+	// so the log has to carry the same cause or the fault becomes unreproducible later.
+	logger.Warnf("plugin %s: quarantined generation %d: %s", inst.record.Manifest.ID, inst.record.Generation, message)
+	// Persist before cleanup: a crash during shutdown must not produce a boot loop. A dropped
+	// quarantine is worse: the next reconcile restarts the plugin, the fault repeats, and the
+	// unguarded stop path finally parks the record in a bogus disabled state. updateRecord
+	// guards on the start generation, so when a concurrent write moved it, re-read and retry
+	// with the fresh generation while the record still wants to run.
+	for attempt := 0; attempt < 5; attempt++ {
+		state, err := m.loadState()
+		if err != nil {
+			m.failClosed()
+			return
+		}
+		current, ok := state.Records[inst.record.Manifest.ID]
+		if !ok || current.Removing || !current.DesiredEnabled {
+			return
+		}
+		err = m.updateRecord(ctx, inst.record.Manifest.ID, current.Generation, func(r *record) {
+			r.Quarantined = true
+			r.State = StateFaulted
+			r.LastError = message
+			r.Generation++
+		})
+		if err == nil {
+			return
+		}
+		if !errors.Is(err, ErrDisabled) {
+			m.failClosed()
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(20 * time.Millisecond):
+		}
 	}
+	m.failClosed()
 }
 
 func (m *Manager) failClosed() {

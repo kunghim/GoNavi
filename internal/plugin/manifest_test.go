@@ -18,11 +18,15 @@ func TestManifestValidation(t *testing.T) {
 		{"unsupported api", func(m *Manifest) { m.APIVersion = 2 }},
 		{"invalid id", func(m *Manifest) { m.ID = "../escape" }},
 		{"missing semver patch", func(m *Manifest) { m.Version = "1.0" }},
+		{"version too long", func(m *Manifest) { m.Version = "1.0.0-" + strings.Repeat("a", 123) }},
 		{"unknown runtime", func(m *Manifest) { m.Backend = &Backend{Default: &Entry{Executable: "x", Runtime: "shell"}} }},
 		{"shell path", func(m *Manifest) { m.Backend = &Backend{Default: &Entry{Executable: "../x"}} }},
 		{"duplicate permission", func(m *Manifest) { m.Permissions = []string{"db.read", "db.read"} }},
 		{"self dependency", func(m *Manifest) { m.Requires = []Dependency{{ID: m.ID}} }},
-		{"unsafe window", func(m *Manifest) { m.Window = &Window{Entry: "C:/test"} }},
+		{"unsafe window", func(m *Manifest) {
+			m.Permissions = []string{CustomPanelPermission}
+			m.Window = &Window{Entry: "C:/test"}
+		}},
 		{"undeclared command", func(m *Manifest) {
 			m.Contributes.Panels = []Panel{{ID: "main", Title: "Panel", Body: UINode{Type: "button", Command: "missing"}}}
 		}},
@@ -31,6 +35,27 @@ func TestManifestValidation(t *testing.T) {
 		}},
 		{"oversized text", func(m *Manifest) {
 			m.Contributes.Panels = []Panel{{ID: "main", Title: "Panel", Body: UINode{Type: "text", Text: strings.Repeat("x", 20000)}}}
+		}},
+		{"connection action without window", func(m *Manifest) {
+			m.Contributes.ConnectionActions = []ConnectionAction{{ID: "open", Title: "Open", ConnectionTypes: []string{"mongodb"}, Target: LaunchTarget{Type: "window"}}}
+		}},
+		{"connection action invalid type", func(m *Manifest) {
+			m.Permissions = []string{CustomPanelPermission}
+			m.Window = &Window{Entry: "index.html"}
+			m.Contributes.ConnectionActions = []ConnectionAction{{ID: "open", Title: "Open", ConnectionTypes: []string{"Mongo DB!"}, Target: LaunchTarget{Type: "window"}}}
+		}},
+		{"connection action invalid scope", func(m *Manifest) {
+			m.Permissions = []string{CustomPanelPermission}
+			m.Window = &Window{Entry: "index.html"}
+			m.Contributes.ConnectionActions = []ConnectionAction{{ID: "open", Title: "Open", ConnectionTypes: []string{"mongodb"}, Scopes: []string{"schema"}, Target: LaunchTarget{Type: "window"}}}
+		}},
+		{"duplicate connection action", func(m *Manifest) {
+			m.Permissions = []string{CustomPanelPermission}
+			m.Window = &Window{Entry: "index.html"}
+			m.Contributes.ConnectionActions = []ConnectionAction{
+				{ID: "open", Title: "Open", ConnectionTypes: []string{"mongodb"}, Target: LaunchTarget{Type: "window"}},
+				{ID: "open", Title: "Open again", ConnectionTypes: []string{"mongodb"}, Target: LaunchTarget{Type: "window"}},
+			}
 		}},
 	}
 	for _, test := range cases {
@@ -58,6 +83,16 @@ func TestManifestValidation(t *testing.T) {
 	}
 	if _, err = ParseManifest([]byte(strings.Replace(string(encoded), `"name":`, `"official":true,"name":`, 1))); err == nil {
 		t.Fatal("unknown field accepted")
+	}
+	withAction := basicManifest("test.fixture")
+	withAction.Permissions = []string{CustomPanelPermission}
+	withAction.Window = &Window{Entry: "index.html"}
+	withAction.Contributes.ConnectionActions = []ConnectionAction{{
+		ID: "open", Title: "MongoShell", ConnectionTypes: []string{"mongodb"},
+		Scopes: []string{"connection", "database", "collection"}, Target: LaunchTarget{Type: "window"},
+	}}
+	if err := ValidateManifest(withAction); err != nil {
+		t.Fatal(err)
 	}
 }
 func TestSafePackagePaths(t *testing.T) {

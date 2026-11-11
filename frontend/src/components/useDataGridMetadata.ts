@@ -28,6 +28,9 @@ export const useDataGridMetadata = (ctx: UseDataGridMetadataContext) => {
     initialUniqueKeyGroups,
   } = ctx;
 
+  // 执行计划提供的空映射是结果级显示决定；只有 undefined 才允许回退加载表元数据。
+  const hasAuthoritativeEmptyMap = exportScope === 'queryResult' && initialColumnMetaMap != null
+    && typeof initialColumnMetaMap === 'object' && !Array.isArray(initialColumnMetaMap) && Object.keys(initialColumnMetaMap).length === 0;
   const hasInitialColumnMeta = hasUsableColumnMeta(initialColumnMetaMap || {});
   const hasInitialUniqueKeyGroups = Array.isArray(initialUniqueKeyGroups);
 
@@ -73,7 +76,7 @@ export const useDataGridMetadata = (ctx: UseDataGridMetadataContext) => {
     const cacheKey = metadataCacheKey;
     columnMetaSeqRef.current += 1;
     if (hasInitialColumnMeta) {
-      columnMetaCacheRef.current[cacheKey] = initialColumnMetaMap;
+      if (exportScope === 'table') columnMetaCacheRef.current[cacheKey] = initialColumnMetaMap;
     } else {
       setColumnMetaMap(columnMetaCacheRef.current[cacheKey] || {});
     }
@@ -91,7 +94,7 @@ export const useDataGridMetadata = (ctx: UseDataGridMetadataContext) => {
   useEffect(() => {
     const normalizedTableName = String(tableName || '').trim();
     const normalizedDbName = String(dbName || '').trim();
-    if (!connectionId || !normalizedTableName || deferKingbaseMetadata || hasInitialColumnMeta) return;
+    if (!connectionId || !normalizedTableName || deferKingbaseMetadata || hasInitialColumnMeta || hasAuthoritativeEmptyMap) return;
 
     const cacheKey = metadataCacheKey;
     if (columnMetaCacheRef.current[cacheKey]) return;
@@ -165,6 +168,7 @@ export const useDataGridMetadata = (ctx: UseDataGridMetadataContext) => {
     metadataCacheKey,
     metadataConnectionParams,
     hasInitialColumnMeta,
+    hasAuthoritativeEmptyMap,
   ]);
 
   useEffect(() => {
@@ -309,18 +313,30 @@ export const useDataGridMetadata = (ctx: UseDataGridMetadataContext) => {
     hasInitialUniqueKeyGroups,
   ]);
 
-  const resolvedColumnMetaMap = hasInitialColumnMeta ? initialColumnMetaMap : columnMetaMap;
+  const resolvedColumnMetaMap = hasInitialColumnMeta || hasAuthoritativeEmptyMap ? initialColumnMetaMap : columnMetaMap;
   const resolvedUniqueKeyGroups = hasInitialUniqueKeyGroups ? initialUniqueKeyGroups : uniqueKeyGroups;
+
+  // 同一小写名对应多个结果列时（如 "Customer" 与 "customer"），大小写回退会把注释串到另一列，
+  // 所以只在「该小写名唯一对应一个结果列」时才建立回退索引；精确匹配置不受影响。
+  const ambiguousLowerNameCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    ((visibleColumnNames || []) as unknown[]).forEach((name) => {
+      const lowerName = String(name || '').toLowerCase();
+      if (lowerName) counts.set(lowerName, (counts.get(lowerName) || 0) + 1);
+    });
+    return counts;
+  }, [visibleColumnNames]);
 
   const columnMetaMapByLowerName = useMemo(() => {
     const next: Record<string, any> = {};
     Object.entries(resolvedColumnMetaMap).forEach(([name, meta]) => {
       const lowerName = String(name || '').toLowerCase();
       if (!lowerName || next[lowerName]) return;
+      if ((ambiguousLowerNameCounts.get(lowerName) || 0) > 1) return;
       next[lowerName] = meta;
     });
     return next;
-  }, [resolvedColumnMetaMap]);
+  }, [ambiguousLowerNameCounts, resolvedColumnMetaMap]);
 
   const columnTypeMapByLowerName = useMemo(() => {
     const next: Record<string, string> = {};
@@ -350,13 +366,19 @@ export const useDataGridMetadata = (ctx: UseDataGridMetadataContext) => {
 
   const allTableColumnNames = useMemo(() => {
     const metaColumns = Object.keys(resolvedColumnMetaMap);
+    if (exportScope !== 'table') {
+      // 查询结果页：元数据可能来自按列名回填的多张源表，只能暴露结果集里真实出现的列，
+      // 否则快捷过滤/复制语句会提示并使用结果集中不存在的列。
+      if (metaColumns.length === 0) return [];
+      const metaColumnKeys = new Set(metaColumns.map((name) => String(name || '').toLowerCase()));
+      return visibleColumnNames.filter((columnName: string) => (
+        columnName !== GONAVI_ROW_KEY && metaColumnKeys.has(String(columnName || '').toLowerCase())
+      ));
+    }
     if (metaColumns.length > 0) {
       return metaColumns;
     }
-    if (exportScope === 'table') {
-      return visibleColumnNames.filter((columnName: string) => columnName !== GONAVI_ROW_KEY);
-    }
-    return [];
+    return visibleColumnNames.filter((columnName: string) => columnName !== GONAVI_ROW_KEY);
   }, [resolvedColumnMetaMap, exportScope, visibleColumnNames]);
 
   return {

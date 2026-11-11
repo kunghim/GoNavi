@@ -23,7 +23,7 @@
 
 <p align="center">
   <a href="https://go.dev"><img src="https://img.shields.io/github/go-mod/go-version/Syngnat/GoNavi?style=flat-square&logo=go&logoColor=white&label=Go" alt="Go" /></a>
-  <a href="https://wails.io"><img src="https://img.shields.io/badge/Wails-v2-red?style=flat-square" alt="Wails" /></a>
+  <a href="https://wails.io"><img src="https://img.shields.io/badge/Wails-v3-blue?style=flat-square" alt="Wails" /></a>
   <a href="https://reactjs.org"><img src="https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=white" alt="React" /></a>
   <a href="https://github.com/Syngnat/GoNavi/actions"><img src="https://img.shields.io/github/actions/workflow/status/Syngnat/GoNavi/release.yml?style=flat-square&label=Build" alt="Build" /></a>
 </p>
@@ -228,7 +228,7 @@ Special thanks to **[APISmart](https://www.apismart.ai/)** and **[HuaLongAI](htt
 ### 🛡️ Observable & shippable
 - SQL execution logs with timing  
 - Audit center (redacted by default, retention, export)  
-- Desktop + experimental **Web Server** mode  
+- Desktop + **Web Server** mode  
 - Docker / K8s / Helm / Podman packaging  
 - Auto update checks · multi-arch releases  
 
@@ -240,7 +240,7 @@ To connect a custom OpenAI-compatible model service, add a provider in GoNavi's 
 
 ### 🧩 Stack
 
-`Go 1.24` · `Wails v2` · `React 18` · `TypeScript` · `Vite` · `Ant Design 5` · `Zustand` · `Monaco`
+`Go 1.26` · `Wails v3` · `React 18` · `TypeScript` · `Vite` · `Ant Design 5` · `Zustand` · `Monaco`
 
 ---
 
@@ -251,7 +251,7 @@ To connect a custom OpenAI-compatible model service, add a provider in GoNavi's 
 | | |
 |---|---|
 | **Built-in** | MySQL · GoldenDB · PostgreSQL · Oracle · Redis · Chroma · Qdrant · Milvus · RocketMQ · MQTT · Kafka · RabbitMQ |
-| **Optional** | MariaDB · Doris · StarRocks · Sphinx · SQL Server · SQLite · DuckDB · OceanBase · Dameng · Kingbase · HighGo · Vastbase · OpenGauss · GaussDB · IRIS · Caché · MongoDB · TDengine · IoTDB · ClickHouse · Trino · Elasticsearch · TiDB · CockroachDB · KWDB · TimescaleDB · GBase 8a · GBase 8c · GBase 8s · YashanDB · Firebird · QuestDB · GreptimeDB · InfluxDB · Presto · OpenSearch · Weaviate · Meilisearch · Typesense · etcd · ZooKeeper · Custom Driver/DSN |
+| **Optional** | MariaDB · Doris · StarRocks · Sphinx · SQL Server · SQLite · DuckDB · OceanBase · Dameng · Kingbase · HighGo · Vastbase · OpenGauss · GaussDB · IRIS · Caché · MongoDB · TDengine · IoTDB · ClickHouse · Hive · Trino · Elasticsearch · TiDB · CockroachDB · KWDB · TimescaleDB · GBase 8a · GBase 8c · GBase 8s · YashanDB · Firebird · QuestDB · GreptimeDB · InfluxDB · Presto · OpenSearch · Weaviate · Meilisearch · Typesense · etcd · ZooKeeper · Custom Driver/DSN |
 
 <details>
 <summary><b>Full capability matrix</b></summary>
@@ -290,6 +290,7 @@ To connect a custom OpenAI-compatible model service, add a provider in GoNavi's 
 | Time-series | TDengine | Optional driver agent | Time-series schema browsing and querying |
 | Time-series | Apache IoTDB | Optional driver agent | Storage group / device / timeseries browsing and querying |
 | Columnar Analytics | ClickHouse | Optional driver agent | Analytical query, object browsing, SQL execution |
+| Data Warehouse | [Hive / HiveServer2](HIVE_SUPPORT.md) | Optional driver agent | Apache Hive / Spark Thrift / Impala, partitions and complex values, import/export, bidirectional sync, Kerberos |
 | Federated Query | Trino | Optional driver agent | Cross-source SQL via multiple catalogs, `catalog.schema` browsing, SQL execution |
 | Search | Elasticsearch | Optional driver agent | Index browsing, mapping inspection, guarded REST console, JSON DSL / query_string search |
 | Relational | TiDB | Optional driver agent | MySQL-compatible querying, TiDB execution plans, data editing, sync / migration |
@@ -334,13 +335,14 @@ Elasticsearch connections reuse the query workspace as a version-aware REST cons
 
 ### Prerequisites
 
-- [Go](https://go.dev/dl/) 1.25+
+- [Go](https://go.dev/dl/) 1.26.10+
 - [Node.js](https://nodejs.org/) 18+
-- [Wails CLI](https://wails.io/docs/gettingstarted/installation)
+- Wails v2 CLI (fallback / packaging) and Wails v3 CLI
 - Linux only: a C compiler, pkg-config, and the GTK3 / WebKitGTK development packages
 
 ```bash
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
+go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
 ```
 
 ### Develop
@@ -353,6 +355,24 @@ wails dev                          # full hot reload
 node tools/wails-fast-dev.mjs      # faster when Go exports unchanged
 node tools/wails-fast-dev.mjs --refresh-bindings  # after Go export signature changes
 ```
+
+### Develop (Wails v3)
+
+The v3 desktop entry point lives in `cmd/wails3app` and runs through the native
+Wails v3 CLI. `wails3 dev` starts Vite and restarts Go on changes; the asset
+handler proxies the Vite server, so HMR works for the main window and detached
+windows.
+
+```bash
+wails3 task dev                 # Vite (port 9245) + Go hot restart
+wails3 task build DEV=true      # fast development build into bin/
+wails3 task build               # platform artifact in build/bin (release layout)
+wails3 task package             # the same artifact the release workflow packages
+node scripts/build-wails3.mjs   # frontend build + platform artifact
+```
+
+The v2 commands below remain available as the fallback path
+(`GONAVI_WAILS3=0` in CI); see `WAILS3_MIGRATION.md` for the migration status.
 
 ### Build
 
@@ -426,7 +446,7 @@ docker compose --env-file docker.cli.env -f docker-compose.cli.yml run --rm gona
 
 ---
 
-## 🌐 Web Server (Experimental)
+## 🌐 Web Server
 
 Same Go backend + React UI over HTTP — **not** a containerized Wails window.
 
@@ -435,10 +455,14 @@ go build .
 .\GoNavi-Wails.exe web-server --addr 127.0.0.1:34116
 ```
 
-- First visit → `/setup` (admin password; optional Google Authenticator)
+- First visit → `/setup?setup=<token>` (the token is printed in the startup log; or set `GONAVI_WEB_SETUP_TOKEN` / `GONAVI_WEB_PASSWORD`)
+- Accounts: `admin` (full access) and `viewer` (read-only; its connections are forced read-only). Viewers can be restricted to specific saved connections. TOTP and recovery codes are per account
+- Sessions persist across restarts (`web_sessions.json`); login limits apply per IP and per account
 - Bridge: `window.go.*` / `window.runtime.*` → HTTP / SSE
-- Sessions, recovery codes, login rate limits
 - Plugins: read-only by default; set `GONAVI_WEB_PLUGIN_MANAGEMENT=1` on the server to let authenticated sessions install and enable plugins (this executes plugin code on the host)
+- Ops: `GET /__gonavi/healthz`, `GET /__gonavi/readyz` (data-root writability), authenticated `GET /__gonavi/metrics` (JSON; add `?format=prometheus` for text); tune `GONAVI_WEB_MAX_INFLIGHT[_PER_USER]`, `GONAVI_DB_MAX_OPEN_CONNS`, `GONAVI_SHUTDOWN_GRACE_SECONDS`, `GONAVI_WEB_ASSET_DIR`
+- **Single instance**: state lives in local files; a second server on the same data root logs a warning. Run one replica behind the reverse proxy
+- **Multi-replica**: `GONAVI_WEB_MULTI_REPLICA=1` lets several servers share one data root. Requirements: session affinity (`ip_hash` / sticky cookie) at the proxy, a flock-capable shared filesystem (local volume or NFSv4), and the same `web_auth.json` / `web_sessions.json` for every replica. Query/SSE events stay on the replica that served the request, so sticky sessions are mandatory; the SQLite audit store expects a filesystem with working POSIX locks
 
 #### Docker / Podman
 
@@ -582,7 +606,7 @@ The Bootstrapper fails on fully air-gapped machines. Use the **Evergreen Standal
 
 ### 5. Temporary workaround: Web Server mode
 
-If the desktop WebView cannot be installed yet, run the experimental Web Server and use a normal browser:
+If the desktop WebView cannot be installed yet, run the Web Server and use a normal browser:
 
 ```powershell
 .\GoNavi.exe web-server --addr 127.0.0.1:34116

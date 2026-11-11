@@ -48,11 +48,17 @@ func (s *Service) RecordInstall(ctx context.Context, id, path, contentDigest str
 	if !exists || current != receipt {
 		return ErrInvalidRequest
 	}
-	if previous, exists := s.state.Installs[id]; exists && previous.SourceID != receipt.sourceID {
+	store := s
+	if s.owner != nil {
+		store = s.owner
+		store.mu.Lock()
+		defer store.mu.Unlock()
+	}
+	if previous, exists := store.state.Installs[id]; exists && previous.SourceID != receipt.sourceID {
 		return ErrSourceMismatch
 	}
-	next := s.state
-	next.Installs = maps.Clone(s.state.Installs)
+	next := store.state
+	next.Installs = maps.Clone(store.state.Installs)
 	if len(next.Installs) >= 4096 {
 		if _, exists := next.Installs[id]; !exists {
 			return ErrInvalidRequest
@@ -62,15 +68,21 @@ func (s *Service) RecordInstall(ctx context.Context, id, path, contentDigest str
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := atomicJSON(filepath.Join(s.root, "settings.json"), next, maxStateBytes); err != nil {
+	if err := atomicJSON(filepath.Join(store.root, "settings.json"), next, maxStateBytes); err != nil {
 		return fmt.Errorf("record marketplace install provenance: %w", err)
 	}
-	s.state = next
+	store.state = next
 	return nil
 }
 
 // VerifyInstallSource rejects updates to an existing runtime package unless its canonical digest and source match recorded provenance.
 // The host must call this for every existing runtime record, including sideloaded and manually modified packages.
+//
+// A record that does not exist means the package was installed outside the marketplace (a local
+// package or a sideload), which is not a hijack risk: there is no earlier source binding to
+// protect, and the replacement still goes through a fresh inspection and the user's explicit
+// trust. Such packages therefore update online like any other. Only a real binding — a record
+// that belongs to another source, or bytes that no longer match what was recorded — is refused.
 func (s *Service) VerifyInstallSource(ctx context.Context, id, contentDigest string) error {
 	if !validID(id) || !digestPattern.MatchString(contentDigest) {
 		return ErrInvalidRequest
@@ -78,10 +90,20 @@ func (s *Service) VerifyInstallSource(ctx context.Context, id, contentDigest str
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	record, exists := s.state.Installs[id]
-	if !exists || record.ContentDigest != contentDigest || record.SourceID != sourceID(s.state.BaseURL) {
+	store := s
+	if s.owner != nil {
+		store = s.owner
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if s.lease != nil && !s.lease.Load() {
+		return ErrSourceChanged
+	}
+	record, exists := store.state.Installs[id]
+	if !exists {
+		return nil
+	}
+	if record.ContentDigest != contentDigest || record.SourceID != sourceID(s.state.BaseURL) {
 		return ErrSourceMismatch
 	}
 	return nil
@@ -89,6 +111,9 @@ func (s *Service) VerifyInstallSource(ctx context.Context, id, contentDigest str
 
 // ForgetInstall removes source binding after the host removes a plugin or explicitly replaces it with a sideload.
 func (s *Service) ForgetInstall(ctx context.Context, id string) error {
+	if s.owner != nil {
+		return s.owner.ForgetInstall(ctx, id)
+	}
 	if !validID(id) {
 		return ErrInvalidRequest
 	}

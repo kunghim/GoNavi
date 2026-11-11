@@ -7,6 +7,7 @@ import (
 	"GoNavi-Wails/internal/connection"
 	"GoNavi-Wails/internal/db"
 	"GoNavi-Wails/internal/logger"
+	"GoNavi-Wails/internal/webidentity"
 )
 
 func (a *App) DBQuery(config connection.ConnectionConfig, dbName string, query string) connection.QueryResult {
@@ -65,6 +66,7 @@ func (a *App) dbQueryWithCancel(
 	auditOptions.executionContext = traceContext
 	defer func() {
 		a.recordQueryRequestTraceOutcome(requestTrace, result, ownsRequestTrace)
+		maybeReleaseQueryResultMemory(result)
 	}()
 	requestTrace.AddEvent("query.accepted", nil)
 
@@ -97,6 +99,7 @@ func (a *App) dbQueryWithCancel(
 				QueryID:    queryID,
 				SQL:        query,
 				Source:     normalizeSQLAuditSource(auditOptions.source),
+				Actor:      webidentity.UsernameFromContext(auditOptions.executionContext),
 				CommitMode: "auto",
 				Duration:   time.Since(auditStartedAt),
 				Result:     result,
@@ -131,12 +134,13 @@ func (a *App) dbQueryWithCancel(
 		true,
 		optionalDriverTypeForConnectionConfig(runConfig),
 	)
-	lifecycle := a.beginQueryExecutionLifecycleWithConnection(queryID)
+	lifecycle := a.beginQueryExecutionLifecycleWithConnectionAndContext(auditOptions.executionContext, queryID)
 	defer func() {
 		lifecycle.complete(result)
 		cancel()
 		cleanupRunningQuery()
 	}()
+	defer a.localizeQueryResultNotices(&result)
 
 	dbInst, waitMs, err := a.acquireQueryConnection(ctx, queryConnectionRequest{
 		config:      runConfig,
@@ -149,7 +153,7 @@ func (a *App) dbQueryWithCancel(
 	}
 	lifecycle.markExecuting()
 
-	isReadQuery := auditOptions.source != "database_jobs" && isReadOnlySQLQuery(runConfig.Type, query)
+	isReadQuery := pluginQueryRequiresReadOnlyTransaction(auditOptions.source) || (auditOptions.source != "database_jobs" && isReadOnlySQLQuery(runConfig.Type, query))
 	tryQueryFirst := shouldTryQueryResultFirst(runConfig.Type, query)
 	legacyCancellationUnsupported := false
 
@@ -174,6 +178,13 @@ func (a *App) dbQueryWithCancel(
 	}
 
 	runReadQueryWithMessages := func(inst db.Database) ([]map[string]interface{}, []string, []string, error) {
+		if pluginQueryRequiresReadOnlyTransaction(auditOptions.source) {
+			setRunningQueryCancellable(true)
+			startedAt := time.Now()
+			data, columns, err := executePluginReadOnlyQuery(ctx, inst, query)
+			queryExecutionDuration += time.Since(startedAt)
+			return data, columns, nil, err
+		}
 		if q, ok := inst.(db.QueryMessageExecer); ok {
 			setRunningQueryCancellable(true)
 			startedAt := time.Now()

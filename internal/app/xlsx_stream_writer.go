@@ -58,9 +58,11 @@ type xlsxExportWriteOptions struct {
 	tempDir        string
 	budget         *webTransferBudget
 	columnComments map[string]string
+	textColumns    map[string]bool
 }
 
 type xlsxExportFileWriter struct {
+	losslessHive   bool
 	file           xlsxExportOutputFile
 	tempDir        string
 	budget         *webTransferBudget
@@ -68,6 +70,8 @@ type xlsxExportFileWriter struct {
 	headers        []string
 	columnComments map[string]string
 	columnRefs     []string
+	textColumns    map[string]bool
+	numericColumns []bool
 	rowBuf         []string
 	sheets         []*xlsxExportTempSheet
 	current        *xlsxExportTempSheet
@@ -91,20 +95,30 @@ func newXLSXExportFileWriter(f xlsxExportOutputFile, maxRowsPerSheet int, writeO
 		budget:         options.budget,
 		maxRows:        normalizeXLSXRowsPerSheet(maxRowsPerSheet),
 		columnComments: options.columnComments,
+		textColumns:    options.textColumns,
 	}, nil
+}
+
+// SetTextColumns marks columns whose values must stay text cells. It is used by
+// materialized exports, where every value is known before writing and a single
+// non-numeric value therefore makes the whole column text.
+func (w *xlsxExportFileWriter) SetTextColumns(columns map[string]bool) {
+	w.textColumns = columns
 }
 
 func (w *xlsxExportFileWriter) SetColumns(columns []string) error {
 	w.columns = append([]string(nil), columns...)
 	w.headers = resolveExportColumnHeaders(columns, w.columnComments)
 	w.columnRefs = make([]string, len(columns))
+	w.numericColumns = make([]bool, len(columns))
 	w.rowBuf = make([]string, len(columns))
-	for i := range columns {
+	for i, column := range columns {
 		ref, err := excelize.ColumnNumberToName(i + 1)
 		if err != nil {
 			return err
 		}
 		w.columnRefs[i] = ref
+		w.numericColumns[i] = !w.textColumns[column]
 	}
 	return w.rotateSheet()
 }
@@ -150,6 +164,13 @@ func (w *xlsxExportFileWriter) rotateSheet() error {
 }
 
 func (w *xlsxExportFileWriter) ConsumeRow(row map[string]interface{}) error {
+	if w.losslessHive {
+		values := make([]interface{}, len(w.columns))
+		for i, name := range w.columns {
+			values[i] = row[name]
+		}
+		return w.consumeHiveValues(values)
+	}
 	if w.rowCount >= w.maxRows {
 		if err := w.rotateSheet(); err != nil {
 			return err
@@ -174,6 +195,9 @@ func (w *xlsxExportFileWriter) ConsumeRow(row map[string]interface{}) error {
 }
 
 func (w *xlsxExportFileWriter) ConsumeRowValues(values []interface{}) error {
+	if w.losslessHive {
+		return w.consumeHiveValues(values)
+	}
 	if w.rowCount >= w.maxRows {
 		if err := w.rotateSheet(); err != nil {
 			return err
@@ -279,14 +303,14 @@ func (w *xlsxExportFileWriter) cleanupTempSheets() error {
 }
 
 func (w *xlsxExportFileWriter) writeStringRow(rowNumber int, values []string) error {
-	return w.writeRow(rowNumber, values, false)
+	return w.writeRow(rowNumber, values, nil)
 }
 
 func (w *xlsxExportFileWriter) writeDataRow(rowNumber int, values []string) error {
-	return w.writeRow(rowNumber, values, true)
+	return w.writeRow(rowNumber, values, w.numericColumns)
 }
 
-func (w *xlsxExportFileWriter) writeRow(rowNumber int, values []string, numericCells bool) error {
+func (w *xlsxExportFileWriter) writeRow(rowNumber int, values []string, numericColumns []bool) error {
 	if w.current == nil {
 		return fmt.Errorf("xlsx sheet not initialized")
 	}
@@ -302,7 +326,8 @@ func (w *xlsxExportFileWriter) writeRow(rowNumber int, values []string, numericC
 	}
 	rowRef := strconv.Itoa(rowNumber)
 	for i, value := range values {
-		if err := writeXLSXCell(w.current.writer, w.columnRefs[i], rowRef, value, numericCells); err != nil {
+		numeric := numericColumns != nil && i < len(numericColumns) && numericColumns[i]
+		if err := writeXLSXCell(w.current.writer, w.columnRefs[i], rowRef, value, numeric); err != nil {
 			return err
 		}
 	}

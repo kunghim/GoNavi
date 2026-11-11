@@ -101,7 +101,7 @@ func TestVerifiedArchiveFormatsAndCleanup(t *testing.T) {
 			payload := fixtureArchive(t, format)
 			server, digest, _ := artifactServer(t, payload, nil, nil)
 			defer server.Close()
-			service, _ := newTestService(t, server.URL, false)
+			service := newTestService(t, server.URL, false)
 			path, cleanup, err := service.Download(t.Context(), "publisher.plugin", "1.0.0", digest)
 			if err != nil {
 				t.Fatal(err)
@@ -167,7 +167,7 @@ func TestDownloadRejectsUntrustedOrChangedArtifacts(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			server, digest, hits := artifactServer(t, payload, test.modify, test.download)
 			defer server.Close()
-			service, _ := newTestService(t, server.URL, false)
+			service := newTestService(t, server.URL, false)
 			path, cleanup, err := service.Download(t.Context(), "publisher.plugin", "1.0.0", digest)
 			cleanup()
 			assertErrorIs(t, err, test.want)
@@ -193,7 +193,7 @@ func TestDownloadRedirectCancellationAndUnknownFormat(t *testing.T) {
 		defer destination.Close()
 		server, digest, _ := artifactServer(t, payload, nil, func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, destination.URL, http.StatusFound) })
 		defer server.Close()
-		service, _ := newTestService(t, server.URL, false)
+		service := newTestService(t, server.URL, false)
 		_, cleanup, err := service.Download(t.Context(), "publisher.plugin", "1.0.0", digest)
 		cleanup()
 		assertErrorIs(t, err, ErrRedirect)
@@ -204,7 +204,7 @@ func TestDownloadRedirectCancellationAndUnknownFormat(t *testing.T) {
 	t.Run("cancellation", func(t *testing.T) {
 		server, digest, _ := artifactServer(t, payload, nil, func(w http.ResponseWriter, r *http.Request) { w.(http.Flusher).Flush(); <-r.Context().Done() })
 		defer server.Close()
-		service, _ := newTestService(t, server.URL, false)
+		service := newTestService(t, server.URL, false)
 		ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 		defer cancel()
 		_, cleanup, err := service.Download(ctx, "publisher.plugin", "1.0.0", digest)
@@ -214,7 +214,7 @@ func TestDownloadRedirectCancellationAndUnknownFormat(t *testing.T) {
 	t.Run("unknown archive", func(t *testing.T) {
 		server, digest, _ := artifactServer(t, []byte("not an archive"), nil, nil)
 		defer server.Close()
-		service, _ := newTestService(t, server.URL, false)
+		service := newTestService(t, server.URL, false)
 		_, cleanup, err := service.Download(t.Context(), "publisher.plugin", "1.0.0", digest)
 		cleanup()
 		assertErrorIs(t, err, ErrInvalidResponse)
@@ -224,9 +224,13 @@ func TestDownloadRedirectCancellationAndUnknownFormat(t *testing.T) {
 func TestInstallProvenanceUsesSourceAndCanonicalDigest(t *testing.T) {
 	server, digest, _ := artifactServer(t, fixtureArchive(t, "zip"), nil, nil)
 	defer server.Close()
-	service, secrets := newTestService(t, server.URL, false)
+	service := newTestService(t, server.URL, false)
 	canonical := archiveDigest([]byte("canonical file content digest"))
-	assertErrorIs(t, service.VerifyInstallSource(t.Context(), "publisher.plugin", canonical), ErrSourceMismatch)
+	// A package installed outside the marketplace has no provenance record; that is not a
+	// hijack risk, so it may be updated online once a fresh inspection is approved.
+	if err := service.VerifyInstallSource(t.Context(), "publisher.plugin", canonical); err != nil {
+		t.Fatalf("sideloaded package must be updatable from the market: %v", err)
+	}
 	assertErrorIs(t, service.RecordInstall(t.Context(), "publisher.plugin", "arbitrary-path", canonical), ErrInvalidRequest)
 	path, cleanup, err := service.Download(t.Context(), "publisher.plugin", "1.0.0", digest)
 	if err != nil {
@@ -240,7 +244,7 @@ func TestInstallProvenanceUsesSourceAndCanonicalDigest(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertErrorIs(t, service.VerifyInstallSource(t.Context(), "publisher.plugin", digest), ErrSourceMismatch)
-	restarted, err := NewService(Options{Root: service.root, Secrets: secrets})
+	restarted, err := NewService(Options{Root: service.root})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +261,10 @@ func TestInstallProvenanceUsesSourceAndCanonicalDigest(t *testing.T) {
 	if err = restarted.ForgetInstall(t.Context(), "publisher.plugin"); err != nil {
 		t.Fatal(err)
 	}
-	assertErrorIs(t, restarted.VerifyInstallSource(t.Context(), "publisher.plugin", canonical), ErrSourceMismatch)
+	// Forgetting the binding returns the package to the sideloaded state, which is updatable.
+	if err = restarted.VerifyInstallSource(t.Context(), "publisher.plugin", canonical); err != nil {
+		t.Fatalf("forgotten provenance must allow a fresh market update: %v", err)
+	}
 	cleanup()
 	assertErrorIs(t, service.RecordInstall(t.Context(), "publisher.plugin", path, canonical), ErrInvalidRequest)
 }
@@ -265,7 +272,7 @@ func TestInstallProvenanceUsesSourceAndCanonicalDigest(t *testing.T) {
 func TestProvenanceRejectsMutatedDownloadAndSurfacesPersistenceError(t *testing.T) {
 	server, digest, _ := artifactServer(t, fixtureArchive(t, "zip"), nil, nil)
 	defer server.Close()
-	service, _ := newTestService(t, server.URL, false)
+	service := newTestService(t, server.URL, false)
 	canonical := strings.Repeat("a", 64)
 	path, cleanup, err := service.Download(t.Context(), "publisher.plugin", "1.0.0", digest)
 	if err != nil {
@@ -295,5 +302,10 @@ func TestProvenanceRejectsMutatedDownloadAndSurfacesPersistenceError(t *testing.
 	if err = service.RecordInstall(t.Context(), "publisher.plugin", path, canonical); err == nil {
 		t.Fatal("provenance persistence failure hidden")
 	}
-	assertErrorIs(t, service.VerifyInstallSource(t.Context(), "publisher.plugin", canonical), ErrSourceMismatch)
+	// The failed record leaves no binding behind, which is indistinguishable from a sideloaded
+	// package; that state is updatable. The source guard still protects every package that does
+	// carry a record — see TestInstallProvenanceUsesSourceAndCanonicalDigest.
+	if err = service.VerifyInstallSource(t.Context(), "publisher.plugin", canonical); err != nil {
+		t.Fatalf("unrecorded install was treated as a source conflict: %v", err)
+	}
 }

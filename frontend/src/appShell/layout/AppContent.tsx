@@ -1,4 +1,8 @@
 import { Button, Spin } from 'antd';
+import { PluginViewDock } from '../../pluginViews/PluginViewDock';
+import { usePluginKeybindings } from '../../plugins/usePluginKeybindings';
+import { usePluginProgressNotifications } from '../../plugins/usePluginProgressNotifications';
+import { useFileAssociationOpen } from '../hooks/useFileAssociationOpen';
 import React from 'react';
 import { Content } from '../appLayoutParts';
 import SecurityUpdateBanner from '../../components/SecurityUpdateBanner';
@@ -61,7 +65,11 @@ export const AppContent = ({
   handleCloseAIPanel, aiPanelRenderNonce, handleAIPanelRenderError, aiPanelRenderWidth, bgContent,
   handleRetryAIPanelRender, LazyAIChatPanel, setAIPanelWidth, handleDetachAIPanel,
   registerAIPanelTerminalGuard,
-}: AppContentProps) => (
+}: AppContentProps) => {
+  usePluginKeybindings();
+  usePluginProgressNotifications();
+  useFileAssociationOpen();
+  return (
   <Content
     style={{ background: 'var(--gn-bg-panel-2)', overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}
   >
@@ -83,6 +91,7 @@ export const AppContent = ({
     <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'row', position: 'relative' }}>
       <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'transparent', marginBottom: isLogPanelOpen ? 8 : 0, borderRadius: isLogPanelOpen ? 'var(--gonavi-border-radius)' : 0, clipPath: isLogPanelOpen ? 'inset(0 round var(--gonavi-border-radius))' : 'none' }}>
          <TabManager onFocusSidebarSearch={handleFocusSidebarSearch} />
+         <PluginViewDock location="bottom" />
          <SessionAlertHost />
          <AIWorkspaceSnapshotPublisher />
          <FloatingWorkbenchWindows />
@@ -92,6 +101,8 @@ export const AppContent = ({
            onToggleAI={handleToggleOrFocusAIPanel}
          />
       </div>
+
+      <PluginViewDock location="right" />
 
       {aiPanelVisible && !aiChatDetached && (
          <div
@@ -250,4 +261,5 @@ export const AppContent = ({
     </div>
 
   </Content>
-);
+  );
+};

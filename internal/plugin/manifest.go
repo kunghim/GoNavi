@@ -43,6 +43,7 @@ var pluginIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$`)
 var localIDPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$`)
 var permissionPattern = regexp.MustCompile(`^[a-z][a-z0-9._:-]{0,127}$`)
 var platformPattern = regexp.MustCompile(`^(windows|linux|darwin)/(amd64|arm64|386|arm)$`)
+var connectionTypePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._:-]{0,127}$`)
 
 // ParseManifest strictly decodes and validates a version-one declaration.
 func ParseManifest(data []byte) (Manifest, error) {
@@ -68,7 +69,7 @@ func ParseManifest(data []byte) (Manifest, error) {
 }
 
 // ValidateManifest rejects unsupported schemas and unsafe declarations, without execution.
-func ValidateManifest(m Manifest) error {
+func validateManifestLegacy(m Manifest) error {
 	if m.SchemaVersion != 1 || m.APIVersion != 1 {
 		return fmt.Errorf("unsupported plugin schema or api version")
 	}
@@ -80,6 +81,9 @@ func ValidateManifest(m Manifest) error {
 	}
 	if m.MinHostVersion != "" && !validVersion(m.MinHostVersion) {
 		return fmt.Errorf("invalid minimum host version")
+	}
+	if m.Icon != "" && !validPackageIcon(m.Icon) {
+		return fmt.Errorf("invalid plugin icon path")
 	}
 	if len(m.Permissions) > 64 || len(m.Requires) > 64 {
 		return fmt.Errorf("too many permissions or dependencies")
@@ -136,6 +140,10 @@ func ValidateManifest(m Manifest) error {
 	if err := validateExporters(m, commands); err != nil {
 		return err
 	}
+	// Panels and pages can only invoke commands the page gateway dispatches. Commands owned by
+	// a data source, AI provider or exporter are reserved for that contribution, so a button
+	// referencing one would pass installation and fail on click; validate against the public set.
+	publicCommands := publicDeclaredCommands(m, commands)
 	panels := make(map[string]bool)
 	nodes := 0
 	for _, p := range m.Contributes.Panels {
@@ -158,11 +166,31 @@ func ValidateManifest(m Manifest) error {
 		if p.Body.Type == "" {
 			return fmt.Errorf("panel declares no body")
 		}
-		if err := validateNode(p.Body, commands, 0, &nodes); err != nil {
+		if err := validateNode(p.Body, publicCommands, 0, &nodes); err != nil {
 			return err
 		}
 	}
+	if err := validatePages(m, permissions, publicCommands); err != nil {
+		return err
+	}
+	if err := validateViews(m, permissions); err != nil {
+		return err
+	}
+	if err := validateKeybindings(m, permissions); err != nil {
+		return err
+	}
+	if err := validateSidebar(m, permissions, publicCommands); err != nil {
+		return err
+	}
+	if err := validateSettingsSections(m, permissions); err != nil {
+		return err
+	}
 	if m.Window != nil {
+		// A window runs package HTML/JS in a native WebView with the window bridge; like a
+		// custom HTML page it needs the explicit sandboxed-HTML permission.
+		if !permissions[CustomPanelPermission] {
+			return fmt.Errorf("window requires the %s permission", CustomPanelPermission)
+		}
 		if err := safePackagePath(m.Window.Entry); err != nil {
 			return fmt.Errorf("invalid window entry: %w", err)
 		}
@@ -170,7 +198,29 @@ func ValidateManifest(m Manifest) error {
 			return fmt.Errorf("invalid window dimensions or title")
 		}
 	}
-	return validateSchema(m.ConfigSchema)
+	return validateConnectionActions(m, permissions)
+}
+
+// publicDeclaredCommands returns the commands a panel or page may invoke: everything except
+// the commands reserved by data sources, AI providers and exporters.
+func publicDeclaredCommands(m Manifest, declared map[string]bool) map[string]bool {
+	reserved := make(map[string]bool)
+	for _, source := range m.Contributes.DataSources {
+		reserved[source.Command] = true
+	}
+	for _, provider := range m.Contributes.AIProviders {
+		reserved[provider.Command] = true
+	}
+	for _, exporter := range m.Contributes.Exporters {
+		reserved[exporter.Command] = true
+	}
+	public := make(map[string]bool, len(declared))
+	for id := range declared {
+		if !reserved[id] {
+			public[id] = true
+		}
+	}
+	return public
 }
 func validPluginID(id string) bool {
 	if len(id) > 128 || !pluginIDPattern.MatchString(id) {
@@ -187,7 +237,7 @@ func validText(s string, limit int) bool {
 	return strings.TrimSpace(s) != "" && len(s) <= limit && !strings.ContainsRune(s, 0)
 }
 func validVersion(s string) bool {
-	return strings.Count(strings.SplitN(strings.SplitN(s, "+", 2)[0], "-", 2)[0], ".") == 2 && !strings.HasPrefix(s, "v") && semver.IsValid("v"+s)
+	return len(s) <= 128 && strings.Count(strings.SplitN(strings.SplitN(s, "+", 2)[0], "-", 2)[0], ".") == 2 && !strings.HasPrefix(s, "v") && semver.IsValid("v"+s)
 }
 func versionAtLeast(value, minimum string) bool { return semver.Compare("v"+value, "v"+minimum) >= 0 }
 func validateBackend(b *Backend) error {
@@ -244,6 +294,67 @@ func validateSchema(raw json.RawMessage) error {
 	var object map[string]any
 	if err := json.Unmarshal(raw, &object); err != nil || object == nil {
 		return fmt.Errorf("schema must be an object")
+	}
+	return nil
+}
+
+func validateConnectionActions(m Manifest, permissions map[string]bool) error {
+	if len(m.Contributes.ConnectionActions) > 16 {
+		return fmt.Errorf("too many connection actions")
+	}
+	pages := make(map[string]bool, len(m.Contributes.Pages))
+	for _, page := range m.Contributes.Pages {
+		pages[page.ID] = true
+	}
+	seen := make(map[string]bool, len(m.Contributes.ConnectionActions))
+	for _, action := range m.Contributes.ConnectionActions {
+		if !localIDPattern.MatchString(action.ID) || seen[action.ID] || !validText(action.Title, 256) || len(action.Description) > 4096 {
+			return fmt.Errorf("invalid or duplicate connection action")
+		}
+		seen[action.ID] = true
+		if len(action.ConnectionTypes) == 0 || len(action.ConnectionTypes) > 32 {
+			return fmt.Errorf("connection action requires connection types")
+		}
+		types := make(map[string]bool, len(action.ConnectionTypes))
+		for _, value := range action.ConnectionTypes {
+			if !connectionTypePattern.MatchString(value) || types[value] {
+				return fmt.Errorf("invalid or duplicate connection action type")
+			}
+			types[value] = true
+		}
+		if len(action.Scopes) > 8 {
+			return fmt.Errorf("too many connection action scopes")
+		}
+		scopes := make(map[string]bool, len(action.Scopes))
+		for _, scope := range action.Scopes {
+			switch scope {
+			case "connection", "database", "collection":
+			default:
+				return fmt.Errorf("unsupported connection action scope")
+			}
+			if scopes[scope] {
+				return fmt.Errorf("duplicate connection action scope")
+			}
+			scopes[scope] = true
+		}
+		switch action.Target.Type {
+		case "window":
+			if m.Window == nil {
+				return fmt.Errorf("window connection action requires a window")
+			}
+			if action.Target.Page != "" {
+				return fmt.Errorf("window connection action cannot declare a page")
+			}
+		case "page":
+			if !permissions[PagesPermission] {
+				return fmt.Errorf("page connection action requires the %s permission", PagesPermission)
+			}
+			if !pages[action.Target.Page] {
+				return fmt.Errorf("connection action references an undeclared page")
+			}
+		default:
+			return fmt.Errorf("unsupported connection action target")
+		}
 	}
 	return nil
 }

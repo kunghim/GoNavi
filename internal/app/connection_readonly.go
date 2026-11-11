@@ -36,6 +36,7 @@ var connectionReadOnlySupportedTypes = map[string]struct{}{
 	"mongodb":       {},
 	"mysql":         {},
 	"nacos":         {},
+	"xxljob":        {},
 	"oceanbase":     {},
 	"opengauss":     {},
 	"oracle":        {},
@@ -173,6 +174,12 @@ var readOnlyConnectionActionTextKeys = map[string]string{
 	"connection.backend.action.user_management":            "connection.backend.action.user_management",
 	"connection.backend.action.cancel_database_query":      "connection.backend.action.cancel_database_query",
 	"connection.backend.action.terminate_database_session": "connection.backend.action.terminate_database_session",
+}
+
+// SupportsConnectionReadOnlyMode 供 Web RPC 等跨包调用方判断驱动是否尊重 ReadOnly。
+// 只做能力探测，不执行鉴权；具体是否只读由调用方决定。
+func SupportsConnectionReadOnlyMode(config connection.ConnectionConfig) bool {
+	return supportsConnectionReadOnlyMode(config)
 }
 
 func supportsConnectionReadOnlyMode(config connection.ConnectionConfig) bool {

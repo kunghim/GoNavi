@@ -9,7 +9,7 @@ import (
 	"GoNavi-Wails/internal/connection"
 	"GoNavi-Wails/internal/db"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	runtime "GoNavi-Wails/internal/desktop"
 )
 
 func (a *App) ExportSchemaSQL(config connection.ConnectionConfig, dbName string, schemaName string, includeData bool) connection.QueryResult {
@@ -99,7 +99,10 @@ func (a *App) ExportSchemaSQLWithOptions(
 		}
 		return connection.QueryResult{Success: false, Message: err.Error()}
 	}
-	viewLookup := listViewNameLookup(dbInst, runConfig, dbName)
+	viewLookup, err := listExportViewLookup(exportCtx, dbInst, runConfig, dbName)
+	if err != nil {
+		return connection.QueryResult{Success: false, Message: err.Error()}
+	}
 	filteredTables := filterExportObjectsBySchema(runConfig, dbName, tables, safeSchemaName)
 	filteredViews := filterExportViewLookupBySchema(runConfig, dbName, viewLookup, safeSchemaName)
 	objects := buildExportObjectOrder(runConfig, dbName, filteredTables, filteredViews, true)

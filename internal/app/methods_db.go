@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -87,6 +88,11 @@ func (a *App) DBReleaseConnection(config connection.ConnectionConfig) connection
 		logger.Infof("DBReleaseConnection 已释放 Redis 连接：%s 数量=%d", formatConnSummary(config), closed)
 		return connection.QueryResult{Success: true, Message: a.appText("db.backend.message.release_success", nil), Data: map[string]int{"closed": closed}}
 	}
+	if dbType == "xxljob" {
+		closed := a.releaseXxlJobClientsForConfig(config)
+		logger.Infof("DBReleaseConnection 已释放 XXL-JOB 会话：%s 数量=%d", formatXxlJobConnSummary(config), closed)
+		return connection.QueryResult{Success: true, Message: a.appText("db.backend.message.release_success", nil), Data: map[string]int{"closed": closed}}
+	}
 
 	effectiveConfig, err := a.resolveEffectiveConnectionConfig(config)
 	if err != nil {
@@ -108,12 +114,16 @@ func (a *App) TestConnection(config connection.ConnectionConfig) connection.Quer
 // interactive test run. The ordinary TestConnection API remains available to
 // headless and older clients without an event listener.
 func (a *App) TestConnectionWithProgress(config connection.ConnectionConfig, runID string) connection.QueryResult {
+	return a.testConnectionWithProgressContext(nil, config, runID)
+}
+
+func (a *App) testConnectionWithProgressContext(ctx context.Context, config connection.ConnectionConfig, runID string) connection.QueryResult {
 	runID = strings.TrimSpace(runID)
 	if runID == "" || !config.UseSSH {
 		return a.testConnection(config, nil)
 	}
 	report := func(stage string, status string) {
-		uievents.Emit(a.ctx, connectionTestProgressEventName, connectionTestProgressEvent{
+		uievents.EmitWith(ctx, a.ctx, connectionTestProgressEventName, connectionTestProgressEvent{
 			RunID:  runID,
 			Stage:  stage,
 			Status: status,

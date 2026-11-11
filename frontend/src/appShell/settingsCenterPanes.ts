@@ -1,4 +1,5 @@
 import { isPreferencePage, type PreferencePage } from '../components/settings/preferences/preferencePages';
+// 插件管理不进设置中心：作为独立工作台 Tab（utils/pluginManagerTab）从标题栏打开。
 export type ToolCenterGroupKey = 'config' | 'workflow' | 'workspace';
 export type ToolCenterPaneKey =
   | 'data-root'
@@ -7,7 +8,6 @@ export type ToolCenterPaneKey =
   | 'data-root-saved-queries'
   | 'security-update'
   | 'drivers'
-  | 'plugins'
   | 'snippet-settings';
 
 export type SettingsCenterGroupKey = PreferencePage | 'preferences' | 'services' | ToolCenterGroupKey | 'about' | 'brand-icon';

@@ -3,6 +3,7 @@ import { AI_SETTINGS_NAV_ITEMS } from '../ai/AISettingsSidebar';
 import type { TabData } from '../../types';
 import { buildCloudBackupWorkbenchTab } from '../../utils/cloudBackupTab';
 import { buildDMLSnapshotWorkbenchTab } from '../../utils/dmlSnapshotTab';
+import { buildPluginManagerWorkbenchTab } from '../../utils/pluginManagerTab';
 import { buildRequestDiagnosticsWorkbenchTab } from '../../utils/requestDiagnosticsTab';
 import { buildSqlAuditWorkbenchTab } from '../../utils/sqlAuditTab';
 import type { SettingsCenterNavigationTarget } from './settingsCenterMenuCatalog';
@@ -23,7 +24,7 @@ export const resolveAISettingsSection = (section?: string): AISettingsSectionKey
 
 /**
  * Navigation actions that open a workbench tab instead of a settings pane. The
- * settings center is closed first so the tab is not opened behind it.
+ * tabs coexist with the settings center, so opening one keeps the other tabs open.
  */
 export const SETTINGS_WORKBENCH_TAB_BUILDERS: Partial<
   Record<NonNullable<SettingsCenterNavigationTarget['action']>, () => TabData>
@@ -32,4 +33,5 @@ export const SETTINGS_WORKBENCH_TAB_BUILDERS: Partial<
   'cloud-backup': buildCloudBackupWorkbenchTab,
   'request-diagnostics': buildRequestDiagnosticsWorkbenchTab,
   'dml-snapshot': buildDMLSnapshotWorkbenchTab,
+  'plugins': buildPluginManagerWorkbenchTab,
 };

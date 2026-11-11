@@ -1,5 +1,5 @@
 export type * from './types.js';
-export type { PluginWindowBridge } from './window.js';
+export type { PluginInvokeOptions, PluginPickOptions, PluginWindowBridge, PluginWindowIdentity } from './window.js';
 export { DEFAULT_MAX_FRAME_BYTES, FrameReader } from './framing.js';
 export { Protocol, ProtocolError } from './protocol.js';
 export type { Handler, ProtocolOptions } from './protocol.js';
@@ -17,4 +17,5 @@ export { validateDataSource, validateDataSourceCommand } from './datasourceValid
 export { validateAIProvider } from './aiProviderDeclaration.js';
 export { validateExporter } from './exporterDeclaration.js';
 export { validateCommand } from './commandDeclaration.js';
+export { validatePages } from './pagesDeclaration.js';
 

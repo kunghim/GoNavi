@@ -222,7 +222,7 @@ describe('QueryEditor external SQL save', () => {
 
   it('shows execution failures inside the embedded sql log tab in v2', async () => {
 
-    storeState.queryOptions.autoShowSqlExecutionLog = false;
+    storeState.queryOptions.showSqlExecutionLog = true;
     backendApp.DBQueryMulti.mockResolvedValueOnce({
       success: false,
       message: 'driver exploded',
@@ -251,8 +251,36 @@ describe('QueryEditor external SQL save', () => {
     renderer.unmount();
   });
 
+  it('drops the sql log tab and keeps execution failures visible when the log tab is disabled', async () => {
+    storeState.queryOptions.showSqlExecutionLog = false;
+    backendApp.DBQueryMulti.mockResolvedValueOnce({
+      success: false,
+      message: 'driver exploded',
+      data: [],
+    });
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<QueryEditor tab={createTab({ query: 'select 1;' })} />);
+    });
+
+    await act(async () => {
+      await findButton(renderer, '运行').props.onClick();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(findSqlLogTab(renderer)).toHaveLength(0);
+    expect(renderer.root.findAll((node) => node.props?.['data-log-panel'] === 'embedded')).toHaveLength(0);
+    expect(textContent(renderer.toJSON())).toContain('driver exploded');
+
+    renderer.unmount();
+  });
+
   it('keeps empty successful executions collapsed when automatic log display is disabled', async () => {
-    storeState.queryOptions.autoShowSqlExecutionLog = false;
+    storeState.queryOptions.showSqlExecutionLog = false;
     const windowListeners: Record<string, ((event?: Event) => void)[]> = {};
     vi.stubGlobal('window', {
       addEventListener: vi.fn((type: string, listener: (event?: Event) => void) => {
@@ -297,7 +325,7 @@ describe('QueryEditor external SQL save', () => {
     'activates the data result tab and requests data preview for %s after the sql log tab was open',
     async (dbType) => {
 
-      storeState.queryOptions.autoShowSqlExecutionLog = false;
+      storeState.queryOptions.showSqlExecutionLog = false;
       storeState.connections[0].config.type = dbType;
       storeState.sqlLogs = [{
         id: 'log-1',
@@ -610,7 +638,7 @@ describe('QueryEditor external SQL save', () => {
     let immediateCompletion!: Promise<any>;
     await act(async () => {
       // 新建 tab 已按列表首个库补上默认选中，这里再手工切到 main 验证切换链路。
-      const activeToolbar = renderer.root.findAllByType(QueryEditorToolbar).find((toolbar) => toolbar.props.currentDb === 'information_schema');
+      const activeToolbar = renderer.root.findAllByType(QueryEditorToolbar).find((toolbar) => toolbar.props.currentDb === 'main');
       expect(activeToolbar).toBeTruthy();
       activeToolbar!.props.onDatabaseChange('main');
 
@@ -657,10 +685,10 @@ describe('QueryEditor external SQL save', () => {
 
     expect(backendApp.DBGetDatabases).toHaveBeenCalledTimes(1);
     expect(storeState.updateQueryTabDraft).toHaveBeenCalledWith('tab-1', expect.objectContaining({
-      dbName: 'information_schema',
+      dbName: 'main',
     }));
     await vi.waitFor(() => {
-      expect(backendApp.DBGetTables).toHaveBeenCalledWith(expect.any(Object), 'information_schema');
+      expect(backendApp.DBGetTables).toHaveBeenCalledWith(expect.any(Object), 'main');
     });
 
     await act(async () => {
@@ -887,7 +915,7 @@ describe('QueryEditor external SQL save', () => {
       expect.objectContaining({
         label: 'PERSON',
         insertText: 'PERSON',
-        detail: '同义词 (A.PERSON)',
+        detail: 'A.PERSON - 同义词',
       }),
     ]));
     expect(synonymItems.suggestions.filter((item: any) => item.label === 'PERSON')).toHaveLength(1);
@@ -912,11 +940,11 @@ describe('QueryEditor external SQL save', () => {
     expect(ownerItems.suggestions).toEqual(expect.arrayContaining([
       expect.objectContaining({
         label: 'PERSON',
-        detail: '同义词 (IMP_DATA.PERSON)',
+        detail: 'IMP_DATA.PERSON - 同义词',
       }),
       expect.objectContaining({
         label: 'AC02',
-        detail: '同义词 (IMP_DATA.AC02)',
+        detail: 'IMP_DATA.AC02 - 同义词',
       }),
     ]));
 

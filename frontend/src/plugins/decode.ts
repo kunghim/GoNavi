@@ -1,6 +1,6 @@
 import { PluginAPIError, requireRecord } from './apiResult';
 import { boundedJSON } from './jsonBoundary';
-import type { PluginInspection, PluginManifest, PluginRuntimeInfo, PluginStatus } from './types';
+import type { PluginInspection, PluginManifest, PluginRemoteInspection, PluginRemoteSource, PluginRuntimeInfo, PluginStatus } from './types';
 
 function invalid(): never {
   throw new PluginAPIError('plugin.error.invalid_response');
@@ -17,11 +17,13 @@ const utf8Within = (value: string, limit: number) => new TextEncoder().encode(va
 function validDataSource(source: Record<string, unknown>, command: Record<string, unknown> | undefined): boolean {
   const effect = command?.effect;
   const port = source.defaultPort;
+  const readOnly = source.readOnly;
   return typeof source.id === 'string' && /^[a-z][a-z0-9_.-]{0,63}$/.test(source.id)
     && typeof source.name === 'string' && source.name.trim() !== '' && utf8Within(source.name, 256) && !source.name.includes('\u0000')
-    && typeof source.command === 'string' && source.readOnly === true
+    && typeof source.command === 'string' && typeof readOnly === 'boolean'
     && (source.dialect === 'mysql' || source.dialect === 'postgres' || source.dialect === 'sqlite') && command != null
-    && (effect == null || effect === '' || effect === 'read' || effect === 'unknown')
+    // Only a read-only source constrains its command effect; writable sources accept write.
+    && (readOnly === false || effect == null || effect === '' || effect === 'read' || effect === 'unknown')
     && (port == null || (typeof port === 'number' && Number.isInteger(port) && port >= 0 && port <= 65535));
 }
 function validExporter(exporter: Record<string, unknown>, commands: Map<string, Record<string, unknown>>): boolean {
@@ -32,11 +34,26 @@ function validExporter(exporter: Record<string, unknown>, commands: Map<string, 
     && typeof exporter.contentType === 'string' && /^(text|application)\/[a-z0-9][a-z0-9.+-]{0,63}$/.test(exporter.contentType)
     && (exporter.streaming === undefined || typeof exporter.streaming === 'boolean');
 }
+// Mirrors internal/plugin's package icon rule (validPackageIcon + safePackagePath): a bounded
+// package-relative raster path. An empty string means "no logo", because the host skips the
+// check and IconPath falls back to the provider icon. SVG is refused: logos render in the host
+// window, so an executable vector document is never needed.
+const PACKAGE_ICON_PATH = /\.(?:png|jpe?g|webp|gif)$/i;
+function validPackageIcon(value: unknown): value is string {
+  if (value === '') return true;
+  if (typeof value !== 'string' || value.length > 256 || !utf8Within(value, 256) || !PACKAGE_ICON_PATH.test(value)
+    || /[\\:\u0000-\u001f<>"|?*]/.test(value) || value.startsWith('/')) return false;
+  const parts = value.split('/');
+  return parts.length <= 33 && parts.every((part) => part !== '' && part !== '.' && part !== '..'
+    && part.length <= 240 && !part.endsWith(' ') && !part.endsWith('.') && !reservedSkillSegment(part));
+}
 function validAIProvider(provider: Record<string, unknown>, commands: Map<string, Record<string, unknown>>): boolean {
   const command = typeof provider.command === 'string' ? commands.get(provider.command) : undefined;
   const models = provider.models;
   if (typeof provider.id !== 'string' || !/^[a-z][a-z0-9_.-]{0,63}$/.test(provider.id)
     || typeof provider.name !== 'string' || provider.name.trim() === '' || !utf8Within(provider.name, 256) || provider.name.includes('\u0000')
+    || (provider.icon != null && !validPackageIcon(provider.icon))
+    || (provider.defaultBaseUrl != null && (typeof provider.defaultBaseUrl !== 'string' || provider.defaultBaseUrl.length > 2048))
     || command == null || typeof provider.supportsTools !== 'boolean' || typeof provider.supportsImages !== 'boolean'
     || !Array.isArray(models) || models.length < 1 || models.length > 32) return false;
   const seen = new Set<string>();
@@ -93,6 +110,73 @@ function validSkillPath(value: unknown, entry: boolean): value is string {
   const base = parts[parts.length - 1];
   return entry ? base === 'SKILL.md' : base.endsWith('.md') && base !== 'SKILL.md';
 }
+const PAGE_CONTRIBUTION_LIMIT = 32;
+const PAGE_NODE_LIMITS = { depth: 16, nodes: 512 } as const;
+function validLocalTitle(value: unknown): value is string {
+  return typeof value === 'string' && value.trim() !== '' && utf8Within(value, 256) && !value.includes('\u0000');
+}
+// Mirrors plugin.validateNode: the root is depth 0 and every page shares one cumulative
+// node budget for the whole manifest, exactly like panels.
+function chargePageNodeBudget(value: unknown, depth: number, budget: { nodes: number }): void {
+  budget.nodes += 1;
+  if (budget.nodes > PAGE_NODE_LIMITS.nodes || depth > PAGE_NODE_LIMITS.depth) invalid();
+  const node = requireRecord(value);
+  if (Array.isArray(node.children)) {
+    for (const child of node.children) chargePageNodeBudget(child, depth + 1, budget);
+  }
+}
+/** Contract threshold check for one page body, exported so tests pin the host budget. */
+export function validatePageNodeBudget(body: unknown): void {
+  chargePageNodeBudget(body, 0, { nodes: 0 });
+}
+function validatePageHTML(value: unknown, permissions: readonly string[]): void {
+  if (!permissions.includes('ui.html-panel')) invalid();
+  const html = requireRecord(value);
+  onlyKeys(html, ['source']);
+  if (typeof html.source !== 'string' || html.source.trim() === '' || !utf8Within(html.source, 256 << 10) || html.source.includes('\u0000')) invalid();
+}
+function validatePages(pages: unknown, permissions: readonly string[]): Set<string> {
+  if (!Array.isArray(pages) || pages.length > PAGE_CONTRIBUTION_LIMIT) invalid();
+  const seen = new Set<string>();
+  const budget = { nodes: 0 };
+  for (const item of pages) {
+    const page = requireRecord(item);
+    onlyKeys(page, ['id', 'title', 'body', 'html']);
+    const hasBody = page.body != null;
+    const hasHTML = page.html != null;
+    if (hasBody === hasHTML) invalid();
+    if (hasBody) {
+      const body = requireRecord(page.body);
+      onlyUINode(body);
+      chargePageNodeBudget(body, 0, budget);
+    }
+    if (hasHTML) validatePageHTML(page.html, permissions);
+    if (!validLocalID(page.id) || seen.has(page.id) || !validLocalTitle(page.title)) invalid();
+    seen.add(page.id as string);
+  }
+  return seen;
+}
+function validateNavigation(entries: unknown, pageIDs: ReadonlySet<string>, hasWindow: boolean): void {
+  if (!Array.isArray(entries) || entries.length > PAGE_CONTRIBUTION_LIMIT) invalid();
+  const seen = new Set<string>();
+  for (const item of entries) {
+    const entry = requireRecord(item);
+    onlyKeys(entry, ['id', 'title', 'target', 'page', 'location', 'order']);
+    const order = entry.order;
+    if (!validLocalID(entry.id) || seen.has(entry.id) || !validLocalTitle(entry.title)
+      || (entry.location !== 'tools' && entry.location !== 'statusbar' && entry.location !== 'command')
+      || (order != null && (typeof order !== 'number' || !Number.isInteger(order) || order < -1000 || order > 1000))) invalid();
+    const target = entry.target == null || entry.target === '' ? 'page' : entry.target;
+    if (target === 'page') {
+      if (typeof entry.page !== 'string' || !pageIDs.has(entry.page)) invalid();
+    } else if (target === 'window') {
+      if (!hasWindow || (entry.page != null && entry.page !== '')) invalid();
+    } else {
+      invalid();
+    }
+    seen.add(entry.id as string);
+  }
+}
 function validSkill(skill: Record<string, unknown>): boolean {
   const resources = skill.resources == null ? [] : skill.resources;
   if (typeof skill.id !== 'string' || !/^[a-z][a-z0-9_.-]{0,63}$/.test(skill.id)
@@ -106,10 +190,17 @@ function validSkill(skill: Record<string, unknown>): boolean {
   }
   return true;
 }
+// Manifests opt in to the host's own envelope instead of the generic defaults: one manifest file is
+// capped at 1 MiB (internal/plugin/manifest.go:40) and one inline panel or page HTML document at
+// 256 KiB (internal/plugin/manifest_ui.go:16), while a page or panel body may nest 16 levels below
+// the manifest, so 64 leaves room for the manifest plus that body.
+// Every JSON value needs at least one byte, so matching the value budget to bytes keeps it
+// from becoming a tighter gate than the manifest contract. Token and final byte checks still apply.
+export const MANIFEST_JSON_LIMITS = { bytes: 1 << 20, text: 256 << 10, depth: 64, values: 1 << 20 } as const;
 export function decodeManifest(data: unknown): PluginManifest {
-  boundedJSON(data, 128 * 1024, 64 * 1024);
+  boundedJSON(data, MANIFEST_JSON_LIMITS.bytes, MANIFEST_JSON_LIMITS.text, MANIFEST_JSON_LIMITS.depth, MANIFEST_JSON_LIMITS.values);
   const raw = requireRecord(data);
-  const allowed = new Set(['schemaVersion', 'apiVersion', 'id', 'name', 'version', 'description', 'author', 'license', 'minHostVersion', 'permissions', 'permissionNotes', 'requires', 'backend', 'contributes', 'window', 'configSchema']);
+  const allowed = new Set(['schemaVersion', 'apiVersion', 'id', 'name', 'version', 'description', 'author', 'license', 'icon', 'minHostVersion', 'permissions', 'permissionNotes', 'requires', 'backend', 'contributes', 'window']);
   if (Object.keys(raw).some((key) => !allowed.has(key))) invalid();
   const m: Record<string, unknown> = { ...raw, permissions: raw.permissions ?? [] };
   if (m.schemaVersion !== 1 || m.apiVersion !== 1 || typeof m.id !== 'string' || typeof m.name !== 'string'
@@ -117,6 +208,9 @@ export function decodeManifest(data: unknown): PluginManifest {
     || m.permissions.some((p) => typeof p !== 'string')) invalid();
   const name = m.name as string;
   if (!validPluginID(m.id) || typeof m.version !== 'string' || !validVersion(m.version) || name.trim() === '' || !utf8Within(name, 256) || name.includes('\u0000')) invalid();
+  // Only an absent key means "no logo": a literal null is not a path, and the host never emits
+  // one because the field is omitempty, so accepting it would only widen the contract.
+  if (m.icon !== undefined && !validPackageIcon(m.icon)) invalid();
   const textLimits: Record<string, number> = { description: 16384, author: 512, license: 256 };
   for (const key of ['description', 'author', 'license', 'minHostVersion']) {
     const value = m[key];
@@ -149,7 +243,7 @@ export function decodeManifest(data: unknown): PluginManifest {
   }
   if (m.contributes != null) {
     const c = requireRecord(m.contributes);
-    onlyKeys(c, ['commands', 'panels', 'dataSources', 'skills', 'aiProviders', 'exporters']);
+    onlyKeys(c, ['commands', 'panels', 'dataSources', 'skills', 'aiProviders', 'exporters', 'pages', 'navigation', 'connectionActions', 'sidebar', 'views', 'keybindings', 'settingsSections']);
     const contributionLimits: Record<string, number> = { commands: 128, panels: 32 };
     for (const key of ['commands', 'panels']) {
       const entries = c[key];
@@ -160,9 +254,12 @@ export function decodeManifest(data: unknown): PluginManifest {
         const entry = requireRecord(item);
         onlyKeys(entry, key === 'commands' ? ['id', 'title', 'description', 'inputSchema', 'effect'] : ['id', 'title', 'body', 'html']);
         if (key === 'panels') {
-          const hasBody = entry.body != null;
+          // Go 的 omitempty 不会省略零值结构体，HTML-only 面板可能仍带 body:{"type":""}。
+          const rawBody = entry.body;
+          const hasBody = rawBody != null && !(typeof rawBody === 'object' && !Array.isArray(rawBody) && (rawBody as Record<string, unknown>).type === '');
           const hasHTML = entry.html != null;
           if (hasBody === hasHTML) invalid();
+          if (!hasBody && rawBody != null) delete entry.body;
           if (hasBody) onlyUINode(requireRecord(entry.body));
           if (hasHTML) {
             if (!(m.permissions as string[]).includes('ui.html-panel')) invalid();
@@ -215,9 +312,187 @@ export function decodeManifest(data: unknown): PluginManifest {
       }
       for (const item of c.aiProviders) {
         const provider = requireRecord(item);
-        onlyKeys(provider, ['id', 'name', 'command', 'models', 'supportsTools', 'supportsImages']);
+        onlyKeys(provider, ['id', 'name', 'command', 'icon', 'defaultBaseUrl', 'models', 'supportsTools', 'supportsImages']);
         if (!validAIProvider(provider, commands)) invalid();
       }
+    }
+    if (c.connectionActions != null) {
+      if (!Array.isArray(c.connectionActions) || c.connectionActions.length > 16) return invalid();
+      const pageIDs = new Set<string>();
+      for (const page of Array.isArray(c.pages) ? c.pages : []) {
+        const id = requireRecord(page).id;
+        if (typeof id === 'string') pageIDs.add(id);
+      }
+      const seenActions = new Set<string>();
+      const validType = (value: unknown) => typeof value === 'string' && /^[a-z0-9][a-z0-9._:-]{0,127}$/.test(value);
+      const validScope = (value: unknown) => value === 'connection' || value === 'database' || value === 'collection';
+      for (const item of c.connectionActions) {
+        const action = requireRecord(item);
+        onlyKeys(action, ['id', 'title', 'description', 'connectionTypes', 'scopes', 'target']);
+        if (!validLocalID(action.id) || seenActions.has(action.id as string)
+          || typeof action.title !== 'string' || action.title.trim() === '' || !utf8Within(action.title, 256) || action.title.includes('\u0000')) invalid();
+        seenActions.add(action.id as string);
+        if (action.description != null && (typeof action.description !== 'string' || !utf8Within(action.description, 4096))) invalid();
+        if (!Array.isArray(action.connectionTypes) || action.connectionTypes.length === 0 || action.connectionTypes.length > 32) invalid();
+        const types = new Set<string>();
+        for (const value of action.connectionTypes) {
+          if (!validType(value) || types.has(value)) invalid();
+          types.add(value);
+        }
+        if (action.scopes != null) {
+          if (!Array.isArray(action.scopes) || action.scopes.length > 8) invalid();
+          const scopes = new Set<string>();
+          for (const value of action.scopes) {
+            if (!validScope(value) || scopes.has(value)) invalid();
+            scopes.add(value);
+          }
+        }
+        const target = requireRecord(action.target);
+        onlyKeys(target, ['type', 'page']);
+        if (target.type === 'window') {
+          if (target.page != null || m.window == null) invalid();
+        } else if (target.type === 'page') {
+          if (typeof target.page !== 'string' || !(m.permissions as string[]).includes('ui.pages') || !pageIDs.has(target.page)) invalid();
+        } else {
+          invalid();
+        }
+      }
+    }
+    if (c.keybindings != null) {
+      if (!Array.isArray(c.keybindings) || c.keybindings.length > 16) return invalid();
+      const pages = new Set<string>();
+      for (const page of Array.isArray(c.pages) ? c.pages : []) {
+        const id = requireRecord(page).id;
+        if (typeof id === 'string') pages.add(id);
+      }
+      const seenBindings = new Set<string>();
+      const seenKeys = new Set<string>();
+      for (const item of c.keybindings) {
+        const binding = requireRecord(item);
+        onlyKeys(binding, ['id', 'title', 'keys', 'target']);
+        if (!validLocalID(binding.id) || seenBindings.has(binding.id as string)
+          || typeof binding.title !== 'string' || binding.title.trim() === '' || !utf8Within(binding.title, 128) || binding.title.includes('\u0000')) invalid();
+        seenBindings.add(binding.id as string);
+        if (typeof binding.keys !== 'string' || !/^((CmdOrCtrl|Ctrl|Cmd|Alt|Shift)\+){0,4}[A-Za-z0-9]{1,16}$/.test(binding.keys)) invalid();
+        const normalized = (binding.keys as string).toLowerCase();
+        if (seenKeys.has(normalized)) invalid();
+        seenKeys.add(normalized);
+        const target = requireRecord(binding.target);
+        onlyKeys(target, ['type', 'page']);
+        if (target.type === 'window') {
+          if (target.page != null || m.window == null) invalid();
+        } else if (target.type === 'page') {
+          if (typeof target.page !== 'string' || !(m.permissions as string[]).includes('ui.pages') || !pages.has(target.page)) invalid();
+        } else {
+          invalid();
+        }
+      }
+    }
+    if (c.views != null) {
+      if (!Array.isArray(c.views) || c.views.length > 8) return invalid();
+      if (!(m.permissions as string[]).includes('ui.pages')) invalid();
+      const pageIDs = new Set<string>();
+      for (const page of Array.isArray(c.pages) ? c.pages : []) {
+        const id = requireRecord(page).id;
+        if (typeof id === 'string') pageIDs.add(id);
+      }
+      const seenViews = new Set<string>();
+      for (const item of c.views) {
+        const view = requireRecord(item);
+        onlyKeys(view, ['id', 'title', 'page', 'location', 'icon', 'order']);
+        if (!validLocalID(view.id) || seenViews.has(view.id as string)
+          || typeof view.title !== 'string' || view.title.trim() === '' || !utf8Within(view.title, 128) || view.title.includes('\u0000')) invalid();
+        seenViews.add(view.id as string);
+        if (typeof view.page !== 'string' || !pageIDs.has(view.page)) invalid();
+        if (view.location !== 'right' && view.location !== 'bottom') invalid();
+        if (view.icon != null && !validPackageIcon(view.icon)) invalid();
+        if (view.order != null && (typeof view.order !== 'number' || !Number.isInteger(view.order) || view.order < -1000 || view.order > 1000)) invalid();
+      }
+    }
+    if (c.settingsSections != null) {
+      if (!Array.isArray(c.settingsSections) || c.settingsSections.length > 8) invalid();
+      if (!(m.permissions as string[]).includes('ui.pages')) invalid();
+      const pageIDs = new Set<string>();
+      for (const page of Array.isArray(c.pages) ? c.pages : []) {
+        const id = requireRecord(page).id;
+        if (typeof id === 'string') pageIDs.add(id);
+      }
+      const seenSections = new Set<string>();
+      const seenSlots = new Set<string>();
+      for (const item of c.settingsSections) {
+        const section = requireRecord(item);
+        onlyKeys(section, ['id', 'slot', 'page', 'title', 'description', 'order']);
+        if (!validLocalID(section.id) || seenSections.has(section.id as string)) invalid();
+        seenSections.add(section.id as string);
+        if (typeof section.page !== 'string' || !pageIDs.has(section.page)) invalid();
+        if (section.slot !== 'appearance.background' || seenSlots.has(section.slot as string)) invalid();
+        seenSlots.add(section.slot as string);
+        if (section.title != null
+          && (typeof section.title !== 'string' || !utf8Within(section.title, 128) || section.title.includes('\u0000'))) invalid();
+        if (section.description != null
+          && (typeof section.description !== 'string' || !utf8Within(section.description, 512) || section.description.includes('\u0000'))) invalid();
+        if (section.order != null && (typeof section.order !== 'number' || !Number.isInteger(section.order) || section.order < -1000 || section.order > 1000)) invalid();
+      }
+    }
+    if (c.sidebar != null) {
+      if (!Array.isArray(c.sidebar) || c.sidebar.length > 4) invalid();
+      if (!(m.permissions as string[]).includes('ui.sidebar')) invalid();
+      const pageIDs = new Set<string>();
+      for (const page of Array.isArray(c.pages) ? c.pages : []) {
+        const id = requireRecord(page).id;
+        if (typeof id === 'string') pageIDs.add(id);
+      }
+      const commands = new Set<string>();
+      for (const command of Array.isArray(c.commands) ? c.commands : []) {
+        const id = requireRecord(command).id;
+        if (typeof id === 'string') commands.add(id);
+      }
+      const seenGroups = new Set<string>();
+      for (const item of c.sidebar) {
+        const group = requireRecord(item);
+        onlyKeys(group, ['id', 'title', 'icon', 'listCommand', 'emptyText', 'open', 'order']);
+        if (!validLocalID(group.id) || seenGroups.has(group.id as string)
+          || typeof group.title !== 'string' || group.title.trim() === '' || !utf8Within(group.title, 128) || group.title.includes('\u0000')) invalid();
+        seenGroups.add(group.id as string);
+        if (typeof group.listCommand !== 'string' || !commands.has(group.listCommand)) invalid();
+        if (group.emptyText != null
+          && (typeof group.emptyText !== 'string' || !utf8Within(group.emptyText, 128) || group.emptyText.includes('\u0000'))) invalid();
+        if (group.icon != null && !validPackageIcon(group.icon)) invalid();
+        if (group.order != null && (typeof group.order !== 'number' || !Number.isInteger(group.order) || group.order < -1000 || group.order > 1000)) invalid();
+        if (group.open != null) {
+          const target = requireRecord(group.open);
+          if (target.type === 'window') {
+            if (target.page != null || m.window == null) invalid();
+          } else if (target.type === 'page') {
+            if (typeof target.page !== 'string' || !(m.permissions as string[]).includes('ui.pages') || !pageIDs.has(target.page)) invalid();
+          } else if (target.type === 'panel') {
+            const viewIDs = new Set<string>();
+            for (const view of Array.isArray(c.views) ? c.views : []) {
+              const id = requireRecord(view).id;
+              if (typeof id === 'string') viewIDs.add(id);
+            }
+            if (typeof target.view !== 'string' || target.page != null
+              || !(m.permissions as string[]).includes('ui.pages') || !viewIDs.has(target.view)) invalid();
+          } else {
+            invalid();
+          }
+          onlyKeys(target, ['type', 'page', 'view']);
+        }
+      }
+    }
+    if (c.pages != null || c.navigation != null) {
+      const permissions = m.permissions as string[];
+      const pages = c.pages ?? [];
+      const navigation = c.navigation ?? [];
+      // Empty arrays declare nothing, so they must not require the permission the
+      // host also only enforces for a non-empty declaration. A window target only
+      // opens the plugin's own window and needs no page permission.
+      const pageNavigation = Array.isArray(navigation)
+        && navigation.some((entry) => requireRecord(entry).target !== 'window');
+      const declares = (Array.isArray(pages) && pages.length > 0) || pageNavigation;
+      if (declares && !permissions.includes('ui.pages')) invalid();
+      const pageIDs = validatePages(pages, permissions);
+      validateNavigation(navigation, pageIDs, m.window != null);
     }
     if (c.skills != null) {
       if (!Array.isArray(c.skills) || c.skills.length > 16 || !(m.permissions as string[]).includes('ai.skills')) return invalid();
@@ -241,8 +516,8 @@ export function decodeManifest(data: unknown): PluginManifest {
       for (const entry of Object.values(requireRecord(backend.platforms))) onlyKeys(requireRecord(entry), entryKeys);
     }
   }
-  if (Object.prototype.hasOwnProperty.call(m, 'configSchema') && !validSchema(m.configSchema)) invalid();
   if (m.window != null) {
+    if (!(m.permissions as string[]).includes('ui.html-panel')) invalid();
     const view = requireRecord(m.window);
     onlyKeys(view, ['entry', 'title', 'width', 'height']);
     if (!validWindowEntry(view.entry)) invalid();
@@ -263,9 +538,66 @@ export function decodeStatus(data: unknown): PluginStatus {
     || typeof s.generation !== 'number' || !Number.isSafeInteger(s.generation) || typeof s.installedAt !== 'string') invalid();
   return { ...s, manifest } as unknown as PluginStatus;
 }
+/**
+ * 单条状态解码失败时降级成「仅身份」清单，而不是整表抛错。
+ *
+ * 宿主升级后新增的清单规则会拒绝早期合法安装的插件（00021c5bc 让 window 必须声明
+ * ui.html-panel 就是一次）。宿主侧已经隔离了这条记录（internal/plugin/state.go 的
+ * quarantine），但前端原先只要有一条解码失败就整份列表 invalid_response，插件面板
+ * 直接空白、连卸载入口都没有 —— 用户看到的是「怎么都看不看了」。
+ *
+ * 降级只保留身份字段（id/name/version），权限、contributes、window、backend 一律清空：
+ * 无法按契约解码的声明不可信，不能拿去渲染按钮或发起调用。state 强制 blocked、desired
+ * 强制 false，与宿主隔离时的语义一致。
+ */
+function decodeStatusDegraded(raw: Record<string, unknown>): PluginStatus | null {
+  const rawManifest = raw.manifest;
+  if (rawManifest == null || typeof rawManifest !== 'object' || Array.isArray(rawManifest)) return null;
+  const manifest = rawManifest as Record<string, unknown>;
+  const id = manifest.id;
+  const name = manifest.name;
+  const version = manifest.version;
+  // 身份字段本身不合法就无法安全地列出或卸载这一条，交给调用方丢弃。
+  if (typeof id !== 'string' || !validPluginID(id)) return null;
+  if (typeof name !== 'string' || name.trim() === '' || !utf8Within(name, 256)) return null;
+  if (typeof version !== 'string' || !validVersion(version)) return null;
+  if (typeof raw.digest !== 'string' || !/^[a-f0-9]{64}$/i.test(raw.digest)) return null;
+  if (typeof raw.generation !== 'number' || !Number.isSafeInteger(raw.generation)) return null;
+  if (typeof raw.installedAt !== 'string') return null;
+  const lastError = typeof raw.lastError === 'string' && raw.lastError.length <= 8192 ? raw.lastError : undefined;
+  return {
+    manifest: {
+      schemaVersion: 1,
+      apiVersion: 1,
+      id,
+      name,
+      version,
+      permissions: [],
+    },
+    digest: raw.digest,
+    state: 'blocked',
+    desiredEnabled: false,
+    generation: raw.generation,
+    ...(lastError ? { lastError } : {}),
+    installedAt: raw.installedAt,
+    manifestDegraded: true,
+  };
+}
 export function decodeStatuses(data: unknown): PluginStatus[] {
   if (!Array.isArray(data) || data.length > 500) return invalid();
-  return data.map(decodeStatus);
+  const decoded: PluginStatus[] = [];
+  for (const item of data) {
+    if (item == null || typeof item !== 'object' || Array.isArray(item)) return invalid();
+    try {
+      decoded.push(decodeStatus(item));
+    } catch (cause) {
+      if (!(cause instanceof PluginAPIError) || cause.key !== 'plugin.error.invalid_response') throw cause;
+      const degraded = decodeStatusDegraded(item as Record<string, unknown>);
+      // 身份字段也解不出来：这一条没有任何可用信息，跳过它但不牵连其余插件。
+      if (degraded) decoded.push(degraded);
+    }
+  }
+  return decoded;
 }
 export function decodeInspection(data: unknown): PluginInspection {
   const i = requireRecord(data);
@@ -279,4 +611,21 @@ export function decodeRuntime(data: unknown): PluginRuntimeInfo {
   if (typeof r.safeMode !== 'boolean' || typeof r.managementAllowed !== 'boolean'
     || (r.webRuntime !== undefined && typeof r.webRuntime !== 'boolean')) invalid();
   return r as unknown as PluginRuntimeInfo;
+}
+export function decodeRemoteInspection(data: unknown): PluginRemoteInspection {
+  const r = requireRecord(data);
+  const source = requireRecord(r.source);
+  if ((source.kind !== 'github' && source.kind !== 'npm')
+    || typeof source.spec !== 'string' || typeof source.url !== 'string'
+    || typeof source.name !== 'string' || typeof source.version !== 'string'
+    || typeof r.artifactDigest !== 'string' || !/^[a-f0-9]{64}$/i.test(r.artifactDigest)
+    || typeof r.approvalToken !== 'string' || r.approvalToken === ''
+    || typeof r.expiresAt !== 'string' || r.expiresAt === '') invalid();
+  return {
+    inspection: decodeInspection(r.inspection),
+    source: source as unknown as PluginRemoteSource,
+    artifactDigest: r.artifactDigest,
+    approvalToken: r.approvalToken,
+    expiresAt: r.expiresAt,
+  };
 }

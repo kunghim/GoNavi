@@ -37,6 +37,7 @@ import {
   SortDescendingOutlined,
   TeamOutlined,
   VerticalAlignBottomOutlined,
+  CodeOutlined,
 } from '@ant-design/icons';
 import { getCurrentLanguage, t } from '../i18n';
 import type { ShortcutPlatform } from '../utils/shortcuts';
@@ -45,6 +46,7 @@ import {
   primaryShortcut,
   renderV2ContextMenuItems,
   V2ContextMenuHeader,
+  V2TableContextMenuItem,
   type V2TableContextMenuItemConfig,
 } from './v2ContextMenu/v2ContextMenuPrimitives';
 
@@ -54,6 +56,7 @@ export {
   type V2TableContextMenuStats,
 } from './v2ContextMenu/v2TableContextMenuMeta';
 export { V2TableContextMenuView, type V2TableContextMenuActionKey } from './v2ContextMenu/V2TableContextMenuView';
+export { V2MultiTableContextMenuView, type V2MultiTableContextMenuActionKey } from './v2ContextMenu/V2MultiTableContextMenuView';
 
 export type V2TableGroupContextMenuActionKey =
   | 'new-table'
@@ -133,6 +136,7 @@ export type V2DatabaseContextMenuActionKey =
   | 'pin-database'
   | 'unpin-database'
   | 'copy-database-name'
+  | 'copy-database'
   | 'new-table'
   | 'new-schema'
   | 'new-materialized-view'
@@ -169,6 +173,7 @@ export const V2DatabaseContextMenuView: React.FC<{
   supportsBatchWorkbench?: boolean;
   supportsRunSqlFile?: boolean;
   isPinned?: boolean;
+  pluginActions?: { key: string; title: string; onSelect: () => void }[];
   onAction?: (action: V2DatabaseContextMenuActionKey) => void;
 }> = ({
   dbName,
@@ -182,6 +187,7 @@ export const V2DatabaseContextMenuView: React.FC<{
   supportsBatchWorkbench = true,
   supportsRunSqlFile = true,
   isPinned = false,
+  pluginActions = [],
   onAction,
 }) => {
   const renderItems = (items: V2TableContextMenuItemConfig[]) => renderV2ContextMenuItems(
@@ -201,6 +207,7 @@ export const V2DatabaseContextMenuView: React.FC<{
       <div className="gn-v2-context-menu-body">
         {renderItems([
           { action: 'copy-database-name', icon: <CopyOutlined />, title: t('sidebar.menu.copy_database_name'), kbd: primaryShortcut('C', shortcutPlatform), featured: true },
+          { action: 'copy-database', icon: <CopyOutlined />, title: t('sidebar.menu.copy_database') },
           { action: isPinned ? 'unpin-database' : 'pin-database', icon: <PushpinOutlined />, title: isPinned ? t('sidebar.action.unpin_database') : t('sidebar.action.pin_database'), kbd: isPinned ? t('sidebar.status.pinned') : undefined, selected: isPinned },
           { action: 'new-table', icon: <TableOutlined />, title: t('sidebar.menu.create_table'), kbd: primaryShortcut('N', shortcutPlatform), featured: true },
           ...(supportsSchemaActions ? [{ action: 'new-schema', icon: <FolderAddOutlined />, title: t('sidebar.v2_database_menu.new_schema') }] : []),
@@ -208,6 +215,12 @@ export const V2DatabaseContextMenuView: React.FC<{
           { action: 'new-query', icon: <GnNewQueryIcon />, title: t('sidebar.menu.new_query') },
           ...(supportsRunSqlFile ? [{ action: 'run-sql' as const, icon: <FileAddOutlined />, title: t('sidebar.sql_file_exec.title') }] : []),
         ])}
+
+        {pluginActions.length > 0 && <>
+          <div className="gn-v2-context-menu-section-title">{t('plugin.connection_actions.menu')}</div>
+          {pluginActions.map((item) => <V2TableContextMenuItem key={item.key}
+            item={{ action: item.key, icon: <CodeOutlined />, title: item.title }} onAction={() => item.onSelect()} />)}
+        </>}
 
         {supportsStarRocksActions && (
           <>
@@ -382,6 +395,7 @@ export const V2ConnectionContextMenuView: React.FC<{
   supportsMessagePublish?: boolean;
   supportsUserManagement?: boolean;
   tags?: V2ConnectionContextMenuTagItem[];
+  pluginActions?: { key: string; title: string; onSelect: () => void }[];
   onAction?: (action: V2ConnectionContextMenuActionKey) => void;
 }> = ({
   connectionName,
@@ -399,6 +413,7 @@ export const V2ConnectionContextMenuView: React.FC<{
   supportsMessagePublish = false,
   supportsUserManagement = false,
   tags = [],
+  pluginActions = [],
   onAction,
 }) => {
   const renderItems = (items: V2TableContextMenuItemConfig[]) => renderV2ContextMenuItems(
@@ -440,6 +455,12 @@ export const V2ConnectionContextMenuView: React.FC<{
             ...(supportsRunSqlFile ? [{ action: 'open-sql-file' as const, icon: <FileAddOutlined />, title: t('sidebar.sql_file_exec.title') }] : []),
           ] : []),
         ])}
+
+        {pluginActions.length > 0 && <>
+          <div className="gn-v2-context-menu-section-title">{t('plugin.connection_actions.menu')}</div>
+          {pluginActions.map((item) => <V2TableContextMenuItem key={item.key}
+            item={{ action: item.key, icon: <CodeOutlined />, title: item.title }} onAction={() => item.onSelect()} />)}
+        </>}
 
         <div className="gn-v2-context-menu-section-title">{t('connection.sidebar.menu.section')}</div>
         {renderItems([

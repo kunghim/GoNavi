@@ -2,6 +2,7 @@ import { getDataSourceDialectFamily, getDataSourceSpec, getDataSourceSpecByDiale
 import { pluginDataSourceConfigType, parsePluginDataSourceType } from '../plugins/dataSource/identity';
 import { resolveOceanBaseProtocolForDialect } from './oceanBaseProtocol';
 import { splitQualifiedNameSegmentsDetailed, splitQualifiedNameSegments } from './qualifiedName';
+import { quoteInterSystemsIdent } from './intersystemsIdentifiers';
 
 export type ColumnTypeOption = { value: string };
 
@@ -276,7 +277,7 @@ export const appendTableAlias = (tableName: string, alias: string, dbType: strin
 };
 
 export const isBacktickIdentifierDialect = (dbType: string): boolean => (
-  isMysqlFamilyDialect(dbType) || ['clickhouse', 'tdengine', 'iotdb'].includes(resolveSqlDialect(dbType))
+  isMysqlFamilyDialect(dbType) || ['clickhouse', 'tdengine', 'iotdb', 'hive'].includes(resolveSqlDialect(dbType))
 );
 
 const stripIdentifierQuotes = (part: string, dbType = ''): string => {
@@ -296,22 +297,61 @@ const escapeBracketIdentifier = (value: string) => String(value || '').replace(/
 
 const needsPgLikeQuote = (ident: string): boolean => !/^[a-z_][a-z0-9_]*$/.test(ident);
 
+// Oracle 家族：裸标识符会被折叠为大写，双引号则精确匹配、区分大小写。
+//
+// 判断依据是「这个名字能不能裸写后仍指向同一个对象」：
+//   - 全大写（`ORDERS`）：裸写折叠后仍是 `ORDERS`，不加引号。
+//   - 小写或混合大小写（`orders`、`Order_Items`）：只有带引号才指向原对象；
+//     裸写会被折叠成 `ORDERS`，反而查不到（正是 ORA-00942 的来源）。
+//   - 含空格、连字符、中文等裸名不允许的字符：必须加引号。
+//
+// 注意不能只看「是否是合法裸名」——`orders` 语法上合法，语义上却是另一个对象。
+const ORACLE_BARE_IDENT_RE = /^[A-Z_][A-Z0-9_$#]*$/;
+const needsOracleQuote = (ident: string): boolean => !ORACLE_BARE_IDENT_RE.test(ident);
+
 export const unquoteSqlIdentifierPart = stripIdentifierQuotes;
 
 export const unquoteSqlIdentifierPath = (path: string, dbType = ''): string => (
   splitQualifiedNameSegments(path, dbType).filter(Boolean).join('.')
 );
 
-export const quoteSqlIdentifierPart = (dbType: string, part: string): string => {
-  const dialect = resolveSqlDialect(dbType);
+export const quoteSqlIdentifierPart = (
+  dbType: string,
+  part: string,
+  options?: { oceanBaseProtocol?: unknown },
+): string => {
+  // OceanBase 的方言取决于连接协议：不传协议就退化为 mysql（反引号），
+  // 在 Oracle 租户上会直接产生非法标识符。调用方知道协议时必须传进来。
+  const dialect = resolveSqlDialect(dbType, '', options);
   const ident = stripIdentifierQuotes(part, dialect);
   if (!ident) return '';
+
+  // 调用方原本已显式定界（`"Order Items"`）时必须保留定界语义：Oracle 家族会
+  // 区分大小写，剥掉引号再决定就是猜。这里先判断来源是否带引号。
+  const sourceWasQuoted = (() => {
+    const text = String(part || '').trim();
+    if (!text) return false;
+    const segments = splitQualifiedNameSegmentsDetailed(text, dialect);
+    return segments.length === 1 && Boolean(segments[0].quoted);
+  })();
 
   if (isBacktickIdentifierDialect(dialect)) {
     return `\`${escapeBacktickIdentifier(ident)}\``;
   }
+  if (isOracleLikeDialect(dialect)) {
+    // Oracle 家族按需定界：来源已定界或裸名不合法时才加双引号。
+    return sourceWasQuoted || needsOracleQuote(ident)
+      ? `"${escapeDoubleQuoteIdentifier(ident)}"`
+      : ident;
+  }
   if (isSqlServerDialect(dialect)) {
     return `[${escapeBracketIdentifier(ident)}]`;
+  }
+  // IRIS/Caché 的双引号只在服务端开启 DelimitedIds 时才是标识符定界符；关闭时会被当成
+  // 字符串字面量（`FROM "BDA_Store"` 报 LITERAL ('BDA_Store') found）。裸名在两种配置下
+  // 都能解析且大小写不敏感，所以按需加引号，规则与 PostgreSQL 的大小写折叠不同。
+  if (dialect === 'iris') {
+    return quoteInterSystemsIdent(ident);
   }
   // 描述表声明“按需加引号”的自有方言（如 GBase 8s）与 PostgreSQL 规则一致。
   if (isPgLikeDialect(dialect) || getDataSourceSpecByDialect(dialect)?.ui?.quoting === 'pg') {
@@ -320,8 +360,12 @@ export const quoteSqlIdentifierPart = (dbType: string, part: string): string => 
   return `"${escapeDoubleQuoteIdentifier(ident)}"`;
 };
 
-export const quoteSqlIdentifierPath = (dbType: string, path: string): string => {
-  const dialect = resolveSqlDialect(dbType);
+export const quoteSqlIdentifierPath = (
+  dbType: string,
+  path: string,
+  options?: { oceanBaseProtocol?: unknown },
+): string => {
+  const dialect = resolveSqlDialect(dbType, '', options);
   return splitQualifiedNameSegmentsDetailed(path, dialect)
     .filter((segment) => Boolean(segment.value))
     .map((segment) => quoteSqlIdentifierPart(dialect, segment.raw))

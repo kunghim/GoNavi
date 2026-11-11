@@ -38,29 +38,6 @@ var _ DatabaseForeignKeyProvider = (*KingbaseDB)(nil)
 
 var openKingbaseDB = sql.Open
 
-// resolveKingbaseConnectDatabases returns databases that can be used to establish
-// a connection. Kingbase follows PostgreSQL's default of using the login user as
-// the database when no database is supplied, which is surprising for the UI's
-// optional database field. Use known maintenance databases instead.
-func resolveKingbaseConnectDatabases(config connection.ConnectionConfig) []string {
-	params := url.Values{}
-	mergeConnectionParamValuesWithAllowlist(params, connectionParamsFromURI(config.URI, "kingbase", "postgres", "postgresql"), kingbaseConnectionParamNames)
-	mergeConnectionParamValuesWithAllowlist(params, connectionParamsFromText(config.ConnectionParams), kingbaseConnectionParamNames)
-
-	explicit := strings.TrimSpace(config.Database)
-	if explicit == "" {
-		explicit = kingbaseDatabaseFromURI(config.URI)
-	}
-	if paramDatabase := strings.TrimSpace(firstConnectionParamValue(params, "dbname", "database")); paramDatabase != "" {
-		explicit = paramDatabase
-	}
-	if explicit != "" {
-		return []string{explicit}
-	}
-
-	return []string{"test", "template1"}
-}
-
 // kingbaseDatabaseFromURI extracts the PostgreSQL-compatible database path
 // from a Kingbase URI. Explicit config.Database and query parameters have
 // higher priority and are applied by the caller.
@@ -214,12 +191,15 @@ func (k *KingbaseDB) Connect(config connection.ConnectionConfig) (err error) {
 		logger.Infof("人大金仓通过本地端口转发连接：%s -> %s:%d", forwarder.LocalAddr, config.Host, config.Port)
 	}
 
+	usingMaintenanceFallback := resolveKingbaseExplicitDatabase(runConfig) == ""
 	attempts := []connection.ConnectionConfig{runConfig}
 	if shouldTrySSLPreferredFallback(runConfig) {
 		attempts = append(attempts, withSSLDisabled(runConfig))
 	}
 
 	var failures []string
+	// 保留最后一次底层错误，让汇总错误仍可被 errors.Unwrap 展开。
+	var lastErr error
 	for sslIndex, sslConfig := range attempts {
 		sslLabel := "SSL"
 		if sslIndex > 0 {
@@ -232,6 +212,7 @@ func (k *KingbaseDB) Connect(config connection.ConnectionConfig) (err error) {
 			dsn := k.getDSN(attempt)
 			db, err := openKingbaseDB("kingbase", dsn)
 			if err != nil {
+				lastErr = err
 				failures = append(failures, fmt.Sprintf("%s 数据库=%s 打开连接失败: %v", sslLabel, dbName, err))
 				continue
 			}
@@ -241,6 +222,7 @@ func (k *KingbaseDB) Connect(config connection.ConnectionConfig) (err error) {
 			if err := k.Ping(); err != nil {
 				_ = db.Close()
 				k.conn = nil
+				lastErr = err
 				failures = append(failures, fmt.Sprintf("%s 数据库=%s 验证失败: %v", sslLabel, dbName, err))
 				continue
 			}
@@ -252,6 +234,7 @@ func (k *KingbaseDB) Connect(config connection.ConnectionConfig) (err error) {
 			}
 
 			if err := k.ensureSearchPath(attempt, dsn, kingbaseConfigHasExplicitSearchPath(attempt)); err != nil {
+				lastErr = err
 				failures = append(failures, fmt.Sprintf("%s 数据库=%s 配置 search_path 失败: %v", sslLabel, dbName, err))
 				if k.conn != nil {
 					_ = k.conn.Close()
@@ -263,7 +246,7 @@ func (k *KingbaseDB) Connect(config connection.ConnectionConfig) (err error) {
 			return nil
 		}
 	}
-	return fmt.Errorf("连接建立后验证失败：%s", strings.Join(failures, "；"))
+	return kingbaseConnectFailureError(failures, usingMaintenanceFallback, lastErr)
 }
 
 func (k *KingbaseDB) ensureSearchPath(config connection.ConnectionConfig, baseDSN string, hasExplicitSearchPath bool) error {
@@ -534,11 +517,9 @@ func (k *KingbaseDB) GetTables(dbName string) ([]string, error) {
 }
 
 func (k *KingbaseDB) GetCreateStatement(dbName, tableName string) (string, error) {
-	// Kingbase doesn't have "SHOW CREATE TABLE".
-	// We can try pg_dump logic or use a query to reconstruction.
-	// A simple approach is just returning basic info or "Not Supported".
-	// Or we can query information_schema to build it.
-	return "SHOW CREATE TABLE not directly supported in Kingbase/Postgres via SQL", nil
+	// 建表语句由 pg_catalog 自行拼装（见 kingbase_ddl.go）：Kingbase 各版本/兼容模式
+	// 都没有可依赖的 tabledef 函数，sys_get_tabledef 在 V9R3 MySQL 兼容版不存在、V9R1 返回空。
+	return k.buildKingbaseCreateTableStatement(dbName, tableName)
 }
 
 func (k *KingbaseDB) GetColumns(dbName, tableName string) ([]connection.ColumnDefinition, error) {
@@ -547,7 +528,7 @@ func (k *KingbaseDB) GetColumns(dbName, tableName string) ([]connection.ColumnDe
 		return nil, localizedDatabaseRuntimeError("db.backend.error.table_name_required", nil)
 	}
 
-	data, _, err := k.Query(buildPGLikeColumnsMetadataQuery(schema, table))
+	data, _, err := k.Query(buildKingbaseColumnsMetadataQuery(schema, table))
 	if err != nil {
 		return nil, err
 	}

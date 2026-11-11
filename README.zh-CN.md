@@ -22,7 +22,7 @@
 
 <p align="center">
   <a href="https://go.dev"><img src="https://img.shields.io/github/go-mod/go-version/Syngnat/GoNavi?style=flat-square&logo=go&logoColor=white&label=Go" alt="Go" /></a>
-  <a href="https://wails.io"><img src="https://img.shields.io/badge/Wails-v2-red?style=flat-square" alt="Wails" /></a>
+  <a href="https://wails.io"><img src="https://img.shields.io/badge/Wails-v3-blue?style=flat-square" alt="Wails" /></a>
   <a href="https://reactjs.org"><img src="https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=white" alt="React" /></a>
   <a href="https://github.com/Syngnat/GoNavi/actions"><img src="https://img.shields.io/github/actions/workflow/status/Syngnat/GoNavi/release.yml?style=flat-square&label=Build" alt="Build" /></a>
 </p>
@@ -227,7 +227,7 @@
 ### 🛡️ 可观测 & 可交付
 - SQL 执行日志（含耗时）  
 - 审计中心（默认脱敏、保留策略、导出）  
-- 桌面端 + 实验性 **Web Server**  
+- 桌面端 + **Web Server**  
 - Docker / K8s / Helm / Podman  
 - 更新检查 · 多架构发布  
 
@@ -237,7 +237,7 @@
 
 ### 🧩 技术栈
 
-`Go 1.24` · `Wails v2` · `React 18` · `TypeScript` · `Vite` · `Ant Design 5` · `Zustand` · `Monaco`
+`Go 1.26` · `Wails v3` · `React 18` · `TypeScript` · `Vite` · `Ant Design 5` · `Zustand` · `Monaco`
 
 ---
 
@@ -248,7 +248,7 @@
 | | |
 |---|---|
 | **内置** | MySQL · GoldenDB · PostgreSQL · Oracle · Redis · Chroma · Qdrant · Milvus · RocketMQ · MQTT · Kafka · RabbitMQ |
-| **可选** | MariaDB · Doris · StarRocks · Sphinx · SQL Server · SQLite · DuckDB · OceanBase · 达梦 · 人大金仓 · 瀚高 · 海量 · openGauss · GaussDB · IRIS · Caché · MongoDB · TDengine · IoTDB · ClickHouse · Trino · Elasticsearch · TiDB · CockroachDB · KWDB · TimescaleDB · GBase 8a · GBase 8c · GBase 8s · 崖山 · Firebird · QuestDB · GreptimeDB · InfluxDB · Presto · OpenSearch · Weaviate · Meilisearch · Typesense · etcd · ZooKeeper · Custom Driver/DSN |
+| **可选** | MariaDB · Doris · StarRocks · Sphinx · SQL Server · SQLite · DuckDB · OceanBase · 达梦 · 人大金仓 · 瀚高 · 海量 · openGauss · GaussDB · IRIS · Caché · MongoDB · TDengine · IoTDB · ClickHouse · Hive · Trino · Elasticsearch · TiDB · CockroachDB · KWDB · TimescaleDB · GBase 8a · GBase 8c · GBase 8s · 崖山 · Firebird · QuestDB · GreptimeDB · InfluxDB · Presto · OpenSearch · Weaviate · Meilisearch · Typesense · etcd · ZooKeeper · Custom Driver/DSN |
 
 <details>
 <summary><b>完整能力矩阵</b></summary>
@@ -287,6 +287,7 @@
 | 时序 | TDengine | 可选驱动代理 | 时序库表浏览、查询分析 |
 | 时序 | Apache IoTDB | 可选驱动代理 | Storage Group / Device / Timeseries 浏览与查询 |
 | 列式分析 | ClickHouse | 可选驱动代理 | 分析查询、对象浏览、SQL 执行 |
+| 数据仓库 | [Hive / HiveServer2](HIVE_SUPPORT.md) | 可选驱动代理 | Apache Hive / Spark Thrift / Impala、分区与复杂类型、导入导出、双向同步、Kerberos |
 | 联邦查询 | Trino | 可选驱动代理 | 跨多数据源联邦 SQL、`catalog.schema` 浏览、SQL 执行 |
 | 搜索 | Elasticsearch | 可选驱动代理 | 索引浏览、Mapping 检查、受控 REST 控制台、JSON DSL / query_string 查询 |
 | 关系型 | TiDB | 可选驱动代理 | 兼容 MySQL 的查询、TiDB 执行计划、数据编辑、同步与迁移 |
@@ -331,13 +332,14 @@ Elasticsearch 连接复用查询工作区，并按服务端版本提供受控 RE
 
 ### 前置要求
 
-- [Go](https://go.dev/dl/) 1.25+
+- [Go](https://go.dev/dl/) 1.26.10+
 - [Node.js](https://nodejs.org/) 18+
-- [Wails CLI](https://wails.io/docs/gettingstarted/installation)
+- Wails v2 CLI（回退路径 / 打包）与 Wails v3 CLI
 - 仅 Linux：C 编译器、pkg-config，以及 GTK3 / WebKitGTK 开发包
 
 ```bash
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
+go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
 ```
 
 ### 开发
@@ -350,6 +352,20 @@ wails dev                          # 完整热重载
 node tools/wails-fast-dev.mjs      # Go 导出签名未变时更快
 node tools/wails-fast-dev.mjs --refresh-bindings  # 修改导出方法签名后刷新绑定
 ```
+
+### 开发（Wails v3）
+
+v3 桌面入口位于 `cmd/wails3app`，通过原生 Wails v3 CLI 运行。`wails3 dev` 会启动 Vite 并在 Go 变更时重启，资源处理器把请求代理到 Vite，因此主窗口与分离窗口都能热更新。
+
+```bash
+wails3 task dev                 # Vite（9245 端口）+ Go 热重启
+wails3 task build DEV=true      # 快速开发构建到 bin/
+wails3 task build               # 平台产物输出到 build/bin（发布布局）
+wails3 task package             # 与发布工作流一致的打包产物
+node scripts/build-wails3.mjs   # 前端构建 + 平台产物
+```
+
+上面的 v2 命令仍作为回退路径保留（CI 中设置 `GONAVI_WAILS3=0`），迁移状态见 `WAILS3_MIGRATION.md`。
 
 ### 构建
 
@@ -426,7 +442,7 @@ docker compose --env-file docker.cli.env -f docker-compose.cli.yml run --rm gona
 
 ---
 
-## 🌐 Web Server（实验中）
+## 🌐 Web Server
 
 同一套 Go 后端 + React 前端提供浏览器访问（**不是**把 Wails 桌面窗口容器化）。
 
@@ -435,9 +451,13 @@ go build .
 .\GoNavi-Wails.exe web-server --addr 127.0.0.1:34116
 ```
 
-- 首次访问进入 `/setup`（管理员密码；可选 Google Authenticator）
+- 首次访问进入 `/setup?setup=<令牌>`（令牌打印在启动日志；也可设置 `GONAVI_WEB_SETUP_TOKEN` / `GONAVI_WEB_PASSWORD`）
+- 账号：`admin`（全部权限）与 `viewer`（只读，连接被强制为只读）；只读账号可限制到指定的已保存连接；TOTP 与恢复码按账号独立
+- Session 跨重启保留（`web_sessions.json`）；登录限流同时按 IP 与账号
 - 桥接：`window.go.*` / `window.runtime.*` → HTTP / SSE
-- Session、恢复码、登录限流
+- 运维：`GET /__gonavi/healthz`、`GET /__gonavi/readyz`（数据目录可写）、需认证的 `GET /__gonavi/metrics`（JSON，加 `?format=prometheus` 输出文本）；可调 `GONAVI_WEB_MAX_INFLIGHT[_PER_USER]`、`GONAVI_DB_MAX_OPEN_CONNS`、`GONAVI_SHUTDOWN_GRACE_SECONDS`、`GONAVI_WEB_ASSET_DIR`
+- **单实例**：状态保存在本地文件；同一数据目录误起第二个 Web Server 会在日志告警。反向代理后只运行一个副本
+- **多副本**：`GONAVI_WEB_MULTI_REPLICA=1` 允许多个 Web Server 共享同一数据目录。要求：反向代理启用会话粘滞（`ip_hash` / sticky cookie）、共享文件系统支持 flock（本地卷或 NFSv4）、所有副本使用同一份 `web_auth.json` / `web_sessions.json`。查询进度与 SSE 事件只留在处理请求的副本上，因此会话粘滞是硬性要求；SQLite 审计库要求文件系统支持可用的 POSIX 锁
 
 #### Docker / Podman
 
@@ -579,7 +599,7 @@ Bootstrapper 在完全断网环境会失败。请改用 **Evergreen Standalone I
 
 ### 5. 临时绕过：Web Server 模式（仍需能跑 GoNavi 后端）
 
-若桌面 WebView 短期无法装上，可在本机用浏览器访问实验性 Web Server（**不是**把桌面窗口容器化）：
+若桌面 WebView 短期无法装上，可在本机用浏览器访问 Web Server（**不是**把桌面窗口容器化）：
 
 ```powershell
 # 以发布包中的可执行文件为例

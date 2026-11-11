@@ -1,4 +1,5 @@
 import type { ConnectionConfig, SavedConnection } from "../../types";
+import { isHiveConnectionType } from "../../utils/hiveConnection";
 import { resolveConnectionSecretDraft } from "../../utils/connectionSecretDraft";
 import { normalizeConnectionEnvironmentType } from "../../utils/connectionEnvironment";
 import { isMySQLCompatibleType, isFileDatabaseType } from "../../utils/connectionTypeCapabilities";
@@ -93,7 +94,7 @@ export const buildSavedConnectionInput = ({
     hasSecret: initialValues?.hasPrimaryPassword,
     valueInput: config.password,
     clearSecret: clearSecrets.primaryPassword,
-    forceClear: values.type === "mongodb" && values.savePassword === false,
+    forceClear: (values.type === "mongodb" || isHiveConnectionType(values.type)) && values.savePassword === false,
   });
   const sshDraft = resolveConnectionSecretDraft({
     hasSecret: initialValues?.hasSSHPassword,
@@ -169,10 +170,14 @@ export const buildSavedConnectionInput = ({
         ? `Redis ${displayHost}`
         : displayHost);
 
+  // 乐观并发：编辑已有连接时回传读取到的版本号，服务端据此拒绝覆盖他人的修改。
+  const revisionValue = (initialValues as { revision?: unknown } | null | undefined)?.revision;
+  const revision = typeof revisionValue === "number" ? revisionValue : undefined;
   return {
     id: connectionId,
     name: nextName,
     createdAt: initialValues?.createdAt,
+    revision,
     environmentType: normalizeConnectionEnvironmentType(values.environmentType),
     config: {
       ...config,

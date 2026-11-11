@@ -10,7 +10,7 @@ import (
 	"GoNavi-Wails/internal/importjob"
 	"GoNavi-Wails/internal/uievents"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	runtime "GoNavi-Wails/internal/desktop"
 )
 
 // PreviewImportFile 解析导入文件，返回字段列表、总行数、前 5 行预览数据
@@ -204,6 +204,7 @@ func (a *App) importDataWithProgressOptionsContext(
 		return connection.QueryResult{Success: false, Message: a.appText("file.backend.error.import_file_empty", nil)}
 	}
 	dbType := resolveDDLDBType(config)
+	options = effectiveHiveImportOptions(config, options)
 	schemaName, pureTableName := normalizeSchemaAndTableByType(dbType, dbName, tableName)
 	auditTarget := strings.TrimSpace(tableName)
 	if pureTableName != "" {

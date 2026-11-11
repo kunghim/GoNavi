@@ -1,5 +1,6 @@
 import {
     collectSharedColumnsForTableIdents, buildQueryEditorMetadataIdentityKeys,
+    buildCompletionColumnMetadataIdentityKey,
 } from '../queryEditorCompletionColumns';
 import {
     sharedAllColumnsData, sharedViewsData, sharedMaterializedViewsData, sharedSynonymsData,
@@ -9,7 +10,7 @@ import {
     createBoundedQueryEditorCompletionCandidateBatch, rankQueryEditorCompletionCandidate,
     buildColumnCompletionDetail, buildColumnCompletionDocumentation,
     resolveQueryEditorCompletionFilterText, findCompletionTablesByDatabase,
-    getCompletionTableSchemaCounts, type CompletionTableMeta, appendCommentToDetail,
+    getCompletionTableSchemaCounts, type CompletionTableMeta, normalizeCommentText,
     buildCompletionDocumentation, type CompletionViewMeta, selectUnqualifiedCompletionSynonyms,
     materializeBoundedQueryEditorCompletionBatches, QUERY_EDITOR_COMPLETION_SUGGESTION_LIMIT,
     type CompletionColumnMeta,
@@ -20,9 +21,17 @@ import { sqlKeywordPriority } from '../../../utils/sqlDialect';
 import type { createSqlCompletionDialectContext } from './sqlCompletionDialectContext';
 import type { createSqlCompletionSuggestionBuilders } from './sqlCompletionSuggestionBuilders';
 
+// 右侧详情列的统一格式：「注释 - 对象类型」。类型固定在整行最末端，
+// 这样同一列的类型文本不会因为有没有注释而左右移动。
+const buildCompletionDetailTypeLast = (typeLabel: string, comment?: string): string => (
+    [normalizeCommentText(comment), typeLabel].filter(Boolean).join(' - ')
+);
+
 export interface BuildSqlCompletionGlobalSuggestionsInput {
     expectsTableName: boolean;
     foundTables: Set<string>;
+    // 表身份键 → 该表在当前语句中首次出现的位置；用于列候选的次级排序。
+    tableReferenceOrder?: Map<string, number>;
     activeDialect: ReturnType<typeof createSqlCompletionDialectContext>['activeDialect'];
     referencedColumns: CompletionColumnMeta[];
     wordPrefix: string;
@@ -54,7 +63,7 @@ export interface BuildSqlCompletionGlobalSuggestionsInput {
 }
 
 export const buildSqlCompletionGlobalSuggestions = ({
-    expectsTableName, foundTables, activeDialect, referencedColumns, wordPrefix,
+    expectsTableName, foundTables, tableReferenceOrder, activeDialect, referencedColumns, wordPrefix,
     isCurrentCompletionDatabase, sortGroups, monaco, quoteCompletionPart,
     applyCompletionFragmentCase, rawWordPrefix, range, currentDatabase, completionTables,
     splitSchemaAndTable, buildDbQualifiedTableSuggestionMeta, buildTableSuggestion,
@@ -69,11 +78,64 @@ export const buildSqlCompletionGlobalSuggestions = ({
     const preloadedRelevantColumns = expectsTableName || foundTables.size === 0
         ? []
         : collectSharedColumnsForTableIdents(sharedAllColumnsData, foundTables, activeDialect);
-    const relevantColumnCandidates = preloadedRelevantColumns.length === 0
-        ? referencedColumns
-        : referencedColumns.length === 0
-            ? preloadedRelevantColumns
-            : [...preloadedRelevantColumns, ...referencedColumns];
+    // 预加载列（来自 sharedAllColumnsData 索引）与引用列（按别名解析得到）经常
+    // 指向同一列：直接拼接会让同一列在补全列表里出现两次。按「库.表.列」的
+    // 方言归一化身份键去重，保留先出现的那条（预加载列，权重更高）。
+    const mergeRelevantColumns = (
+        primary: CompletionColumnMeta[],
+        secondary: CompletionColumnMeta[],
+    ): CompletionColumnMeta[] => {
+        if (primary.length === 0) return secondary;
+        if (secondary.length === 0) return primary;
+        const seen = new Set<string>();
+        const merged: CompletionColumnMeta[] = [];
+        for (const column of [...primary, ...secondary]) {
+            const key = buildCompletionColumnMetadataIdentityKey(
+                activeDialect,
+                column.dbName || '',
+                column.tableName || '',
+                column.name || '',
+            );
+            if (key) {
+                if (seen.has(key)) continue;
+                seen.add(key);
+            }
+            merged.push(column);
+        }
+        return merged;
+    };
+    const relevantColumnCandidates = mergeRelevantColumns(
+        preloadedRelevantColumns,
+        referencedColumns,
+    );
+    // 列候选的排序前缀：当前语句 FROM/JOIN 引用的表优先，其次才是当前库。
+    // 只按「当前库 vs 其他库」分组会让 WHERE 里两张表的同名列完全同序，
+    // 结果按字母序把用户正在查的那张表排到后面（例如 fs_* 排在 wechat_* 之前）。
+    const buildColumnSortPrefix = (column: CompletionColumnMeta): string => {
+        const isCurrentDb = isCurrentCompletionDatabase(column.dbName || '');
+        const identityKeys = buildQueryEditorMetadataIdentityKeys(
+            activeDialect,
+            column.dbName || '',
+            column.tableName || '',
+        );
+        const isReferencedTable = identityKeys.some((key) => foundTables.has(key));
+        if (!isReferencedTable) {
+            // 未引用的表排在同库/跨库分组的最后。
+            const groupPrefix = isCurrentDb ? sortGroups.columnCurrent : sortGroups.columnOther;
+            return `${groupPrefix}9`;
+        }
+        // 引用的表之间再按它在语句中的出现顺序分档：用户正在写的 FROM 表优先，
+        // 后面的 JOIN 表依次靠后，避免同档内退化成字母序。
+        const order = identityKeys.reduce<number | null>((best, key) => {
+            const index = tableReferenceOrder?.get(key);
+            if (index === undefined) return best;
+            return best === null || index < best ? index : best;
+        }, null);
+        const orderRank = order === null ? 0 : Math.min(order, 8);
+        const groupPrefix = isCurrentDb ? sortGroups.columnCurrent : sortGroups.columnOther;
+        return `${groupPrefix}${orderRank}`;
+    };
+
     const relevantColumnBatch = createBoundedQueryEditorCompletionCandidateBatch({
         candidates: relevantColumnCandidates,
         prefix: wordPrefix,
@@ -89,9 +151,7 @@ export const buildSqlCompletionGlobalSuggestions = ({
             return rankQueryEditorCompletionCandidate(normalizedPrefix, [column.name]);
         },
         getSelectionKey: (column, _prefix, matchRank) => (
-            (isCurrentCompletionDatabase(column.dbName || '')
-                ? sortGroups.columnCurrent
-                : sortGroups.columnOther)
+            buildColumnSortPrefix(column)
             + matchRank
             + column.name
         ),
@@ -105,7 +165,7 @@ export const buildSqlCompletionGlobalSuggestions = ({
                 documentation: buildColumnCompletionDocumentation(column),
                 filterText: resolveQueryEditorCompletionFilterText(wordPrefix, [column.name]) || column.name,
                 range,
-                sortText: `${isCurrentDb ? sortGroups.columnCurrent : sortGroups.columnOther}${rankQueryEditorCompletionCandidate(wordPrefix, [column.name]) ?? 9}${column.name}`,
+                sortText: `${buildColumnSortPrefix(column)}${rankQueryEditorCompletionCandidate(wordPrefix, [column.name]) ?? 9}${column.name}`,
             };
         },
     });
@@ -171,7 +231,7 @@ export const buildSqlCompletionGlobalSuggestions = ({
                         quoteCompletionPath(applyCompletionFragmentCase(label, rawWordPrefix)),
                         table.tableName || label,
                     ),
-                    detail: appendCommentToDetail(`${translate('query_editor.object_info.table')} (${table.dbName})`, table.comment),
+                    detail: buildCompletionDetailTypeLast(`${translate('query_editor.object_info.table')} (${table.dbName})`, table.comment),
                     documentation: buildCompletionDocumentation(table.comment),
                     range,
                     sortText: sortGroups.tableOther + getPrefixMatchRank(label, table.tableName || '', pureTable) + label,
@@ -200,7 +260,7 @@ export const buildSqlCompletionGlobalSuggestions = ({
                     )),
                     pureTable,
                 ),
-                detail: appendCommentToDetail(`${translate('query_editor.object_info.table')}${schemaInfo}`, table.comment),
+                detail: buildCompletionDetailTypeLast(`${translate('query_editor.object_info.table')}${schemaInfo}`, table.comment),
                 documentation: buildCompletionDocumentation(table.comment),
                 range,
                 sortText: sortGroups.tableCurrent + getPrefixMatchRank(table.tableName || '', pureTable) + pureTable,
@@ -237,7 +297,7 @@ export const buildSqlCompletionGlobalSuggestions = ({
                     label,
                     kind: monaco.languages.CompletionItemKind.Class,
                     insertText: meta.insertText,
-                    detail: `${getViewTypeLabel(materialized)} (${getViewSuggestionScope(view, meta)})`,
+                    detail: buildCompletionDetailTypeLast(`${getViewTypeLabel(materialized)} (${getViewSuggestionScope(view, meta)})`),
                     filterText: resolveQueryEditorCompletionFilterText(wordPrefix, [meta.dbQualifiedLabel, meta.displayName, meta.objectName, view.viewName])
                         || label,
                     range,
@@ -296,7 +356,7 @@ export const buildSqlCompletionGlobalSuggestions = ({
                 kind: monaco.languages.CompletionItemKind.Function,
                 insertText: meta.insertText,
                 insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                detail: `${getRoutineTypeLabel(routine.routineType)} (${routine.dbName}${schemaInfo})`,
+                detail: buildCompletionDetailTypeLast(`${getRoutineTypeLabel(routine.routineType)} (${routine.dbName}${schemaInfo})`),
                 range,
                 sortText: (isCurrentDb ? sortGroups.routineCurrent : sortGroups.routineOther)
                     + getPrefixMatchRank(meta.dbQualifiedLabel, meta.displayName, meta.objectName, routine.routineName || '')

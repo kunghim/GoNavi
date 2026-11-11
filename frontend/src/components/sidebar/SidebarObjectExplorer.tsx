@@ -1,4 +1,5 @@
 import { V2ExplorerContextSummary } from './V2ExplorerContextSummary';
+import { PluginSidebarSection } from './PluginSidebarSection';
 import { V2ExplorerSearchAction, V2ExplorerToolbarActions } from './SidebarExplorerToolbar';
 import { Input, Tooltip, Tree } from 'antd';
 import { noAutoCapInputProps } from '../../utils/inputAutoCap';
@@ -167,6 +168,8 @@ export const SidebarObjectExplorer = ({
       onFilterChange={setV2ExplorerFilter}
   />
 
+  <PluginSidebarSection darkMode={darkMode} />
+
   <div
       ref={treeContainerRef}
       className={`sidebar-tree-scroll-shell gn-v2-explorer-tree-shell${sidebarTreeDrag.isSidebarHostTreeNode({ type: sidebarTreeDragNodeType } as TreeNode) ? ' is-host-tree-dragging' : ''}${sidebarTreeDrag.isSidebarTreeOrderNode({ type: sidebarTreeDragNodeType } as TreeNode) ? ' is-object-tree-dragging' : ''}${sidebarTreeDropPreview ? ' has-host-group-drop-preview' : ''}`}
@@ -232,13 +235,24 @@ export const SidebarObjectExplorer = ({
               onLoad={setLoadedKeys}
               autoExpandParent={autoExpandParent}
               selectedKeys={selectedKeys}
+              // 多选用于表节点的范围选择（拖选 / Shift）；rc-tree 在 multiple=false 时
+              // 会把 selectedKeys 截成首个 key，多选高亮无法渲染。普通单击由 onSelect
+              // 归一回单选，因此这里开启 multiple 不改变原有单击语义。
+              multiple
               blockNode
               // Expand/collapse animation re-renders the newly revealed rows on every
               // frame (each with a Tooltip) and blocks scroll-to-key until it ends; on
               // large databases that added ~0.7s to locating a table in WebKit.
               motion={false}
               height={effectiveTreeHeight}
-              itemHeight={30}
+              // rc-tree 在展开时会把 motionType 置为 'show'，此时它会强制
+              // itemHeightFixed=false 并禁用 itemHeightResolver，退回用固定的
+              // itemHeight 估算可见范围。行高有 30 与 36 两种，按 30 估算范围
+              // 会偏小，展开后下方就是一片空白，直到滚动触发重算。
+              // 显式传 itemHeightFixed={false} 让解析器始终生效；itemHeight 取
+              // 较大的 36，保证过渡期按「多算」而不是「少算」留白。
+              itemHeight={36}
+              itemHeightFixed={false}
               itemHeightResolver={resolveSidebarTreeRowHeight}
               onContextMenu={handleV2TreeContextMenu}
               onRightClick={onRightClick}

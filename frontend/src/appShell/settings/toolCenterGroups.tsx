@@ -1,6 +1,6 @@
 import {
   SettingOutlined, SafetyCertificateOutlined, HddOutlined,
-  FileTextOutlined, AppstoreAddOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons';
 import type { SettingsCenterNavigationGroup } from '../settingsCenterNavigation';
 import AiSparkOutlined from '../../components/icons/AiSparkOutlined';
@@ -18,6 +18,8 @@ export const buildToolCenterGroups = ({
   t, handleOpenToolCenterPane,
   securityUpdateEntryVisibility, securityUpdateHasLegacySensitiveItems, securityUpdateStatusMeta,
 }: BuildToolCenterGroupsInput) => {
+  // 插件不进设置中心导航树：入口在标题栏工具条（titlebarTrailingActions），
+  // 以独立工作台 Tab 打开（utils/pluginManagerTab）。
   const toolCenterGroups: SettingsCenterNavigationGroup[] = [
     {
       key: 'config',
@@ -25,13 +27,6 @@ export const buildToolCenterGroups = ({
       title: t('app.tools.group.config.title'),
       description: t('app.tools.group.config.description'),
       items: [
-        {
-          key: 'plugins',
-          icon: <AppstoreAddOutlined />,
-          title: t('plugin.manager.title'),
-          description: t('plugin.manager.description'),
-          onClick: () => handleOpenToolCenterPane('config', 'plugins'),
-        },
         {
           key: 'data-root',
           icon: <HddOutlined />,

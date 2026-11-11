@@ -115,33 +115,67 @@ func (p *rpcProcess) rejectHostRequest(message rpcEnvelope) error {
 	default:
 		return fmt.Errorf("invalid plugin request id")
 	}
-	// host.log and host.describe are caller-bound. Every other plugin method stays unsupported.
-	var result json.RawMessage
-	var callErr error
-	switch {
-	case message.Method == "host.log" && p.hostLog != nil:
-		result, callErr = p.hostLog(message.Params)
-	case message.Method == "host.describe" && p.hostDescribe != nil:
-		result, callErr = p.hostDescribe(message.Params)
-	default:
+	// host.log, host.describe and host.capability are caller-bound. Every other
+	// plugin method stays unsupported.
+	handler := p.hostHandler(message.Method)
+	if handler == nil {
 		frame, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": message.ID, "error": map[string]any{"code": -32601, "message": "host method is not supported"}})
 		if err != nil {
 			return err
 		}
 		return p.replyHost(frame, err)
 	}
-	if callErr == nil {
-		frame, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": message.ID, "result": result})
+	// Never run a host callback on the protocol reader: a slow metadata/connection call would
+	// stop ping responses from being consumed and the watchdog would quarantine a live plugin.
+	slots := p.hostRequestSlots()
+	select {
+	case slots <- struct{}{}:
+	default:
+		frame, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": message.ID, "error": map[string]any{"code": -32001, "message": "host request was rejected"}})
 		return p.replyHost(frame, err)
 	}
-	code := -32003
-	if errors.Is(callErr, errHostLogParams) {
-		code = -32602
-	} else if errors.Is(callErr, errHostLogBusy) {
-		code = -32001
+	go func() {
+		defer func() { <-slots }()
+		result, callErr := handler(message.Params)
+		if callErr == nil {
+			frame, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": message.ID, "result": result})
+			_ = p.replyHost(frame, err)
+			return
+		}
+		code := -32003
+		if errors.Is(callErr, errHostLogParams) {
+			code = -32602
+		} else if errors.Is(callErr, errHostLogBusy) {
+			code = -32001
+		}
+		frame, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": message.ID, "error": map[string]any{"code": code, "message": "host request was rejected"}})
+		_ = p.replyHost(frame, err)
+	}()
+	return nil
+}
+
+func (p *rpcProcess) hostRequestSlots() chan struct{} {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.hostRequests == nil {
+		p.hostRequests = make(chan struct{}, 8)
 	}
-	frame, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": message.ID, "error": map[string]any{"code": code, "message": "host request was rejected"}})
-	return p.replyHost(frame, err)
+	return p.hostRequests
+}
+
+func (p *rpcProcess) hostHandler(method string) func(json.RawMessage) (json.RawMessage, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	switch method {
+	case "host.log":
+		return p.hostLog
+	case "host.describe":
+		return p.hostDescribe
+	case "host.capability":
+		return p.hostCapability
+	default:
+		return nil
+	}
 }
 func (p *rpcProcess) replyHost(frame []byte, err error) error {
 	if err != nil {
@@ -161,6 +195,9 @@ func (p *rpcProcess) readDiagnostics() {
 	for {
 		n, err := p.stderr.Read(buffer)
 		total += n
+		if n > 0 {
+			p.keepStderr(buffer[:n])
+		}
 		if total > 1<<20 {
 			p.fail(fmt.Errorf("plugin diagnostic output budget exceeded"))
 			return

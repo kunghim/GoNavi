@@ -15,7 +15,7 @@ import (
 	syncbackend "GoNavi-Wails/internal/sync"
 	"GoNavi-Wails/internal/syncjob"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	runtime "GoNavi-Wails/internal/desktop"
 )
 
 // backupPathReserveAttempts 限制同一秒内撞名后的让位次数。调度粒度是分钟，
@@ -126,7 +126,7 @@ func (a *App) preflightBackupJob(ctx context.Context, definition syncjob.JobDefi
 
 func backupSQLSupported(kind string) bool {
 	switch normalizeSQLClassifierDBType(kind) {
-	case "mysql", "mariadb", "oceanbase", "postgres", "kingbase", "highgo", "vastbase", "opengauss", "gaussdb", "sqlite", "duckdb", "sqlserver", "oracle", "dameng", "clickhouse", "iris":
+	case "mysql", "mariadb", "oceanbase", "postgres", "kingbase", "highgo", "vastbase", "opengauss", "gaussdb", "sqlite", "duckdb", "sqlserver", "oracle", "dameng", "clickhouse", "iris", "hive":
 		return true
 	default:
 		return false
